@@ -17,7 +17,7 @@ export const migrateProductsToRepository = () => {
     price: product.price,
     category: product.category,
     image: product.image,
-    stock: product.stock,
+    stock: product.stock_quantity,
     description: product.description || `High-quality ${product.name.toLowerCase()} available now.`,
     status: ProductStatus.ACTIVE,
     createdAt: new Date(Date.now() - (oldProducts.length - index) * 86400000).toISOString(),

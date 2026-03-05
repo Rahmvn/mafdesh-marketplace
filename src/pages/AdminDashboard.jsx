@@ -1,9 +1,11 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package, Users, CheckCircle, AlertCircle, TrendingUp, Shield, DollarSign, ShoppingCart, UserCheck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { adminAPI } from '../services/api';
+import { adminAPI } from '../services/adminAPI';
+import { supabase } from '../supabaseClient';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -22,11 +24,13 @@ export default function AdminDashboard() {
     totalRevenue: 0,
     platformFees: 0
   });
-
-  const handleLogout = () => {
-    localStorage.removeItem('mafdesh_user');
-    navigate('/login');
-  };
+const handleLogout = async () => {
+   if (window.confirm('Are you sure you want to logout?')) {
+  await supabase.auth.signOut();   // kill Supabase session
+  localStorage.clear();            // clear your local data
+  window.location.href = '/login'; // hard redirect (no React tricks)
+};
+};
 
   useEffect(() => {
     const checkAuth = () => {
@@ -53,34 +57,35 @@ export default function AdminDashboard() {
   useEffect(() => {
     let intervalId;
     if (currentUser) {
-      loadData();
-      // Set up real-time polling every 30 seconds for admin accuracy
-      intervalId = setInterval(loadData, 30000);
-    }
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
+      loadData();}
+    //   // Set up real-time polling every 30 seconds for admin accuracy
+    //   intervalId = setInterval(loadData, 30000);
+    // }
+    // return () => {
+    //   if (intervalId) clearInterval(intervalId);
+    // };
   }, [currentUser]);
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [statsData, productsData, sellersData] = await Promise.all([
-        adminAPI.getStats(),
-        adminAPI.getAllProducts(),
-        adminAPI.getAllSellers()
-      ]);
-      
-      setStats(statsData.stats);
-      setProducts(productsData.products || []);
-      setSellers(sellersData.sellers || []);
-    } catch (error) {
-      console.error('Error loading admin data:', error);
-      alert('Failed to load dashboard data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+const loadData = async () => {
+  try {
+    setIsLoading(true);
+
+    const [statsData, productsData, sellersData] = await Promise.all([
+      adminAPI.getStats(),
+      adminAPI.getAllProducts(),
+      adminAPI.getAllSellers()
+    ]);
+
+    setStats(statsData.stats);
+    setProducts(productsData || []);
+    setSellers(sellersData.sellers || []);
+
+  } catch (error) {
+    console.error('Failed to load admin data:', error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -103,7 +108,7 @@ export default function AdminDashboard() {
                     {stats.pendingProducts} product{stats.pendingProducts > 1 ? 's' : ''} waiting for your review
                   </p>
                   <button
-                    onClick={() => navigate('/admin/approvals')}
+                    onClick={() => navigate('/admin/products')}
                     className="bg-white text-orange-600 hover:bg-orange-50 font-semibold px-6 py-2 rounded-lg transition-colors"
                   >
                     Review Now →
@@ -246,19 +251,21 @@ export default function AdminDashboard() {
                     </tr>
                   ) : (
                     products.slice(0, 5).map(product => (
+                       
+                     
                       <tr key={product.id} className="hover:bg-blue-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
-                            {product.image_url && (
+                            {product.images?.[0] && (
                               <img
-                                src={product.image_url}
+                                src={product.images?.[0]}
                                 alt={product.name}
                                 className="w-14 h-14 object-cover rounded-lg border-2 border-orange-300 shadow-sm"
                               />
                             )}
                             <div>
                               <p className="font-semibold text-blue-900">{product.name}</p>
-                              <p className="text-sm text-blue-600">{product.seller?.business_name || product.seller?.full_name}</p>
+                              <p className="text-sm text-blue-600">{product.users?.business_name || product.users?.profiles?.full_name}</p>
                             </div>
                           </div>
                         </td>
@@ -293,6 +300,7 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 sellers.slice(0, 5).map(seller => (
+                 
                   <div key={seller.id} className="p-5 hover:bg-blue-50 transition-colors cursor-pointer">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">

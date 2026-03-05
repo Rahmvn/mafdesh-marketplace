@@ -1,7 +1,6 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, TrendingUp, AlertCircle, Plus, Edit, Shield } from 'lucide-react';
+import { Package, AlertCircle, Plus, Edit, Shield } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import VerificationBadge from '../components/VerificationBadge';
@@ -9,6 +8,8 @@ import { productService } from '../services/productService';
 import { supabase } from '../supabaseClient';
 
 export default function SellerDashboard() {
+
+  console.log('SellerDashboard mounted');
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
   const [products, setProducts] = useState([]);
@@ -27,6 +28,7 @@ export default function SellerDashboard() {
     account_name: ''
   });
 
+
   const nigerianBanks = [
     "Access Bank", "Citibank", "Ecobank", "Fidelity Bank", "First Bank", "First City Monument Bank (FCMB)",
     "Globus Bank", "Guaranty Trust Bank (GTBank)", "Heritage Bank", "Keystone Bank", "Lotus Bank",
@@ -36,157 +38,129 @@ export default function SellerDashboard() {
   ].sort();
 
   useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
-      
-      if (!storedUser) {
-        alert('Please log in to access this page.');
-        navigate('/login');
-        return;
-      }
+  const init = async () => {
+    const { data } = await supabase.auth.getSession();
 
-      const userData = JSON.parse(storedUser);
-
-      if (userData.role !== 'seller') {
-        alert('Access denied. Only sellers can access this dashboard.');
-        navigate('/login');
-        return;
-      }
-
-      setCurrentUser(userData);
-    };
-
-    checkAuth();
-  }, [navigate]);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadDashboardData();
-      if (!currentUser.bank_name || !currentUser.account_number) {
-        setShowBankModal(true);
-      }
+    if (!data.session) {
+      navigate('/login');
+      return;
     }
-  }, [currentUser]);
+
+    const user = data.session.user;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || !userData || userData.role !== 'seller') {
+      navigate('/login');
+      return;
+    }
+
+    setCurrentUser({
+      ...user,
+      ...profile,
+      ...userData
+    });
+  };
+
+  init();
+}, []);
+
+
+
+useEffect(() => {
+  if (!currentUser) return;
+
+  loadDashboardData();
+
+  if (
+    !currentUser.bank_name ||
+    !currentUser.account_number
+  ) {
+    setShowBankModal(true);
+  } else {
+    setShowBankModal(false);
+  }
+}, [currentUser]);
 
   const handleBankSubmit = async (e) => {
     e.preventDefault();
-    if (!bankData.bank_name || !bankData.account_number || !bankData.account_name) {
-      alert('Please fill in all bank details');
-      return;
-    }
-    if (!/^\d{10}$/.test(bankData.account_number)) {
-      alert('Account number must be 10 digits');
-      return;
-    }
 
-    try {
-      const handleBankSubmit = async (e) => {
-  e.preventDefault();
-
-  if (!bankData.bank_name || !bankData.account_number || !bankData.account_name) {
-    alert('Please fill in all bank details');
-    return;
-  }
-
-  try {
     const { error } = await supabase
       .from('users')
-      .update(bankData)
+      .update({
+        bank_name: bankData.bank_name,
+        account_number: bankData.account_number,
+        account_name: bankData.account_name
+      })
       .eq('id', currentUser.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error(error);
+      alert('Failed saving bank');
+      return;
+    }
 
-    const updatedUser = { ...currentUser, ...bankData };
-    localStorage.setItem('mafdesh_user', JSON.stringify(updatedUser));
-    setCurrentUser(updatedUser);
+    // 🔥 IMPORTANT: Refetch fresh profile
+    const { data: updatedUser } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', currentUser.id)
+      .single();
+
+    setCurrentUser(prev => ({
+      ...prev,
+      ...updatedUser
+    }));
 
     setShowBankModal(false);
-  } catch (err) {
-    console.error(err);
-    alert('Failed to save bank details');
-  }
-};
-      const updatedUser = { ...currentUser, ...bankData };
-      localStorage.setItem('mafdesh_user', JSON.stringify(updatedUser));
-      setCurrentUser(updatedUser);
-      setShowBankModal(false);
-      alert('Bank details updated successfully!');
-    } catch (error) {
-      alert('Failed to update bank details');
-    }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('mafdesh_user');
-    navigate('/login');
-  };
+const handleLogout = async () => {
+   if (window.confirm('Are you sure you want to logout?')) {
+  await supabase.auth.signOut();   // kill Supabase session
+  localStorage.clear();            // clear your local data
+  window.location.href = '/login'; // hard redirect (no React tricks)
+};
+};
 
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
-      const sellerProducts = await productService.getSellerProducts();
+      const sellerProducts = await productService.getSellerProducts(currentUser.id);
       setProducts(sellerProducts);
-      
-      setStats({
-        totalProducts: sellerProducts.length,
-        draftProducts: sellerProducts.filter(p => {
-          const status = p.status || (p.is_approved ? 'approved' : 'pending_approval');
-          return status === 'draft';
-        }).length,
-        pendingProducts: sellerProducts.filter(p => {
-          const status = p.status || (p.is_approved ? 'approved' : 'pending_approval');
-          return status === 'pending_approval';
-        }).length,
-        approvedProducts: sellerProducts.filter(p => {
-          const status = p.status || (p.is_approved ? 'approved' : 'pending_approval');
-          return status === 'approved';
-        }).length,
-        rejectedProducts: sellerProducts.filter(p => {
-          const status = p.status || (p.is_approved ? 'approved' : 'pending_approval');
-          return status === 'rejected';
-        }).length
-      });
+
+     setStats({
+  totalProducts: sellerProducts.length,
+  approvedProducts: sellerProducts.filter(p => p.is_approved === true).length,
+  rejectedProducts: sellerProducts.filter(p => p.is_approved === false).length,
+  pendingProducts: 0,
+  draftProducts: 0
+});
+
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
       setIsLoading(false);
     }
   };
-
-  const getStatusBadge = (product) => {
-    const status = product.status || (product.is_approved ? 'approved' : 'pending_approval');
-    
-    switch (status) {
-      case 'draft':
-        return 'bg-gray-100 text-gray-700 border-gray-300';
-      case 'pending_approval':
-        return 'bg-orange-100 text-orange-800 border-orange-300';
-      case 'approved':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'rejected':
-        return 'bg-red-100 text-red-800 border-red-300';
-      default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
-    }
-  };
-
-  const getStatusLabel = (product) => {
-    const status = product.status || (product.is_approved ? 'approved' : 'pending_approval');
-    
-    switch (status) {
-      case 'draft':
-        return 'Draft';
-      case 'pending_approval':
-        return 'Pending Approval';
-      case 'approved':
-        return 'Approved';
-      case 'rejected':
-        return 'Rejected';
-      default:
-        return 'Unknown';
-    }
-  };
-
+const getStatusLabel = (product) => {
+  return product.is_approved ? 'Approved' : 'Rejected';
+};
+const getStatusBadge = (product) => {
+  return product.is_approved
+    ? 'bg-blue-100 text-blue-800 border-blue-300'
+    : 'bg-red-100 text-red-800 border-red-300';
+};
   if (isLoading) {
     return (
       <div className="min-h-screen bg-blue-50 flex items-center justify-center">
@@ -198,7 +172,7 @@ export default function SellerDashboard() {
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar onLogout={handleLogout} />
-      
+
       <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
         <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -208,7 +182,7 @@ export default function SellerDashboard() {
               </h1>
               {currentUser?.is_verified && <VerificationBadge />}
             </div>
-            <p className="text-blue-700 text-sm">Seller Dashboard</p>
+            <p className="text-blue-700 text-sm"></p>
           </div>
           <div className="flex items-center gap-3">
             {!currentUser?.is_verified && (
@@ -230,56 +204,37 @@ export default function SellerDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <Package className="w-5 h-5 text-orange-500" />
-              <h3 className="text-sm font-semibold text-blue-700">Total Products</h3>
-            </div>
-            <p className="text-3xl font-bold text-blue-900">{stats.totalProducts}</p>
-            <p className="text-xs text-blue-600 mt-1">{stats.approvedProducts} live, {stats.rejectedProducts} rejected</p>
-          </div>
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 
-          <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <Edit className="w-5 h-5 text-gray-500" />
-              <h3 className="text-sm font-semibold text-blue-700">Drafts</h3>
-            </div>
-            <p className="text-3xl font-bold text-blue-900">{stats.draftProducts}</p>
-            <p className="text-xs text-blue-600 mt-1">saved but not submitted</p>
-          </div>
+  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
+    <h3 className="text-sm font-semibold text-blue-700">Total Products</h3>
+    <p className="text-3xl font-bold text-blue-900">{stats.approvedProducts}</p>
+  </div>
 
-          <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertCircle className="w-5 h-5 text-orange-500" />
-              <h3 className="text-sm font-semibold text-blue-700">Pending Approval</h3>
-            </div>
-            <p className="text-3xl font-bold text-blue-900">{stats.pendingProducts}</p>
-            <p className="text-xs text-blue-600 mt-1">awaiting admin review</p>
-          </div>
+  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
+    <h3 className="text-sm font-semibold text-blue-700">Live Products</h3>
+    <p className="text-3xl font-bold text-green-600">{stats.approvedProducts}</p>
+  </div>
 
-          <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp className="w-5 h-5 text-blue-500" />
-              <h3 className="text-sm font-semibold text-blue-700">Live Products</h3>
-            </div>
-            <p className="text-3xl font-bold text-blue-900">{stats.approvedProducts}</p>
-            <p className="text-xs text-blue-600 mt-1">visible to buyers</p>
-          </div>
-        </div>
+  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
+    <h3 className="text-sm font-semibold text-blue-700">Rejected Products</h3>
+    <p className="text-3xl font-bold text-red-600">{stats.rejectedProducts}</p>
+  </div>
+
+</div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white rounded-lg border border-blue-200 shadow-sm overflow-hidden">
             <div className="p-4 bg-blue-900 flex items-center justify-between">
               <h2 className="text-lg font-bold text-white">Product Inventory</h2>
-              <button
+              {/* <button
                 onClick={() => navigate('/seller/products')}
                 className="text-orange-400 hover:text-orange-300 text-sm font-semibold transition-colors"
               >
                 Manage All →
-              </button>
+              </button> */}
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-blue-50 border-b border-blue-200">
@@ -304,7 +259,9 @@ export default function SellerDashboard() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <img
-                              src={product.image}
+                              src={product.images?.[0] && product.images[0] !== ''
+                                ? product.images[0]
+                                : 'https://placehold.co/600x600'}
                               alt={product.name}
                               className="w-12 h-12 object-cover rounded border-2 border-orange-300"
                             />
@@ -312,7 +269,9 @@ export default function SellerDashboard() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-orange-600">{product.price}</td>
-                        <td className="px-4 py-3 text-sm text-blue-900">{product.stock}</td>
+                       <td className="px-4 py-3 text-sm text-blue-900">
+  {product.stock_quantity}
+</td>
                         <td className="px-4 py-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(product)}`}>
                             {getStatusLabel(product)}
@@ -348,6 +307,7 @@ export default function SellerDashboard() {
                 <span className="font-semibold text-orange-700">Add New Product</span>
               </button>
               <button
+                type='button'
                 onClick={() => navigate('/seller/products')}
                 className="w-full flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
               >
@@ -372,7 +332,7 @@ export default function SellerDashboard() {
             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
             <div>
               <h3 className="font-bold text-blue-900 mb-1">Getting Started</h3>
-              <p className="text-sm text-blue-800">Add your first product to start selling on Mafdesh. Your products will be reviewed by our team before going live.</p>
+              <p className="text-sm text-blue-800">Your Products go live immediately. Admins may remove products that violate marketplace rules</p>
             </div>
           </div>
         </div>
@@ -380,8 +340,10 @@ export default function SellerDashboard() {
 
       <Footer />
 
+
       {/* Bank Details Modal */}
-      {showBankModal && (
+
+      {showBankModal === true && (
         <div className="fixed inset-0 bg-blue-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-300">
             <div className="bg-gradient-to-r from-blue-900 to-blue-700 p-6 text-white text-center">
@@ -401,6 +363,7 @@ export default function SellerDashboard() {
                     backgroundPosition: "right 16px center",
                     backgroundSize: "16px"
                   }}
+
                 >
                   <option value="">Select your bank</option>
                   {nigerianBanks.map(bank => (

@@ -32,7 +32,7 @@ export default function FlashSaleCard({ flashSale }) {
       {/* Product Image */}
       <div className="relative h-40 bg-gradient-to-br from-orange-50 to-white overflow-hidden">
         <img 
-          src={flashSale.product.image_url || '/placeholder-product.png'} 
+          src={flashSale.product.images?.[0] || '/placeholder-product.png'} 
           alt={flashSale.product.name}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />

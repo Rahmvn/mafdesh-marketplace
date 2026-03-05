@@ -22,7 +22,7 @@ export default function GuestNavbar() {
           {/* Center - Browse Products */}
           <div className="hidden md:flex items-center">
             <button
-              onClick={() => navigate('/products')}
+              // onClick={() => navigate('/products')}
               className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-blue-700 font-medium transition-colors"
             >
               <ShoppingBag size={20} />

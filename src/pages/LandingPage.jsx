@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import Footer from '../components/Footer';
 import {supabase} from '../supabaseClient';
-import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
+import GuestNavbar from '../components/GuestNavbar';
 import { productService } from '../services/productService';
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -23,17 +23,17 @@ export default function LandingPage() {
   }, []);
   const loadProducts = async () => {
   setIsLoading(true);
-  try {
-    const data = await productService.getAllProducts();
-    setProducts(data);
-  } catch (e) {
-    console.error(e);
-    setProducts([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
 
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (!error) setProducts(data || []);
+
+  setIsLoading(false);
+};
+ 
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -46,7 +46,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <AuthNavbarWrapper />
+      <GuestNavbar />
       {/* { <AuthNavbarWrapper onLogout={() => navigate('/')} /> } */}
       {/* { Search} */}
       <div className="bg-gray-50 border-b">
@@ -103,7 +103,7 @@ export default function LandingPage() {
               >
                 <div className="aspect-square bg-gray-50 rounded-t-lg overflow-hidden">
                   <img
-                    src={product.image || product.image_url || '/placeholder.jpg'}
+                    src={product.images?.[0] || '/placeholder.jpg'}
                     alt={product.name}
                     className="w-full h-full object-cover"
                   />

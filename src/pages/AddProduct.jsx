@@ -3,22 +3,28 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Upload, AlertCircle, Search } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
 import { productService } from '../services/productService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
+import { supabase } from '../supabaseClient';
+import Footer from '../components/Footer';
+import {v4 as uuidv4} from 'uuid';
+import ProductPreviewModal from '../components/ProductPreviewModal';
 
 export default function AddProduct() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
 
-  const [formData, setFormData] = useState({
+const [formData, setFormData] = useState({
   name: '',
-  category: PRODUCT_CATEGORIES[0],
+  category: '',
   price: '',
   stock: '',
-  description: '',
-  imageFile: null,
-  imagePreview: null
+  overview: '',
+  features: '',
+  specs: '',
+  images: [null, null, null, null, null],
 });
 
 
@@ -55,30 +61,21 @@ export default function AddProduct() {
     checkAuth();
   }, [navigate]);
 
-  const handleImageChange = (e) => {
-  const file = e.target.files[0];
+const handleImageChange = (index, file) => {
   if (!file) return;
 
-  if (file.size > 5 * 1024 * 1024) {
-    alert("Image must be less than 5MB");
+  if (file.size > 3 * 1024 * 1024) {
+    alert("Each image must be less than 3MB");
     return;
   }
 
-  const img = new Image();
-  img.src = URL.createObjectURL(file);
+  const updatedImages = [...formData.images];
+  updatedImages[index] = file;
 
-  img.onload = () => {
-    if (img.width < 800) {
-      alert("Image must be at least 800px wide.");
-      return;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      imageFile: file,
-      imagePreview: img.src
-    }));
-  };
+  setFormData(prev => ({
+    ...prev,
+    images: updatedImages
+  }));
 };
 
 
@@ -90,59 +87,112 @@ export default function AddProduct() {
     }
   };
 
-  const validate = () => {
-    const newErrors = {};
+const validate = () => {
+  const newErrors = {};
 
-    if (!formData.name.trim()) newErrors.name = 'Product name is required';
-    if (!formData.price.trim()) newErrors.price = 'Price is required';
-    if (!formData.stock.trim()) newErrors.stock = 'Stock quantity is required';
-    if (!formData.description.trim()) newErrors.description = 'Description is required';
-    if (!formData.imageFile) newErrors.image = 'Product image is required';
+  const requiredImages = formData.images.slice(0, 3);
+
+  if (!formData.name.trim() || formData.name.trim().length < 5) {
+    newErrors.name = 'Product name must be at least 5 characters';
+  }
+
+  if (formData.name.toLowerCase().includes('test')) {
+    newErrors.name = 'Invalid product name';
+  }
+  if (!formData.overview || formData.overview.length < 40) {
+  newErrors.overview = "Overview must be at least 40 characters";
+}
+
+if (!formData.features || formData.features.split('\n').length < 3) {
+  newErrors.features = "Add at least 3 key features";
+}
+
+  if (!formData.category) {
+    newErrors.category = 'Category is required';
+  }
+
+  if (!formData.price || isNaN(formData.price) || parseFloat(formData.price) <= 0) {
+    newErrors.price = 'Enter a valid price';
+  }
+
+  if (!formData.stock || parseInt(formData.stock) < 0) {
+    newErrors.stock = 'Enter valid stock quantity';
+  }
 
 
-    if (formData.price && isNaN(parseFloat(formData.price.replace(/[₦,]/g, '')))) {
-      newErrors.price = 'Please enter a valid price';
-    }
+  if (requiredImages.some(img => img === null)) {
+    newErrors.images = 'At least 3 images are required';
+  }
 
-    if (formData.stock && (isNaN(parseInt(formData.stock)) || parseInt(formData.stock) < 0)) {
-      newErrors.stock = 'Please enter a valid stock quantity';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleUpload = async () => {
-    if (!validate() || !currentUser) return;
-
-    setIsUploading(true);
-
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
+  const confirmUpload = async () => {
     try {
-      const priceValue = parseFloat(formData.price.replace(/[₦,]/g, '').trim());
+      if (!validate() || !currentUser) return;
+
+      setIsUploading(true);
+
+      const uploadedUrls = [];
+
+      for (let i = 0; i < formData.images.length; i++) {
+        const file = formData.images[i];
+        if (!file) continue;
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${currentUser.id}/${uuidv4()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(fileName);
+
+        uploadedUrls.push(data.publicUrl);
+      }
+
+      const fullDescription = `
+${formData.overview}
+
+Key Features:
+${formData.features}
+
+Specifications:
+${formData.specs}
+`;
 
       const productData = {
-  name: formData.name.trim(),
-  category: formData.category,
-  price: priceValue,
-  stock: parseInt(formData.stock),
-  description: formData.description.trim(),
-  image: formData.imagePreview
-};
-
+        description: fullDescription.trim(),
+        seller_id: currentUser.id,
+        name: formData.name.trim(),
+        category: formData.category,
+        price: parseFloat(formData.price),
+        stock_quantity: parseInt(formData.stock),
+        is_approved: true, // default approved
+        images: uploadedUrls, // first image as main display
+      };
 
       await productService.createProduct(productData);
 
-      alert('Product uploaded successfully! It is now live on the marketplace.');
-      navigate('/seller/products');
-
-    } catch (error) {
-      console.error(error);
-      alert('Failed to upload product: ' + error.message);
+      alert("Product uploaded");
+      navigate("/seller/products");
+    } catch (err) {
+      console.error(err);
+      alert("Upload failed");
     } finally {
       setIsUploading(false);
     }
   };
+const handlePreview = () => {
+  if (!validate()) return;
 
+  setPreviewData(formData);
+  setShowPreview(true);
+};
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
@@ -178,6 +228,7 @@ export default function AddProduct() {
               />
               {errors.name && <p className="text-sm text-orange-600 mt-1">{errors.name}</p>}
             </div>
+            
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
@@ -261,28 +312,97 @@ export default function AddProduct() {
               <label className="block text-sm font-semibold text-blue-900 mb-2">
                 Product Image <span className="text-orange-500">*</span>
               </label>
-              <input type="file"  
-              accept="image/*"
-              onChange={ handleImageChange }
-               />
+           <div className="space-y-4">
+  <p className="text-sm text-blue-600">
+    Upload at least 3 images. First image will be the main display.
+  </p>
+
+{formData.images.map((img, index) => (
+  <div key={index}>
+    <label className="block text-sm font-semibold text-blue-900 mb-1">
+      {index === 0
+        ? "Main Image (Required)"
+        : index < 3
+        ? `Image ${index + 1} (Required)`
+        : `Image ${index + 1} (Optional)`}
+    </label>
+
+    <input
+      type="file"
+      accept="image/*"
+      onChange={(e) => handleImageChange(index, e.target.files[0])}
+    />
+    {img && (
+      <img
+        src={URL.createObjectURL(img)}
+        alt="preview"
+        className="w-full max-h-[500px] object-contain rounded-lg border bg-white"
+      />
+    )}
+  </div>
+))}
+</div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-blue-900 mb-2">
                 Product Description <span className="text-orange-500">*</span>
               </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                placeholder="Describe your product in detail..."
-                rows="4"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none ${errors.description ? 'border-orange-500' : 'border-blue-200'
-                  }`}
-              />
-              {errors.description && <p className="text-sm text-orange-600 mt-1">{errors.description}</p>}
-              <p className="text-xs text-blue-600 mt-1">{formData.description.length} characters</p>
-            </div>
+              <div>
+  <label className="block text-sm font-semibold text-blue-900 mb-2">
+    Product Overview *
+  </label>
+  <textarea
+    name="overview"
+    value={formData.overview}
+    onChange={handleChange}
+    placeholder="Clearly explain what this product is..."
+    rows="3"
+    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+  />
+</div>
+
+<div>
+  <label className="block text-sm font-semibold text-blue-900 mb-2">
+    Key Features * (List at least 3)
+  </label>
+  <textarea
+    name="features"
+    value={formData.features}
+    onChange={handleChange}
+    placeholder={`• Feature 1
+• Feature 2
+• Feature 3`}
+    rows="4"
+    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+  />
+</div>
+
+<div>
+  <label className="block text-sm font-semibold text-blue-900 mb-2">
+    Specifications (Optional)
+  </label>
+  <textarea
+    name="specs"
+    value={formData.specs}
+    onChange={handleChange}
+    placeholder="Size, weight, material, compatibility..."
+    rows="3"
+    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+  />
+</div>
+  {errors.overview && <p className="text-sm text-orange-600 mt-1">{errors.overview}</p>}
+  <p className="text-xs text-blue-600 mt-1">{formData.overview.length} characters</p>
+</div>
+
+{showPreview && (
+  <ProductPreviewModal
+    previewData={previewData}
+    onClose={() => setShowPreview(false)}
+    onConfirm={confirmUpload}
+    isUploading={isUploading}
+  />
+)}
 
             <div className="flex gap-4 pt-4">
               <button
@@ -293,11 +413,12 @@ export default function AddProduct() {
                 Cancel
               </button>
               <button
-                onClick={handleUpload}
+                type='button'
+                onClick={handlePreview}
                 disabled={isUploading}
                 className="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors shadow-md disabled:opacity-50"
               >
-                {isUploading ? 'Uploading...' : 'Upload Product'}
+                {isUploading ? 'Uploading...' : 'Preview Product'}
               </button>
             </div>
           </div>

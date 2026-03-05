@@ -26,6 +26,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminProducts from './pages/AdminProducts';
 import AdminUsers from './pages/AdminUsers';
 import VerificationSubscription from './pages/VerificationSubscription';
+import Checkout from './pages/checkout';
+import BuyerOrders from './pages/BuyerOrders';
+import Payment from './pages/Payment';
 
 export default function App() {
   return (
@@ -50,12 +53,7 @@ export default function App() {
               <BuyerDashboard />
             </ProtectedRoute>
           } />
-          <Route path="/dashboard" element={<Navigate to="/marketplace" replace />} />
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          } />
+   
           <Route path="/cart" element={
             <ProtectedRoute allowedRoles={['buyer']}>
               <Cart />
@@ -64,6 +62,11 @@ export default function App() {
           <Route path="/support" element={
             <ProtectedRoute>
               <Support />
+            </ProtectedRoute>
+          } />
+           <Route path="/profile" element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           } />
 
@@ -125,6 +128,24 @@ export default function App() {
               <AdminUsers />
             </ProtectedRoute>
           } />
+          <Route path="/admin/approvals" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminProducts />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/checkout/:id" element={
+            <ProtectedRoute allowedRoles={['buyer']}>
+              <Checkout />
+            </ProtectedRoute>
+          } />
+          <Route path="/orders" element={
+            <ProtectedRoute allowedRoles={['buyer']}>
+              <BuyerOrders />
+            </ProtectedRoute>
+          } />
+          <Route path="/pay/:id" element={<Payment />} />
           
         
         </Routes>

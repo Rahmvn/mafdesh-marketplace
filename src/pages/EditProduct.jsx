@@ -6,6 +6,8 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { productService } from '../services/productService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
+import { supabase } from '../supabaseClient';
+import ProductForm from '../components/ProductForm';
 
 export default function EditProduct() {
   const navigate = useNavigate();
@@ -14,15 +16,16 @@ export default function EditProduct() {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    category: PRODUCT_CATEGORIES[0],
-    price: '',
-    stock: '',
-    description: '',
-    imageFile: null,
-    imagePreview: null
-  });
+const [formData, setFormData] = useState({
+  name: '',
+  category: '',
+  price: '',
+  stock: '',
+  overview: '',
+  features: '',
+  specs: '',
+  images: [null, null, null, null, null],
+});
 
   const [errors, setErrors] = useState({});
   const [isUploading, setIsUploading] = useState(false);
@@ -60,11 +63,28 @@ export default function EditProduct() {
         ...prev,
         name: data.name || '',
         category: data.category || PRODUCT_CATEGORIES[0],
-        price: data.price || '',
-        stock: data.stock_quantity || '',
-        description: data.description || '',
+        price: String(data.price) ?? '',
+        stock: String(data.stock_quantity) ?? '',
+        
         imagePreview: data.image_url || null
       }));
+      const parts = data.description?.split("Key Features:") || [];
+
+const overview = parts[0]?.trim() || "";
+const rest = parts[1]?.split("Specifications:") || [];
+const features = rest[0]?.trim() || "";
+const specs = rest[1]?.trim() || "";
+
+setFormData({
+  name: data.name || "",
+  category: data.category || "",
+  price: String(data.price) || "",
+  stock: String(data.stock_quantity) || "",
+  overview,
+  features,
+  specs,
+  images: data.images || [null, null, null, null, null]
+});
     } catch (error) {
       console.error('Error loading product:', error);
       alert('Failed to load product');
@@ -74,31 +94,20 @@ export default function EditProduct() {
     }
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+ const handleImageChange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be less than 5MB');
-      return;
-    }
+  if (file.size > 3 * 1024 * 1024) {
+    alert('Image must be less than 3MB');
+    return;
+  }
 
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
-
-    img.onload = () => {
-      if (img.width < 800) {
-        alert('Image must be at least 800px wide.');
-        return;
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        imageFile: file,
-        imagePreview: img.src
-      }));
-    };
-  };
+  setFormData(prev => ({
+    ...prev,
+    imageFile: file
+  }));
+};
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -108,44 +117,74 @@ export default function EditProduct() {
     }
   };
 
-  const validate = () => {
-    const newErrors = {};
+const validate = () => {
+  const newErrors = {};
 
-    if (!formData.name.trim()) newErrors.name = 'Product name is required';
-    if (!formData.price.trim()) newErrors.price = 'Price is required';
-    if (!formData.stock.trim()) newErrors.stock = 'Stock quantity is required';
-    if (!formData.description.trim()) newErrors.description = 'Description is required';
+  if (!formData.name.trim()) newErrors.name = "Required";
+  if (!formData.price) newErrors.price = "Required";
+  if (!formData.stock) newErrors.stock = "Required";
+  if (!formData.overview.trim()) newErrors.overview = "Required";
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+ const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (!validate()) return;
+  if (!validate()) return;
 
-    setIsUploading(true);
+  setIsUploading(true);
 
-    try {
-      await productService.updateProduct(id, {
-        name: formData.name,
-        category: formData.category,
-        price: parseFloat(formData.price),
-        stock_quantity: parseInt(formData.stock),
-        description: formData.description,
-        image: formData.imageFile
-      });
+  try {
+    let imageUrls = product.images || []; // keep old images by default
 
-      alert('Product updated successfully!');
-      navigate('/seller/products');
-    } catch (error) {
-      console.error('Error updating product:', error);
-      alert('Failed to update product: ' + error.message);
-    } finally {
-      setIsUploading(false);
+    if (formData.imageFile) {
+      const fileExt = formData.imageFile.name.split('.').pop();
+      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, formData.imageFile);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(fileName);
+
+      imageUrl = data.publicUrl;
     }
-  };
+
+    const fullDescription = `
+${formData.overview}
+
+Key Features:
+${formData.features}
+
+Specifications:
+${formData.specs}
+`;
+
+    await productService.updateProduct(id, {
+      name: formData.name.trim(),
+      category: formData.category,
+      price: parseFloat(formData.price),
+      stock_quantity: parseInt(formData.stock),
+      description: fullDescription.trim(),
+      images: imageUrls
+    });
+
+    alert('Product updated successfully!');
+    navigate('/seller/products');
+
+  } catch (error) {
+    console.error(error);
+    alert('Update failed');
+  } finally {
+    setIsUploading(false);
+  }
+};
 
   if (isLoading) {
     return (
@@ -174,134 +213,20 @@ export default function EditProduct() {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h1 className="text-3xl font-bold mb-6">Edit Product</h1>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Product Name</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter product name"
-              />
-              {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {PRODUCT_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Price and Stock */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Price</label>
-                <input
-                  type="number"
-                  name="price"
-                  value={formData.price}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.price ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="0.00"
-                  step="0.01"
-                />
-                {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
-                <input
-                  type="number"
-                  name="stock"
-                  value={formData.stock}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.stock ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="0"
-                />
-                {errors.stock && <p className="text-red-500 text-sm mt-1">{errors.stock}</p>}
-              </div>
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                rows="5"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.description ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter product description"
-              />
-              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
-            </div>
-
-            {/* Image */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
-                  id="image-input"
-                />
-                <label htmlFor="image-input" className="cursor-pointer flex flex-col items-center gap-2">
-                  <Upload size={32} className="text-gray-400" />
-                  <span className="text-gray-600">Click to upload new image</span>
-                  <span className="text-xs text-gray-500">(Optional - leave empty to keep current image)</span>
-                </label>
-              </div>
-
-              {formData.imagePreview && (
-                <img
-                  src={formData.imagePreview}
-                  alt="Preview"
-                  className="mt-4 max-w-full h-48 object-contain"
-                />
-              )}
-            </div>
-
-            {/* Submit Button */}
-            <div className="flex gap-4">
-              <button
-                type="submit"
-                disabled={isUploading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg transition"
-              >
-                {isUploading ? 'Updating...' : 'Update Product'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate('/seller/products')}
-                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+          <ProductForm
+  formData={formData}
+  setFormData={setFormData}
+  errors={errors}
+  handleChange={handleChange}
+  handleImageChange={(index, file) => {
+    const updated = [...formData.images];
+    updated[index] = file;
+    setFormData(prev => ({ ...prev, images: updated }));
+  }}
+  onSubmit={handleSubmit}
+  submitLabel="Update Product"
+  isLoading={isUploading}
+/>
         </div>
       </div>
 

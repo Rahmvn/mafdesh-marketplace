@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Shield, TrendingUp, Star, ArrowLeft, CreditCard, Lock, AlertCircle, Zap, Users, Award, Clock, Download } from 'lucide-react';

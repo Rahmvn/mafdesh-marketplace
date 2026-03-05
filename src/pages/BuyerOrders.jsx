@@ -1,0 +1,205 @@
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
+import { useNavigate } from 'react-router-dom';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+
+export default function BuyerOrders() {
+  const navigate = useNavigate();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  const loadOrders = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const buyerId = sessionData.session.user.id;
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        products (
+          name,
+          images
+        )
+      `)
+      .eq('buyer_id', buyerId)
+      .order('created_at', { ascending: false });
+
+    if (!error) setOrders(data);
+    setLoading(false);
+  };
+
+const handleConfirmDelivery = async (orderId) => {
+  const confirmAction = window.confirm(
+    "Confirm that you have received this item? This will release payment to the seller."
+  );
+
+  if (!confirmAction) return;
+
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'COMPLETED',
+      completed_at: new Date()
+    })
+    .eq('id', orderId);
+
+  if (!error) {
+    loadOrders();
+  } else {
+    console.error(error);
+    alert("Failed to confirm delivery");
+  }
+};
+  const handleSimulatePayment = async (orderId) => {
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'PAYMENT_RECEIVED',
+      paid_at: new Date()
+    })
+    .eq('id', orderId);
+
+  if (!error) {
+    loadOrders(); // reload list
+  } else {
+    console.error(error);
+    alert('Failed to simulate payment');
+  }
+};
+
+  const handleReportIssue = async (orderId) => {
+    await supabase
+      .from('orders')
+      .update({
+        status: 'DISPUTED'
+      })
+      .eq('id', orderId);
+
+    loadOrders();
+  };
+
+  const handleCancel = async (orderId) => {
+    await supabase
+      .from('orders')
+      .update({
+        status: 'CANCELLED'
+      })
+      .eq('id', orderId);
+
+    loadOrders();
+  };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
+        <h1 className="text-2xl font-bold text-blue-900 mb-6">My Orders</h1>
+
+        {orders.length === 0 ? (
+          <div className="bg-white p-8 rounded-xl border border-blue-100 text-center">
+            <p className="text-blue-700">You have no orders yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {orders.map(order => (
+              <div
+                key={order.id}
+                className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm"
+              >
+                <div className="flex flex-col md:flex-row gap-4 justify-between">
+
+                  {/* LEFT */}
+                  <div className="flex gap-4">
+                    <img
+                      src={order.products?.images?.[0]}
+                      alt={order.products?.name}
+                      className="w-20 h-20 object-contain border rounded-lg"
+                    />
+
+                    <div>
+                      <p className="font-semibold text-blue-900">
+                        {order.products?.name}
+                      </p>
+                      <p className="text-sm text-blue-600 mt-1">
+                        ₦{Number(order.total_amount).toLocaleString()}
+                      </p>
+                      <p className="text-xs mt-2 text-gray-500">
+                        Ordered on {new Date(order.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  {order.status === 'PENDING_PAYMENT' && (
+  <button
+    onClick={() => handleSimulatePayment(order.id)}
+    className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+  >
+    Simulate Payment
+  </button>
+)}
+
+                  {/* RIGHT */}
+                  <div className="flex flex-col items-start md:items-end gap-3">
+
+                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                      order.status === 'COMPLETED'
+                        ? 'bg-green-100 text-green-700'
+                        : order.status === 'SHIPPED'
+                        ? 'bg-blue-100 text-blue-700'
+                        : order.status === 'PAYMENT_RECEIVED'
+                        ? 'bg-orange-100 text-orange-700'
+                        : order.status === 'DISPUTED'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {order.status.replaceAll('_', ' ')}
+                    </span>
+
+                    {order.status === 'SHIPPED' && (
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleConfirmDelivery(order.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                        >
+                          Confirm Delivery
+                        </button>
+
+                        <button
+                          onClick={() => handleReportIssue(order.id)}
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
+                        >
+                          Report Issue
+                        </button>
+                      </div>
+                    )}
+
+                    {order.status === 'PENDING_PAYMENT' && (
+                      <button
+                        onClick={() => handleCancel(order.id)}
+                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        Cancel Order
+                      </button>
+                    )}
+
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

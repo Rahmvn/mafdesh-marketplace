@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
@@ -10,6 +11,7 @@ export default function SellerProducts() {
   const [currentUser, setCurrentUser] = useState(null);
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
+    console.log('Product images:', products.map(p => p.images));
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -50,12 +52,13 @@ export default function SellerProducts() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, searchTerm]);
+  }, [searchTerm, products]);
 
   const loadProducts = async () => {
     try {
       setIsLoading(true);
-      const sellerProducts = await productService.getSellerProducts();
+      const storedUser = JSON.parse(localStorage.getItem('mafdesh_user'))
+      const sellerProducts = await productService.getSellerProducts(storedUser.id);
       setProducts(sellerProducts);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -157,7 +160,11 @@ export default function SellerProducts() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <img
-                            src={product.image_url}
+                           src={
+  product.images?.[0] && !product.images[0].startsWith('blob:')
+    ? product.images[0]
+    : 'https://placehold.co/600x600'
+}
                             alt={product.name}
                             className="w-16 h-16 object-cover rounded border-2 border-orange-300"
                           />
@@ -170,8 +177,8 @@ export default function SellerProducts() {
                       <td className="px-4 py-3 text-sm text-blue-900">{product.category}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-orange-600">{product.price}</td>
                       <td className="px-4 py-3 text-sm text-blue-900">
-                        {product.stock}
-                        {product.stock < 10 && (
+                        {product.stock_quantity}
+                        {product.stock_quantity < 10 && (
                           <span className="ml-2 text-xs text-orange-600">Low</span>
                         )}
                       </td>

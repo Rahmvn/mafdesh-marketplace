@@ -32,10 +32,10 @@ export const cartService = {
   product_id: product.id,
   quantity,
   product_name: product.name,
-  product_image: product.image_url,
+  product_image: product.images?.[0] || null,
   price: product.price,
   seller_name: product.seller_name || 'Unknown Seller',
-  stock_available: product.stock || 0,
+  stock_available: product.stock_quantity || 0,
   subtotal: quantity * product.price
 });
     }

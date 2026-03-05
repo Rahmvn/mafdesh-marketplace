@@ -47,87 +47,74 @@ export default function SignUp() {
   };
 
   const checkUsernameUnique = async (username) => {
-    if (!username || username.trim().length === 0) {
-      setUsernameError("");
-      return true;
-    }
+  if (!username) return true;
 
-    const validationError = validateUsername(username);
-    if (validationError) {
-      setUsernameError(validationError);
-      return false;
-    }
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('username', username)
+    .maybeSingle();
 
-    setIsCheckingUsername(true);
-    try {
-      const result = await authAPI.checkUsername(username);
-      if (!result.available) {
-        setUsernameError("Username already taken");
-        return false;
-      }
-      setUsernameError("");
-      return true;
-    } catch (error) {
-      console.error('Username check error:', error);
-      setUsernameError("");
-      return true;
-    } finally {
-      setIsCheckingUsername(false);
-    }
-  };
+  if (data) {
+    setUsernameError("Username already taken");
+    return false;
+  }
 
-  const handleSignUp = async (formData) => {
-    const { full_name, email, username, phone_number, password, confirmPassword, business_name } = formData;
+  setUsernameError("");
+  return true;
+};
+ const handleSignUp = async (formData) => {
+  try {
+    const { email, password } = formData;
 
-    if (!agreedToTerms) {
-      alert('You must agree to the Terms and Conditions to create an account.');
-      return false;
-    }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
 
-    if (password !== confirmPassword) {
-      alert('Passwords do not match. Please try again.');
-      return false;
-    }
+    if (error) throw error;
+    if (!data.user) {
+  alert("Signup failed");
+  return false;
+}
 
-    const isUsernameValid = await checkUsernameUnique(username);
-    if (!isUsernameValid) {
-      alert('Please fix the username error before continuing.');
-      return false;
-    }
+const userId = data.user.id;
 
-    try {
-      const userData = {
-        full_name,
-        email,
-        username,
-        phone_number,
-        password,
-        role: userType,
-        location: formData.location,
-        business_name: userType === "seller" ? business_name : null,
-      };
+// INSERT PROFILE
+// INSERT PROFILE (ignore if already exists)
+await supabase
+  .from('profiles')
+  .upsert({
+    id: userId,
+    role: userType,
+    full_name: formData.full_name,
+    username: formData.username,
+    location: formData.location
+  }, { onConflict: 'id' });
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+// INSERT USERS TABLE (ignore if already exists)
+await supabase
+  .from('users')
+  .upsert({
+    id: userId,
+    email: formData.email,
+    role: userType,
+    phone_number: formData.phone_number,
+    business_name: userType === 'seller' ? formData.business_name : null
+  }, { onConflict: 'id' });
 
-      if (error) throw error;
 
-      console.log("Supabase signup success:", data);
-      await supabase.from('users').insert({
-        id: data.user.id,
-        email,
-        role: userType,
-      });
 
-      return true;
-    } catch (error) {
-      console.error('Signup error:', error);
-      alert(error.message || 'An error occurred during signup. Please try again.');
-      return false;
-    }
-  };
+   
+
+    return true;
+
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+    return false;
+  }
+};
 
   return (
     <div

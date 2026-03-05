@@ -90,6 +90,7 @@ export default function Cart() {
     
     alert('Checkout coming soon! You will be able to:\n\n• Choose pickup or delivery\n• Pay securely with Paystack\n• Track your order');
   };
+  
 
   if (isLoading) {
     return (

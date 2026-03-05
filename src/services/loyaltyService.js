@@ -5,31 +5,7 @@ const getAuthToken = () => {
   return user.access_token || null;
 };
 
-const apiRequest = async (endpoint, options = {}) => {
-  const token = getAuthToken();
-  
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Request failed');
-  }
-
-  return data;
-};
 
 export const loyaltyService = {
   async getLoyaltyAccount() {

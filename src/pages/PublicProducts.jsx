@@ -163,7 +163,7 @@ export default function PublicProducts() {
                 >
                   <div className="relative">
                     <img
-                      src={product.image_url || '/placeholder.jpg'}
+                      src={product.images?.[0] || '/placeholder.jpg'}
                       alt={product.name}
                       className="w-full h-40 object-cover"
                     />

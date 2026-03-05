@@ -1,9 +1,10 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DollarSign, Calendar, FileText, Download, TrendingUp, TrendingDown, Wallet, X, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { paymentsAPI } from '../services/api';
+import {supabase} from '../supabaseClient';
 
 export default function SellerPayments() {
   const navigate = useNavigate();
@@ -55,29 +56,27 @@ export default function SellerPayments() {
   }, [currentUser, statusFilter, typeFilter, fromDate, toDate]);
 
   const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const filters = {};
-      if (statusFilter !== 'all') filters.status = statusFilter;
-      if (typeFilter !== 'all') filters.type = typeFilter;
-      if (fromDate) filters.from_date = fromDate;
-      if (toDate) filters.to_date = toDate;
+  try {
+    setIsLoading(true);
 
-      const [transactionsData, overviewData] = await Promise.all([
-        paymentsAPI.getSellerHistory(filters),
-        paymentsAPI.getFinancialOverview()
-      ]);
+    const storedUser = localStorage.getItem('mafdesh_user');
+    const user = JSON.parse(storedUser);
 
-      setTransactions(transactionsData.transactions || []);
-      setSummary(transactionsData.summary || {});
-      setOverview(overviewData.overview || null);
-    } catch (error) {
-      console.error('Error loading transaction data:', error);
-      alert('Failed to load transaction history');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const { data: payments, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('seller_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    setTransactions(payments || []);
+  } catch (err) {
+    console.error('Error loading transaction data:', err);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
 
   const getStatusBadgeClass = (status) => {

@@ -8,20 +8,24 @@ import VerificationBadge from '../components/VerificationBadge';
 import { cartService } from '../services/cartService';
 import { supabase } from '../supabaseClient';
 
+
 export default function ProductDetail() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("overview");
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);  
 
   const fromSeller = location.state?.fromSeller || false;
 
   useEffect(() => {
     loadProduct();
   }, [id]);
+  
 
   const loadProduct = async () => {
     try {
@@ -40,6 +44,18 @@ export default function ProductDetail() {
       setLoading(false);
     }
   };
+let overview = "";
+let features = "";
+let specs = "";
+
+if (product?.description) {
+  const parts = product.description.split("Key Features:");
+  overview = parts[0] || "";
+
+  const rest = parts[1]?.split("Specifications:") || [];
+  features = rest[0] || "";
+  specs = rest[1] || "";
+}
 
   const requireLogin = async () => {
     const { data } = await supabase.auth.getSession();
@@ -65,22 +81,18 @@ export default function ProductDetail() {
     }
   };
 
-  const handleBuyNow = async () => {
-    if (!(await requireLogin())) return;
+ const handleBuyNow = async () => {
+  if (!(await requireLogin())) return;
 
-    try {
-      setAdding(true);
-      cartService.addToCart(product, 1);
-      navigate('/cart');
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  navigate(`/checkout/${product.id}`, {
+    state: { product, quantity: 1 }
+  });
+};
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        Loading...
+        
       </div>
     );
   }
@@ -99,56 +111,164 @@ export default function ProductDetail() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
 
+  <button
+    onClick={() => navigate(fromSeller ? '/seller/products' : '/marketplace')}
+    className="mb-6 flex items-center gap-2 text-blue-700 hover:text-blue-900 font-medium"
+  >
+    <ArrowLeft size={18} /> Back
+  </button>
+
+  {/* Top Section */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 ">
+
+    {/* IMAGE GALLERY */}
+    <div>
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100">
+        <img
+          src={product.images?.[activeImage]}
+          alt={product.name}
+          className="max-h-[90%] max-w-[90%] object-contain"
+        />
+      </div>
+
+      {product.images?.length > 1 && (
+        <div className="flex gap-3 mt-4 flex-wrap">
+          {product.images.map((img, index) => (
+            <img
+              key={index}
+              src={img}
+              onClick={() => setActiveImage(index)}
+              className={`w-16 h-16 object-contain cursor-pointer border rounded-md p-1 transition ${
+                activeImage === index
+                  ? "border-orange-500"
+                  : "border-blue-100 hover:border-orange-300"
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+
+    {/* PRODUCT INFO */}<div className="bg-white p-6 rounded-xl shadow-sm border border-blue-100">
+
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold text-blue-900">
+          {product.name}
+        </h1>
+
+        <p className="text-3xl font-bold text-orange-600 mt-3">
+          ₦{Number(product.price).toLocaleString()}
+        </p>
+
+        <p className="mt-2 text-sm font-medium">
+          {product.stock_quantity > 0 ? (
+            <span className="text-green-600">
+              {product.stock_quantity} in stock
+            </span>
+          ) : (
+            <span className="text-red-600">
+              Out of stock
+            </span>
+          )}
+        </p>
+          <div className="mt-6 p-4 rounded-lg border border-blue-100 bg-blue-50">
+  <p className="text-sm font-semibold text-blue-900">
+    Delivery Information
+  </p>
+  <p className="text-sm text-gray-700 mt-1">
+    Delivery fee calculated at checkout based on your location.
+  </p>
+  <p className="text-sm text-gray-700 mt-1">
+    Estimated delivery: 2–5 business days
+  </p>
+</div>
+        {/* Trust Indicators */}
+        <div className="mt-6 space-y-2 text-sm text-blue-800">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-blue-600" />
+            <span>Verified seller protection</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Truck size={16} className="text-blue-600" />
+            <span>Fast and reliable delivery</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CheckCircle size={16} className="text-blue-600" />
+            <span>Quality assured product</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ACTION BUTTONS */}
+      <div className="mt-8 space-y-3">
         <button
-          onClick={() => navigate(fromSeller ? '/seller/products' : '/')}
-          className="mb-6 flex items-center gap-2 text-blue-700"
+          onClick={handleBuyNow}
+          disabled={adding || product.stock_quantity <= 0}
+          className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
         >
-          <ArrowLeft size={18} /> Back
+          Buy Now
         </button>
 
-        <div className="grid md:grid-cols-2 gap-8 bg-white p-6 rounded-xl">
+        <button
+          onClick={handleAddToCart}
+          disabled={adding || product.stock_quantity <= 0}
+          className="w-full border border-blue-700 text-blue-700 hover:bg-blue-50 py-3 rounded-lg font-semibold transition disabled:opacity-50"
+        >
+          Add to Cart
+        </button>
+      </div>
 
-          <img
-            src={product.image_url}
-            alt={product.name}
-            className="w-full max-h-[450px] object-contain rounded"
-          />
+    </div>
+  </div>
 
-          <div>
-            <h1 className="text-2xl font-bold mb-2">{product.name}</h1>
+  {/* DESCRIPTION SECTION */}
+  <div className="mt-12 bg-white rounded-xl border border-blue-100 shadow-sm">
 
-            <p className="text-3xl text-orange-600 font-bold mb-4">
-              ₦{Number(product.price).toLocaleString()}
-            </p>
+  {/* Tabs */}
+  <div className="flex border-b border-blue-100">
+    {["overview", "features", "specs"].map(tab => (
+      <button
+        key={tab}
+        onClick={() => setActiveTab(tab)}
+        className={`flex-1 py-4 font-semibold text-sm transition ${
+          activeTab === tab
+            ? "text-orange-600 border-b-2 border-orange-600"
+            : "text-blue-700 hover:text-blue-900"
+        }`}
+      >
+        {tab === "overview" && "Overview"}
+        {tab === "features" && "Key Features"}
+        {tab === "specs" && "Specifications"}
+      </button>
+    ))}
+  </div>
 
-            <p className="mb-6">{product.description}</p>
+  {/* Content */}
+  <div className="p-6 text-gray-700 leading-relaxed space-y-3 break-words overflow-hidden">
+    {activeTab === "overview" && (
+      <p>{overview}</p>
+    )}
 
-            <div className="space-y-3">
+    {activeTab === "features" && (
+      <ul className="list-disc pl-5 space-y-2">
+        {features.split("\n").map((line, index) => (
+          <li key={index}>{line}</li>
+        ))}
+      </ul>
+    )}
 
-              <button
-                onClick={handleBuyNow}
-                disabled={adding}
-                className="w-full bg-orange-500 text-white py-3 rounded"
-              >
-                Buy Now
-              </button>
+    {activeTab === "specs" && (
+      <div className="space-y-2">
+        {specs.split("\n").map((line, index) => (
+          <p key={index}>{line}</p>
+        ))}
+      </div>
+    )}
+  </div>
 
-              <button
-                onClick={handleAddToCart}
-                disabled={adding}
-                className="w-full bg-blue-600 text-white py-3 rounded flex items-center justify-center gap-2"
-              >
-                <ShoppingCart size={18} />
-                Add to Cart
-              </button>
+</div>
 
-            </div>
-
-          </div>
-
-        </div>
-
-      </main>
+</main>
 
       <Footer />
     </div>

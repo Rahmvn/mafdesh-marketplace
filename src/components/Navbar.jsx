@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet } from "lucide-react";
 import { cartService } from '../services/cartService';
 
+
 export default function Navbar({ onLogout }) {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState("");
@@ -42,14 +43,15 @@ export default function Navbar({ onLogout }) {
   const getHomePath = () => {
     if (userRole === 'seller') return '/seller/dashboard';
     if (userRole === 'admin') return '/admin/dashboard';
-    return '/dashboard';
+    return '/marketplace';
   };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (search.trim()) {
-      navigate(`/dashboard?search=${search}`);
-    }
+
+    if (!search.trim()) return;
+
+    navigate(`/marketplace?search=${encodeURIComponent(search)}`);
   };
 
   const homePath = getHomePath();
@@ -70,35 +72,46 @@ export default function Navbar({ onLogout }) {
           </Link>
 
           {userRole === 'buyer' && (
-            <form
-              onSubmit={handleSearch}
-              className="hidden md:flex items-center flex-1 max-w-2xl mx-6"
-            >
+           <div className="hidden md:flex items-center flex-1 max-w-2xl mx-6">
               <div className="relative w-full">
                 <input
                   type="text"
                   placeholder="Search for products, brands, and categories..."
                   className="w-full px-5 py-3 pl-12 pr-4 rounded-lg border-2 border-orange-300 focus:outline-none focus:border-orange-500 transition-all bg-white text-gray-900 placeholder-gray-500 text-sm shadow-sm"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSearch(value);
+                    navigate(`/marketplace?search=${encodeURIComponent(value)}`);
+                  }}
                 />
                 <Search
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500"
                   size={20}
                 />
                 <button
-                  type="submit"
+                  type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
                 >
                   Search
                 </button>
               </div>
-            </form>
+              
+            </div>
           )}
+          
 
           <div className="hidden md:flex items-center gap-1">
             {userRole === 'buyer' && (
+              
               <>
+              <Link
+  to="/orders"
+  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
+>
+  <Package size={22} className="group-hover:scale-110 transition-transform" />
+  <span className="text-sm">Orders</span>
+</Link>
                 <Link
                   to="/cart"
                   className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
@@ -117,7 +130,7 @@ export default function Navbar({ onLogout }) {
             {userRole === 'seller' && (
               <>
                 <Link
-                  to="/seller/dashboard"
+                  to="/seller/products"
                   className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
                 >
                   <Package size={18} />
@@ -209,16 +222,27 @@ export default function Navbar({ onLogout }) {
                     <User size={18} className="text-blue-600" />
                     <span>My Profile</span>
                   </Link>
-                  {userRole === 'buyer' && (
-                    <Link
-                      to="/cart"
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-                      onClick={() => setShowProfileMenu(false)}
-                    >
-                      <ShoppingCart size={18} className="text-blue-600" />
-                      <span>My Cart</span>
-                    </Link>
-                  )}
+
+{userRole === 'buyer' && (
+  <>
+    <Link
+      to="/orders"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
+      onClick={() => setShowProfileMenu(false)}
+    >
+      <Package size={18} className="text-blue-600" />
+      <span>My Orders</span>
+    </Link>
+    <Link
+      to="/cart"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
+      onClick={() => setShowProfileMenu(false)}
+    >
+      <ShoppingCart size={18} className="text-blue-600" />
+      <span>My Cart</span>
+    </Link>
+  </>
+)}
                   <div className="border-t border-blue-100 my-2"></div>
                   {onLogout && (
                     <button
@@ -236,6 +260,7 @@ export default function Navbar({ onLogout }) {
               )}
             </div>
           </div>
+          
 
           <button
             className="md:hidden text-blue-700 hover:text-blue-900 transition-all p-2 hover:bg-blue-50 rounded-lg"
@@ -246,41 +271,50 @@ export default function Navbar({ onLogout }) {
         </div>
 
         {mobileMenu && (
+          
           <div className="md:hidden mt-4 pb-4 border-t-2 border-blue-100 pt-4">
             {userRole === 'buyer' && (
-              <form onSubmit={handleSearch} className="mb-4">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search products..."
-                    className="w-full px-5 py-3 pl-12 rounded-xl border-2 border-orange-300 focus:outline-none focus:border-orange-500 transition-all bg-white text-gray-900 placeholder-gray-500"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                  <Search
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500"
-                    size={20}
-                  />
-                </div>
-              </form>
-            )}
-            <div className="flex flex-col gap-2">
-              {userRole === 'buyer' && (
-                <Link
-                  to="/cart"
-                  className="flex items-center justify-between text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
-                  onClick={() => setMobileMenu(false)}
-                >
-                  <div className="flex items-center gap-3">
-                    <ShoppingCart size={20} />
-                    <span>Cart</span>
-                  </div>
-                  {cartCount > 0 && (
-                    <span className="bg-orange-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                      {cartCount}
-                    </span>
-                  )}
-                </Link>
+  <div className="mb-4">
+    <input
+      type="text"
+      placeholder="Search products..."
+      className="w-full px-4 py-3 rounded-lg border border-orange-300 focus:outline-none focus:border-orange-500 text-sm"
+      value={search}
+      onChange={(e) => {
+        const value = e.target.value;
+        setSearch(value);
+        navigate(`/marketplace?search=${encodeURIComponent(value)}`);
+      }}
+    />
+  </div>
+)}
+<div className="flex flex-col gap-2">
+  {userRole === 'buyer' && (
+    <>
+      <Link
+        to="/orders"
+        className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+        onClick={() => setMobileMenu(false)}
+      >
+        <Package size={20} />
+        <span>Orders</span>
+      </Link>
+                  <Link
+                    to="/cart"
+                    className="flex items-center justify-between text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart size={20} />
+                      <span>Cart</span>
+                    </div>
+                    {cartCount > 0 && (
+                      <span className="bg-orange-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                        {cartCount}
+                      </span>
+                    )}
+                  </Link>
+                </>
               )}
 
               {userRole === 'seller' && (
