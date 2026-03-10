@@ -31,6 +31,8 @@ import BuyerOrders from './pages/BuyerOrders';
 import Payment from './pages/Payment';
 import SellerOrderDetails from './pages/SellerOrderDetails';
 import BuyerOrderDetails from './pages/BuyerOrderDetails';
+import AdminOrders from './pages/AdminOrders.jsx';
+import AdminOrderDetails from "./pages/AdminOrderDetails";
 
 export default function App() {
   return (
@@ -163,6 +165,15 @@ export default function App() {
               <BuyerOrderDetails />
             </ProtectedRoute>
           } />
+          <Route path="/admin/orders" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminOrders />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/order/:id" element={
+            <ProtectedRoute allowedRoles={['admin']}><AdminOrderDetails />
+            </ProtectedRoute>
+            } />
           
         
         </Routes>

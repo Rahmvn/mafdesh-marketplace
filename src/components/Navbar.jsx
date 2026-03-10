@@ -205,6 +205,13 @@ const loadCartCount = async () => {
                   <span>Dashboard</span>
                 </Link>
                 <Link
+  to="/admin/orders"
+  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+>
+  <ShoppingCart size={18} />
+  <span>Orders</span>
+</Link>
+                <Link
                   to="/admin/products"
                   className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
                 >
@@ -399,6 +406,14 @@ const loadCartCount = async () => {
                     <Settings size={20} />
                     <span>Dashboard</span>
                   </Link>
+                  <Link
+  to="/admin/orders"
+  className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+  onClick={() => setMobileMenu(false)}
+>
+  <ShoppingCart size={20} />
+  <span>Orders</span>
+</Link>
                   <Link
                     to="/admin/products"
                     className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"

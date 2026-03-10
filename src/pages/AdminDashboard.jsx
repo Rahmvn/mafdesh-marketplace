@@ -5,6 +5,7 @@ import Footer from "../components/Footer";
 import { useNavigate } from "react-router-dom";
 import { Package, Users, ShoppingCart, DollarSign, AlertCircle, Shield } from "lucide-react";
 
+
 export default function AdminDashboard() {
 
 const navigate = useNavigate();
@@ -28,6 +29,11 @@ useEffect(()=>{
 checkAuth();
 loadDashboard();
 },[]);
+/* orders */
+
+
+
+
 
 const checkAuth = async ()=>{
 
@@ -47,28 +53,53 @@ navigate("/login");
 };
 
 const loadDashboard = async ()=>{
+  /* orders */
+
+const { data: orders, error } = await supabase
+.from("orders")
+.select("id,status,total_amount,platform_fee,created_at");
+
+console.log("ORDERS:", orders);
+
+if (error) {
+  console.error("Orders fetch error:", error);
+}
+
+const totalOrders = orders?.length || 0;
 
 try{
 
 /* orders */
 
-const { data: orders, error: ordersError } = await supabase
+const { data: recent } = await supabase
 .from("orders")
-.select(`
-  id,
-  status,
-  total_amount,
-  created_at,
-  products:products!orders_product_id_fkey (
-    name
-  )
-`)
+.select("id,status,total_amount,product_id,created_at")
 .order("created_at", { ascending: false })
 .limit(5);
 
-if (ordersError) {
-  console.error("Recent orders error:", ordersError);
-}
+const productIds = recent.map(o => o.product_id);
+
+const { data: products } = await supabase
+.from("products")
+.select("id,name")
+.in("id", productIds);
+
+const productMap = {};
+products.forEach(p => {
+  productMap[p.id] = p.name;
+});
+
+const mergedOrders = recent.map(o => ({
+  ...o,
+  product_name: productMap[o.product_id]
+}));
+
+setRecentOrders(mergedOrders);
+
+
+
+
+
 const totalOrders = orders?.length || 0;
 
 /* sales */
@@ -131,17 +162,7 @@ const {count:disputeCount} = await supabase
 
 /* recent orders */
 
-const {data:recent} = await supabase
-.from("orders")
-.select(`
-id,
-status,
-total_amount,
-created_at,
-products(name)
-`)
-.order("created_at",{ascending:false})
-.limit(5);
+
 
 setStats({
 totalOrders,
@@ -155,7 +176,7 @@ pendingPayouts,
 disputes:disputeCount || 0
 });
 
-setRecentOrders(recent || []);
+
 
 }catch(err){
 console.error(err);
@@ -264,7 +285,7 @@ recentOrders.map(o=>(
 <tr key={o.id} className="border-t">
 
 <td className="p-3">
-{o.products?.name || "Product"}
+{o.product_name || o.product_id || "Product"}
 </td>
 
 <td className="p-3">
