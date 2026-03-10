@@ -26,9 +26,11 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminProducts from './pages/AdminProducts';
 import AdminUsers from './pages/AdminUsers';
 import VerificationSubscription from './pages/VerificationSubscription';
-import Checkout from './pages/checkout';
+import Checkout from './pages/Checkout';
 import BuyerOrders from './pages/BuyerOrders';
 import Payment from './pages/Payment';
+import SellerOrderDetails from './pages/SellerOrderDetails';
+import BuyerOrderDetails from './pages/BuyerOrderDetails';
 
 export default function App() {
   return (
@@ -69,6 +71,7 @@ export default function App() {
               <Profile />
             </ProtectedRoute>
           } />
+        
 
           {/* Seller Routes */}
           <Route path="/seller/dashboard" element={
@@ -145,7 +148,21 @@ export default function App() {
               <BuyerOrders />
             </ProtectedRoute>
           } />
-          <Route path="/pay/:id" element={<Payment />} />
+          <Route path="/pay/:id" element={
+            <ProtectedRoute allowedRoles={['buyer']}>
+              <Payment />
+            </ProtectedRoute>
+          } />
+          <Route path="/seller/orders/:id" element={
+            <ProtectedRoute allowedRoles={['seller']}>
+              <SellerOrderDetails />
+            </ProtectedRoute>
+          } />
+          <Route path="/buyer/orders/:id" element={
+            <ProtectedRoute allowedRoles={['buyer']}>
+              <BuyerOrderDetails />
+            </ProtectedRoute>
+          } />
           
         
         </Routes>

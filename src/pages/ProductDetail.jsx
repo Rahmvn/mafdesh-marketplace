@@ -5,7 +5,7 @@ import { ArrowLeft, Store, Shield, Truck, Package, ShoppingCart, CheckCircle } f
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import VerificationBadge from '../components/VerificationBadge';
-import { cartService } from '../services/cartService';
+
 import { supabase } from '../supabaseClient';
 
 
@@ -65,21 +65,71 @@ if (product?.description) {
     }
     return true;
   };
+const handleAddToCart = async () => {
+  window.dispatchEvent(new Event("cartUpdated"));
+  if (!(await requireLogin())) return;
 
-  const handleAddToCart = async () => {
-    if (!(await requireLogin())) return;
+  try {
+    setAdding(true);
 
-    try {
-      setAdding(true);
-      cartService.addToCart(product, 1);
-      alert('Added to cart');
-    } catch (e) {
-      alert('Failed to add');
-      console.error(e);
-    } finally {
-      setAdding(false);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session.user.id;
+
+    // find cart
+    let { data: cart } = await supabase
+      .from("carts")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    // create cart if none
+    if (!cart) {
+      const { data: newCart } = await supabase
+        .from("carts")
+        .insert({ user_id: userId })
+        .select()
+        .single();
+
+      cart = newCart;
     }
-  };
+
+    // check if item already in cart
+    const { data: existingItem } = await supabase
+      .from("cart_items")
+      .select("*")
+      .eq("cart_id", cart.id)
+      .eq("product_id", product.id)
+      .maybeSingle();
+
+    if (existingItem) {
+      // increase quantity
+      await supabase
+        .from("cart_items")
+        .update({
+          quantity: existingItem.quantity + 1
+        })
+        .eq("id", existingItem.id);
+
+    } else {
+      // insert new cart item
+      await supabase
+        .from("cart_items")
+        .insert({
+          cart_id: cart.id,
+          product_id: product.id,
+          quantity: 1
+        });
+    }
+
+    alert("Added to cart");
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to add to cart");
+  } finally {
+    setAdding(false);
+  }
+};
 
  const handleBuyNow = async () => {
   if (!(await requireLogin())) return;

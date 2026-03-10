@@ -48,37 +48,61 @@ const handleConfirm = async () => {
   const buyerId = sessionData.session.user.id;
 
   const deliveryFee = calculateDelivery();
-  const platformFee = product.price * 0.05;
-  const totalAmount = product.price + deliveryFee + platformFee;
+  const platformFee = Math.round(product.price * 0.05);
+  const totalAmount = product.price + deliveryFee;
+
+  /* STEP 1: REDUCE STOCK SAFELY */
+
+  const { data: updatedProduct, error: stockError } = await supabase
+    .from("products")
+    .update({
+      stock_quantity: product.stock_quantity - 1
+    })
+    .eq("id", product.id)
+    .gt("stock_quantity", 0) // prevents overselling
+    .select()
+    .single();
+
+  if (stockError || !updatedProduct) {
+    alert("Sorry, this item is out of stock.");
+    setIsSubmitting(false);
+    return;
+  }
+
+  /* STEP 2: CREATE ORDER */
 
   const { data: order, error } = await supabase
-  .from("orders")
-  .insert({
-    buyer_id: buyerId,
-    seller_id: product.seller_id,
-    product_id: product.id,
-    quantity: 1,
+    .from("orders")
+    .insert({
+      buyer_id: buyerId,
+      seller_id: product.seller_id,
+      product_id: product.id,
+      quantity: 1,
 
-    product_price: product.price,
-    delivery_fee: deliveryFee,
-    platform_fee: platformFee,
-    total_amount: totalAmount,
+      product_price: product.price,
+      delivery_fee: deliveryFee,
+      platform_fee: platformFee,
+      total_amount: totalAmount,
 
-    delivery_state: deliveryType === "delivery" ? deliveryState : null,
-    delivery_address: deliveryType === "delivery" ? deliveryAddress : null,
-    delivery_type: deliveryType,
+      delivery_state: deliveryType === "delivery" ? deliveryState : null,
+      delivery_address: deliveryType === "delivery" ? deliveryAddress : null,
+      delivery_type: deliveryType,
 
-    status: "PENDING_PAYMENT"
-  })
-  .select()
-  .single();
+      status: "PENDING_PAYMENT"
+    })
+    .select()
+    .single();
 
   if (error) {
     console.error(error);
     alert("Failed to create order");
-  } else {
-    navigate(`/pay/${order.id}`); 
+    setIsSubmitting(false);
+    return;
   }
+
+  /* STEP 3: GO TO PAYMENT */
+
+  navigate(`/pay/${order.id}`);
 
   setIsSubmitting(false);
 };

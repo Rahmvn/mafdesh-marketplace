@@ -82,17 +82,20 @@ export default function SellerAnalytics() {
     a.click();
   };
 
-  const handleLogout = async () => {
+const handleLogout = async () => {
+
     if (window.confirm('Are you sure you want to logout?')) {
-      try {
-        await authAPI.logout();
-      } catch (error) {
-        console.error('Logout error:', error);
-      }
-      localStorage.removeItem('mafdesh_user');
-      navigate('/login');
-    }
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
   };
+
 
   if (isLoading) {
     return (

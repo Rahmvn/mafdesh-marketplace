@@ -1,406 +1,379 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Package, AlertCircle, Plus, Edit, Shield } from 'lucide-react';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
-import VerificationBadge from '../components/VerificationBadge';
-import { productService } from '../services/productService';
-import { supabase } from '../supabaseClient';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
+import { supabase } from "../supabaseClient";
+import { productService } from "../services/productService";
 
 export default function SellerDashboard() {
 
-  console.log('SellerDashboard mounted');
-  const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(null);
-  const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    draftProducts: 0,
-    pendingProducts: 0,
-    approvedProducts: 0,
-    rejectedProducts: 0
-  });
-  const [showBankModal, setShowBankModal] = useState(false);
-  const [bankData, setBankData] = useState({
-    bank_name: '',
-    account_number: '',
-    account_name: ''
-  });
+const navigate = useNavigate();
 
+const [currentUser, setCurrentUser] = useState(null);
+const [products, setProducts] = useState([]);
+const [orders, setOrders] = useState([]);
 
-  const nigerianBanks = [
-    "Access Bank", "Citibank", "Ecobank", "Fidelity Bank", "First Bank", "First City Monument Bank (FCMB)",
-    "Globus Bank", "Guaranty Trust Bank (GTBank)", "Heritage Bank", "Keystone Bank", "Lotus Bank",
-    "Moniepoint MFB", "OPay", "PalmPay", "Parallex Bank", "Polaris Bank", "Providus Bank", "Stanbic IBTC Bank",
-    "Standard Chartered Bank", "Sterling Bank", "SunTrust Bank", "Titan Trust Bank", "Union Bank",
-    "United Bank for Africa (UBA)", "Unity Bank", "Wema Bank", "Zenith Bank", "Kuda Bank", "VFD Microfinance Bank"
-  ].sort();
+const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-  const init = async () => {
-    const { data } = await supabase.auth.getSession();
-
-    if (!data.session) {
-      navigate('/login');
-      return;
-    }
-
-    const user = data.session.user;
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    const { data: userData } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile || !userData || userData.role !== 'seller') {
-      navigate('/login');
-      return;
-    }
-
-    setCurrentUser({
-      ...user,
-      ...profile,
-      ...userData
-    });
-  };
-
-  init();
-}, []);
-
-
-
-useEffect(() => {
-  if (!currentUser) return;
-
-  loadDashboardData();
-
-  if (
-    !currentUser.bank_name ||
-    !currentUser.account_number
-  ) {
-    setShowBankModal(true);
-  } else {
-    setShowBankModal(false);
-  }
-}, [currentUser]);
-
-  const handleBankSubmit = async (e) => {
-    e.preventDefault();
-
-    const { error } = await supabase
-      .from('users')
-      .update({
-        bank_name: bankData.bank_name,
-        account_number: bankData.account_number,
-        account_name: bankData.account_name
-      })
-      .eq('id', currentUser.id);
-
-    if (error) {
-      console.error(error);
-      alert('Failed saving bank');
-      return;
-    }
-
-    // 🔥 IMPORTANT: Refetch fresh profile
-    const { data: updatedUser } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', currentUser.id)
-      .single();
-
-    setCurrentUser(prev => ({
-      ...prev,
-      ...updatedUser
-    }));
-
-    setShowBankModal(false);
-  };
-
-const handleLogout = async () => {
-   if (window.confirm('Are you sure you want to logout?')) {
-  await supabase.auth.signOut();   // kill Supabase session
-  localStorage.clear();            // clear your local data
-  window.location.href = '/login'; // hard redirect (no React tricks)
-};
-};
-
-  const loadDashboardData = async () => {
-    try {
-      setIsLoading(true);
-      const sellerProducts = await productService.getSellerProducts(currentUser.id);
-      setProducts(sellerProducts);
-
-     setStats({
-  totalProducts: sellerProducts.length,
-  approvedProducts: sellerProducts.filter(p => p.is_approved === true).length,
-  rejectedProducts: sellerProducts.filter(p => p.is_approved === false).length,
-  pendingProducts: 0,
-  draftProducts: 0
+const [stats, setStats] = useState({
+pending: 0,
+shipped: 0,
+completed: 0,
+products: 0
 });
 
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+const handleLogout = async () => {
+
+    if (window.confirm('Are you sure you want to logout?')) {
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
   };
-const getStatusLabel = (product) => {
-  return product.is_approved ? 'Approved' : 'Rejected';
+
+useEffect(() => {
+init();
+}, []);
+
+const init = async () => {
+
+const { data } = await supabase.auth.getSession();
+
+if (!data.session) {
+navigate("/login");
+return;
+}
+
+const user = data.session.user;
+
+const { data: userData } = await supabase
+.from("users")
+.select("*")
+.eq("id", user.id)
+.single();
+
+if (!userData || userData.role !== "seller") {
+navigate("/login");
+return;
+}
+
+setCurrentUser(userData);
+
+loadDashboardData(userData.id);
+
 };
-const getStatusBadge = (product) => {
-  return product.is_approved
-    ? 'bg-blue-100 text-blue-800 border-blue-300'
-    : 'bg-red-100 text-red-800 border-red-300';
+
+const loadDashboardData = async (sellerId) => {
+
+try {
+
+setLoading(true);
+
+ 
+
+/* PRODUCTS */
+
+const sellerProducts =
+await productService.getSellerProducts(sellerId);
+
+setProducts(sellerProducts);
+
+/* ORDERS */
+
+const { data: sellerOrders } = await supabase
+.from("orders")
+.select(`
+id,
+status,
+created_at,
+products:products!orders_product_id_fkey (
+name,
+images
+)
+`)
+.eq("seller_id", sellerId)
+.order("created_at", { ascending: false });
+
+setOrders(sellerOrders || []);
+
+/* STATS */
+
+setStats({
+pending: sellerOrders?.filter(o => o.status === "PAID_ESCROW").length || 0,
+shipped: sellerOrders?.filter(o => o.status === "SHIPPED").length || 0,
+completed: sellerOrders?.filter(o => o.status === "COMPLETED").length || 0,
+products: sellerProducts.length
+});
+
+} catch (error) {
+
+console.error("Dashboard error:", error);
+
+} finally {
+
+setLoading(false);
+
+}
+
 };
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
-        <div className="text-blue-600 font-semibold text-lg">Loading dashboard...</div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-blue-50">
-      <Navbar onLogout={handleLogout} />
+if (loading) {
+return (
+<div className="min-h-screen flex items-center justify-center">
+Loading dashboard...
+</div>
+);
+}
 
-      <div className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full">
-        <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-3xl font-bold text-blue-900">
-                {currentUser?.business_name || currentUser?.full_name}
-              </h1>
-              {currentUser?.is_verified && <VerificationBadge />}
-            </div>
-            <p className="text-blue-700 text-sm"></p>
-          </div>
-          <div className="flex items-center gap-3">
-            {!currentUser?.is_verified && (
-              <button
-                onClick={() => navigate('/seller/verification')}
-                className="flex items-center gap-2 bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-lg font-semibold transition-colors border-2 border-orange-300"
-              >
-                <Shield className="w-5 h-5" />
-                Get Verified
-              </button>
-            )}
-            <button
-              onClick={() => navigate('/seller/products/new')}
-              className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors shadow-md"
-            >
-              <Plus className="w-5 h-5" />
-              Add Product
-            </button>
-          </div>
-        </div>
+return (
 
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+<div className="min-h-screen flex flex-col bg-blue-50">
 
-  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-    <h3 className="text-sm font-semibold text-blue-700">Total Products</h3>
-    <p className="text-3xl font-bold text-blue-900">{stats.approvedProducts}</p>
-  </div>
+<Navbar onLogout={handleLogout} />
 
-  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-    <h3 className="text-sm font-semibold text-blue-700">Live Products</h3>
-    <p className="text-3xl font-bold text-green-600">{stats.approvedProducts}</p>
-  </div>
+<main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
 
-  <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-    <h3 className="text-sm font-semibold text-blue-700">Rejected Products</h3>
-    <p className="text-3xl font-bold text-red-600">{stats.rejectedProducts}</p>
-  </div>
+{/* HEADER */}
+
+<div className="flex items-center justify-between mb-8">
+
+<div>
+
+<h1 className="text-3xl font-bold text-blue-900">
+{currentUser?.business_name || currentUser?.full_name}
+</h1>
+
+<p className="text-sm text-gray-500">
+Seller Dashboard
+</p>
 
 </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-lg border border-blue-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-blue-900 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Product Inventory</h2>
-              {/* <button
-                onClick={() => navigate('/seller/products')}
-                className="text-orange-400 hover:text-orange-300 text-sm font-semibold transition-colors"
-              >
-                Manage All →
-              </button> */}
-            </div>
+<button
+onClick={() => navigate("/seller/products/new")}
+className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-lg flex items-center gap-2"
+>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-blue-50 border-b border-blue-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase">Product</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase">Price</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase">Stock</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-blue-900 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-blue-100">
-                  {products.length === 0 ? (
-                    <tr>
-                      <td colSpan="5" className="px-4 py-8 text-center text-blue-600">
-                        No products yet. Click "Add Product" to create your first listing.
-                      </td>
-                    </tr>
-                  ) : (
-                    products.slice(0, 5).map(product => (
-                      <tr key={product.id} className="hover:bg-blue-50 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={product.images?.[0] && product.images[0] !== ''
-                                ? product.images[0]
-                                : 'https://placehold.co/600x600'}
-                              alt={product.name}
-                              className="w-12 h-12 object-cover rounded border-2 border-orange-300"
-                            />
-                            <span className="font-semibold text-blue-900">{product.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-orange-600">{product.price}</td>
-                       <td className="px-4 py-3 text-sm text-blue-900">
-  {product.stock_quantity}
-</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(product)}`}>
-                            {getStatusLabel(product)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => navigate(`/seller/products/${product.id}/edit`)}
-                            className="p-2 hover:bg-blue-100 rounded transition-colors"
-                            title="Edit Product"
-                          >
-                            <Edit className="w-4 h-4 text-blue-700" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+<Plus className="w-5 h-5" />
+Add Product
 
-          <div className="bg-white rounded-lg border border-blue-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-blue-900">
-              <h2 className="text-lg font-bold text-white">Quick Actions</h2>
-            </div>
-            <div className="p-4 space-y-3">
-              <button
-                onClick={() => navigate('/seller/products/new')}
-                className="w-full flex items-center gap-3 p-3 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors border border-orange-200"
-              >
-                <Plus className="w-5 h-5 text-orange-600" />
-                <span className="font-semibold text-orange-700">Add New Product</span>
-              </button>
-              <button
-                type='button'
-                onClick={() => navigate('/seller/products')}
-                className="w-full flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200"
-              >
-                <Package className="w-5 h-5 text-blue-600" />
-                <span className="font-semibold text-blue-700">Manage Products</span>
-              </button>
-              {!currentUser?.is_verified && (
-                <button
-                  onClick={() => navigate('/seller/verification')}
-                  className="w-full flex items-center gap-3 p-3 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors border-2 border-orange-300"
-                >
-                  <Shield className="w-5 h-5 text-orange-600" />
-                  <span className="font-semibold text-orange-700">Get Verified Badge</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+</button>
 
-        <div className="mt-6 bg-blue-100 border-l-4 border-blue-500 p-4 rounded-lg">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-            <div>
-              <h3 className="font-bold text-blue-900 mb-1">Getting Started</h3>
-              <p className="text-sm text-blue-800">Your Products go live immediately. Admins may remove products that violate marketplace rules</p>
-            </div>
-          </div>
-        </div>
-      </div>
+</div>
 
-      <Footer />
+{/* STATS */}
+
+<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+
+<div className="bg-white p-4 rounded-lg border">
+
+<p className="text-sm text-gray-500">
+Orders To Ship
+</p>
+
+<p className="text-3xl font-bold text-orange-600">
+{stats.pending}
+</p>
+
+</div>
+
+<div className="bg-white p-4 rounded-lg border">
+
+<p className="text-sm text-gray-500">
+Orders in transit 
+</p>
 
 
-      {/* Bank Details Modal */}
+<p className="text-3xl font-bold text-blue-600">
+{stats.shipped}
+</p>
+<p className="text-sm text-gray-500 mt-1">
+  Awaiting buyer confirmation 
+</p>
 
-      {showBankModal === true && (
-        <div className="fixed inset-0 bg-blue-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="bg-gradient-to-r from-blue-900 to-blue-700 p-6 text-white text-center">
-              <h2 className="text-xl font-bold">Seller Bank Details</h2>
-              <p className="text-blue-100 text-sm mt-1">Required to receive your earnings</p>
-            </div>
-            <form onSubmit={handleBankSubmit} className="p-8 space-y-6">
-              <div>
-                <label className="block text-blue-900 text-sm font-bold mb-2">BANK NAME</label>
-                <select
-                  value={bankData.bank_name}
-                  onChange={(e) => setBankData({ ...bankData, bank_name: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all appearance-none bg-blue-50/30"
-                  style={{
-                    backgroundImage: "url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%231e40af%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C/polyline%3E%3C/svg%3E')",
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 16px center",
-                    backgroundSize: "16px"
-                  }}
+</div>
 
-                >
-                  <option value="">Select your bank</option>
-                  {nigerianBanks.map(bank => (
-                    <option key={bank} value={bank}>{bank}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-blue-900 text-sm font-bold mb-2">ACCOUNT NUMBER</label>
-                <input
-                  type="text"
-                  placeholder="10-digit number"
-                  value={bankData.account_number}
-                  onChange={(e) => setBankData({ ...bankData, account_number: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-blue-50/30"
-                />
-              </div>
-              <div>
-                <label className="block text-blue-900 text-sm font-bold mb-2">ACCOUNT NAME</label>
-                <input
-                  type="text"
-                  placeholder="Full name on account"
-                  value={bankData.account_name}
-                  onChange={(e) => setBankData({ ...bankData, account_name: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-blue-50/30"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-              >
-                Save Bank Details
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+<div className="bg-white p-4 rounded-lg border">
+
+<p className="text-sm text-gray-500">
+Completed Orders
+</p>
+
+<p className="text-3xl font-bold text-green-600">
+{stats.completed}
+</p>
+
+</div>
+
+<div className="bg-white p-4 rounded-lg border">
+
+<p className="text-sm text-gray-500">
+Products
+</p>
+
+<p className="text-3xl font-bold text-blue-900">
+{stats.products}
+</p>
+
+</div>
+
+</div>
+
+{/* RECENT ORDERS */}
+
+<div className="bg-white rounded-lg border mb-8">
+
+<div className="p-4 border-b flex justify-between">
+
+<h2 className="font-bold text-blue-900">
+Recent Orders
+</h2>
+
+<button
+onClick={() => navigate("/seller/orders")}
+className="text-sm text-orange-600"
+>
+
+View All
+
+</button>
+
+</div>
+
+{orders.length === 0 ? (
+
+<div className="p-6 text-center text-gray-500">
+No orders yet
+</div>
+
+) : (
+
+orders.slice(0,5).map(order => (
+
+<div
+key={order.id}
+className="p-4 border-b flex items-center justify-between"
+>
+
+<div className="flex items-center gap-3">
+
+<img
+src={order.products?.images?.[0] || "https://placehold.co/100"}
+className="w-12 h-12 object-cover rounded"
+/>
+
+<div>
+
+<p className="font-semibold">
+{order.products?.name}
+</p>
+
+<p className="text-xs text-gray-500">
+{new Date(order.created_at).toLocaleDateString()}
+</p>
+
+</div>
+
+</div>
+
+<div className="flex items-center gap-3">
+
+<span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+{order.status}
+</span>
+
+<button
+onClick={() => navigate(`/seller/orders/${order.id}`)}
+className="text-sm text-blue-600"
+>
+
+View
+
+</button>
+
+</div>
+
+</div>
+
+))
+
+)}
+
+</div>
+
+{/* PRODUCTS */}
+
+<div className="bg-white rounded-lg border">
+
+<div className="p-4 border-b flex justify-between">
+
+<h2 className="font-bold text-blue-900">
+Products
+</h2>
+
+<button
+onClick={() => navigate("/seller/products")}
+className="text-sm text-orange-600"
+>
+
+Manage
+
+</button>
+
+</div>
+
+{products.length === 0 ? (
+
+<div className="p-6 text-center text-gray-500">
+No products yet
+</div>
+
+) : (
+
+products.slice(0,5).map(product => (
+
+<div
+key={product.id}
+className="p-4 border-b flex justify-between items-center"
+>
+
+<div className="flex gap-3 items-center">
+
+<img
+src={product.images?.[0] || "https://placehold.co/100"}
+className="w-12 h-12 object-cover rounded"
+/>
+
+<p className="font-semibold">
+{product.name}
+</p>
+
+</div>
+
+<p className="text-orange-600 font-semibold">
+₦{Number(product.price).toLocaleString()}
+</p>
+
+</div>
+
+))
+
+)}
+
+</div>
+
+</main>
+
+<Footer />
+
+</div>
+
+);
+
 }

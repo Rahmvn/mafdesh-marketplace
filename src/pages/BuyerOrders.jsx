@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
+
 export default function BuyerOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -12,91 +13,96 @@ export default function BuyerOrders() {
   useEffect(() => {
     loadOrders();
   }, []);
+const loadOrders = async () => {
 
-  const loadOrders = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const buyerId = sessionData.session.user.id;
+  const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        products (
-          name,
-          images
-        )
-      `)
-      .eq('buyer_id', buyerId)
-      .order('created_at', { ascending: false });
+  console.log("Logged in user:", user);
 
-    if (!error) setOrders(data);
-    setLoading(false);
-  };
-
-const handleConfirmDelivery = async (orderId) => {
-  const confirmAction = window.confirm(
-    "Confirm that you have received this item? This will release payment to the seller."
-  );
-
-  if (!confirmAction) return;
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('orders')
-    .update({
-      status: 'COMPLETED',
-      completed_at: new Date()
-    })
-    .eq('id', orderId);
+    .select(`
+      *,
+     products:products!orders_product_id_fkey (
+  name,
+  images
+)
+    `)
+    .eq('buyer_id', user.id)
+    .order('created_at', { ascending: false });
 
-  if (!error) {
-    loadOrders();
-  } else {
-    console.error(error);
-    alert("Failed to confirm delivery");
-  }
-};
-  const handleSimulatePayment = async (orderId) => {
-  const { error } = await supabase
-    .from('orders')
-    .update({
-      status: 'PAYMENT_RECEIVED',
-      paid_at: new Date()
-    })
-    .eq('id', orderId);
+  console.log("Orders returned:", data);
+  console.log("Error:", error);
 
-  if (!error) {
-    loadOrders(); // reload list
-  } else {
-    console.error(error);
-    alert('Failed to simulate payment');
-  }
+  if (!error) setOrders(data || []);
+
+  setLoading(false);
 };
 
-  const handleReportIssue = async (orderId) => {
-    await supabase
-      .from('orders')
-      .update({
-        status: 'DISPUTED'
-      })
-      .eq('id', orderId);
+// const handleConfirmDelivery = async (orderId) => {
+//   const confirmAction = window.confirm(
+//     "Confirm that you have received this item? This will release payment to the seller."
+//   );
 
-    loadOrders();
-  };
+//   if (!confirmAction) return;
 
-  const handleCancel = async (orderId) => {
-    await supabase
-      .from('orders')
-      .update({
-        status: 'CANCELLED'
-      })
-      .eq('id', orderId);
+//   const { error } = await supabase
+//     .from('orders')
+//     .update({
+//       status: 'COMPLETED',
+//       completed_at: new Date()
+//     })
+//     .eq('id', orderId);
 
-    loadOrders();
-  };
+//   if (!error) {
+//     loadOrders();
+//   } else {
+//     console.error(error);
+//     alert("Failed to confirm delivery");
+//   }
+// };
+//   const handleSimulatePayment = async (orderId) => {
+//   const { error } = await supabase
+//     .from('orders')
+//     .update({
+//       status: 'PAID_ESCROW',
+//       paid_at: new Date()
+//     })
+//     .eq('id', orderId);
 
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
-  }
+//   if (!error) {
+//     loadOrders(); // reload list
+//   } else {
+//     console.error(error);
+//     alert('Failed to simulate payment');
+//   }
+// };
+
+//   const handleReportIssue = async (orderId) => {
+//     await supabase
+//       .from('orders')
+//       .update({
+//         status: 'DISPUTED'
+//       })
+//       .eq('id', orderId);
+
+//     loadOrders();
+//   };
+
+//   const handleCancel = async (orderId) => {
+//     await supabase
+//       .from('orders')
+//       .update({
+//         status: 'CANCELLED'
+//       })
+//       .eq('id', orderId);
+
+//     loadOrders();
+//   };
+
+//   if (loading) {
+//     return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
+//   }
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -121,7 +127,7 @@ const handleConfirmDelivery = async (orderId) => {
                   {/* LEFT */}
                   <div className="flex gap-4">
                     <img
-                      src={order.products?.images?.[0]}
+                      src={order.products?.images?.[0] || "/placeholder.png"}
                       alt={order.products?.name}
                       className="w-20 h-20 object-contain border rounded-lg"
                     />
@@ -138,14 +144,13 @@ const handleConfirmDelivery = async (orderId) => {
                       </p>
                     </div>
                   </div>
-                  {order.status === 'PENDING_PAYMENT' && (
-  <button
-    onClick={() => handleSimulatePayment(order.id)}
-    className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"
-  >
-    Simulate Payment
-  </button>
-)}
+               
+<button
+  onClick={() => navigate(`/buyer/orders/${order.id}`)}
+  className="text-blue-600 text-sm underline"
+>
+  View Order
+</button>
 
                   {/* RIGHT */}
                   <div className="flex flex-col items-start md:items-end gap-3">
@@ -155,7 +160,7 @@ const handleConfirmDelivery = async (orderId) => {
                         ? 'bg-green-100 text-green-700'
                         : order.status === 'SHIPPED'
                         ? 'bg-blue-100 text-blue-700'
-                        : order.status === 'PAYMENT_RECEIVED'
+                        : order.status === 'PAID_ESCROW'
                         ? 'bg-orange-100 text-orange-700'
                         : order.status === 'DISPUTED'
                         ? 'bg-red-100 text-red-700'
@@ -164,32 +169,7 @@ const handleConfirmDelivery = async (orderId) => {
                       {order.status.replaceAll('_', ' ')}
                     </span>
 
-                    {order.status === 'SHIPPED' && (
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleConfirmDelivery(order.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-                        >
-                          Confirm Delivery
-                        </button>
-
-                        <button
-                          onClick={() => handleReportIssue(order.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
-                        >
-                          Report Issue
-                        </button>
-                      </div>
-                    )}
-
-                    {order.status === 'PENDING_PAYMENT' && (
-                      <button
-                        onClick={() => handleCancel(order.id)}
-                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
-                      >
-                        Cancel Order
-                      </button>
-                    )}
+                  
 
                   </div>
                 </div>

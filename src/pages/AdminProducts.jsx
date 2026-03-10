@@ -9,10 +9,20 @@ export default function AdminProducts() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, approved, blocked
 
-  const handleLogout = () => {
-    localStorage.removeItem('mafdesh_user');
-    window.location.href = '/login';
+const handleLogout = async () => {
+
+    if (window.confirm('Are you sure you want to logout?')) {
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
   };
+
 
   useEffect(() => {
     loadProducts();

@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { Link, useNavigate } from "react-router-dom";
 import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet } from "lucide-react";
-import { cartService } from '../services/cartService';
+import { supabase } from '../supabaseClient';
+
 
 
 export default function Navbar({ onLogout }) {
@@ -14,31 +15,63 @@ export default function Navbar({ onLogout }) {
   const [cartCount, setCartCount] = useState(0);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const navigate = useNavigate();
+  
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('mafdesh_user');
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      setUserRole(userData.role);
-      setIsVerified(userData.is_verified || false);
+useEffect(() => {
+  const storedUser = localStorage.getItem('mafdesh_user');
 
-      if (userData.role === 'buyer') {
-        loadCartCount();
-      }
+  if (storedUser) {
+    const userData = JSON.parse(storedUser);
+
+    setUserRole(userData.role);
+    setIsVerified(userData.is_verified || false);
+
+    if (userData.role === "buyer") {
+      loadCartCount();
     }
-  }, []);
+  }
 
-  const loadCartCount = async () => {
-    try {
-      const response = await cartService.getCart();
-      const items = response?.cart || [];
-      const count = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-      setCartCount(count);
-    } catch (error) {
-      console.error('Error loading cart count:', error);
-      setCartCount(0);
-    }
+  const handleCartUpdate = () => {
+    loadCartCount();
   };
+
+  window.addEventListener("cartUpdated", handleCartUpdate);
+
+  return () => {
+    window.removeEventListener("cartUpdated", handleCartUpdate);
+  };
+
+}, []);
+
+const loadCartCount = async () => {
+  try {
+    const storedUser = JSON.parse(localStorage.getItem("mafdesh_user"));
+    if (!storedUser) return;
+
+    const { data: cart } = await supabase
+      .from("carts")
+      .select("id")
+      .eq("user_id", storedUser.id)
+      .maybeSingle();
+
+    if (!cart) {
+      setCartCount(0);
+      return;
+    }
+
+    const { data: items } = await supabase
+      .from("cart_items")
+      .select("quantity")
+      .eq("cart_id", cart.id);
+
+    const count = (items || []).reduce((sum, i) => sum + i.quantity, 0);
+
+    setCartCount(count);
+  } catch (error) {
+    console.error("Cart count error:", error);
+    setCartCount(0);
+  }
+};
 
   const getHomePath = () => {
     if (userRole === 'seller') return '/seller/dashboard';
@@ -120,7 +153,7 @@ export default function Navbar({ onLogout }) {
                   <span className="text-sm">Cart</span>
                   {cartCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
-                      {cartCount > 9 ? '9+' : cartCount}
+                      {cartCount}
                     </span>
                   )}
                 </Link>

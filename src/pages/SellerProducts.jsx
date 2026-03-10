@@ -15,10 +15,20 @@ export default function SellerProducts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  const handleLogout = () => {
-    localStorage.removeItem('mafdesh_user');
-    navigate('/login');
+const handleLogout = async () => {
+
+    if (window.confirm('Are you sure you want to logout?')) {
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
   };
+
 
   useEffect(() => {
     const checkAuth = () => {

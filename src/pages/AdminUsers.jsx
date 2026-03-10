@@ -4,10 +4,20 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 export default function AdminUsers() {
-  const handleLogout = () => {
-    localStorage.removeItem('mafdesh_user');
-    window.location.href = '/login';
+const handleLogout = async () => {
+
+    if (window.confirm('Are you sure you want to logout?')) {
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
   };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-orange-50">
