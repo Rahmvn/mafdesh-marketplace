@@ -198,7 +198,7 @@ return(
 
 <div className="min-h-screen flex flex-col bg-blue-50">
 
-<Navbar/>
+<Navbar onLogout={handleLogout} />
 
 <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
 

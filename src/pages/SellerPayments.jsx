@@ -32,7 +32,7 @@ export default function SellerPayments() {
           id,
           product_price,
           created_at,
-          products (
+          product:products!orders_product_id_fkey (
             name,
             images
           )

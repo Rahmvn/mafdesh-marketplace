@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { productService } from '../services/productService';
+import { supabase } from '../supabaseClient';
 
 export default function AdminProducts() {
   const [products, setProducts] = useState([]);

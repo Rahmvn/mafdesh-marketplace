@@ -104,6 +104,53 @@ const loadOrders = async () => {
 //     return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
 //   }
 
+const handleConfirmDelivery = async (orderId) => {
+
+  const confirmAction = window.confirm(
+    "Confirm that you received the item. You have inspected it and it matches the description."
+  );
+
+  if (!confirmAction) return;
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      status: "DELIVERED",
+      delivered_at: new Date()
+    })
+    .eq("id", orderId);
+
+  if (error) {
+    console.error(error);
+    alert("Failed to confirm delivery");
+    return;
+  }
+
+  loadOrders();
+};
+const handleReportIssue = async (orderId) => {
+
+  const reason = prompt("Describe the issue with this order:");
+
+  if (!reason) return;
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      status: "DISPUTED",
+      dispute_reason: reason,
+      disputed_at: new Date()
+    })
+    .eq("id", orderId);
+
+  if (error) {
+    console.error(error);
+    alert("Failed to report issue");
+    return;
+  }
+
+  loadOrders();
+};
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
@@ -157,7 +204,10 @@ const loadOrders = async () => {
 
                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
                       order.status === 'COMPLETED'
+
                         ? 'bg-green-100 text-green-700'
+                        : order.status === 'DELIVERED'
+? 'bg-purple-100 text-purple-700'
                         : order.status === 'SHIPPED'
                         ? 'bg-blue-100 text-blue-700'
                         : order.status === 'PAID_ESCROW'
@@ -166,6 +216,23 @@ const loadOrders = async () => {
                         ? 'bg-red-100 text-red-700'
                         : 'bg-gray-100 text-gray-700'
                     }`}>
+                      {order.status === "SHIPPED" && (
+  <button
+    onClick={() => handleConfirmDelivery(order.id)}
+    className="bg-green-600 text-white px-4 py-2 rounded text-sm"
+  >
+    Confirm Delivery
+  </button>
+)}
+
+{order.status === "DELIVERED" && (
+  <button
+    onClick={() => handleReportIssue(order.id)}
+    className="bg-red-600 text-white px-4 py-2 rounded text-sm"
+  >
+    Report Problem
+  </button>
+)}
                       {order.status.replaceAll('_', ' ')}
                     </span>
 

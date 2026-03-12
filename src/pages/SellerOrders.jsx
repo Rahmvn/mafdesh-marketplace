@@ -51,6 +51,44 @@ export default function SellerOrders() {
 
   //   if (!error) loadOrders();
   // };
+  const handleShipOrder = async (order) => {
+
+  let trackingNumber = null;
+
+  if (order.delivery_type === "delivery") {
+    trackingNumber = prompt("Enter tracking number (optional):") || null;
+  }
+
+  const confirmShip = window.confirm(
+    order.delivery_type === "pickup"
+      ? "Mark this order as ready for pickup?"
+      : "Mark this order as shipped?"
+  );
+
+  if (!confirmShip) return;
+
+  const updateData =
+    order.delivery_type === "pickup"
+      ? { status: "READY_FOR_PICKUP" }
+      : {
+          status: "SHIPPED",
+          shipped_at: new Date(),
+          tracking_number: trackingNumber
+        };
+
+  const { error } = await supabase
+    .from("orders")
+    .update(updateData)
+    .eq("id", order.id);
+
+  if (error) {
+    console.error(error);
+    alert("Failed to update order");
+    return;
+  }
+
+  loadOrders();
+};
 
   const getStatusStyle = (status) => {
 
@@ -73,7 +111,9 @@ export default function SellerOrders() {
   };
 
   const newOrders = orders.filter(o => o.status === "PAID_ESCROW");
-  const shippedOrders = orders.filter(o => o.status === "SHIPPED");
+const shippedOrders = orders.filter(
+  o => o.status === "SHIPPED" || o.status === "READY_FOR_PICKUP"
+);
   const completedOrders = orders.filter(o => o.status === "COMPLETED");
   const disputedOrders = orders.filter(o => o.status === "DISPUTED");
 
@@ -162,6 +202,16 @@ export default function SellerOrders() {
               >
                 View Order
               </button>
+              {order.status === "PAID_ESCROW" && (
+  <button
+    onClick={() => handleShipOrder(order)}
+    className="bg-orange-600 text-white px-4 py-2 rounded text-sm"
+  >
+    {order.delivery_type === "pickup"
+      ? "Ready For Pickup"
+      : "Ship Order"}
+  </button>
+)}
 
           
 

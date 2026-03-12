@@ -349,11 +349,11 @@ const reportIssue = async () => {
                   </button>
 
                   <button
-                    onClick={reportIssue}
-                    className="w-full border border-red-300 text-red-600 py-3 rounded-lg"
-                  >
-                    Report Issue
-                  </button>
+onClick={()=>navigate(`/orders/${order.id}/dispute`)}
+className="bg-red-600 text-white px-4 py-2 rounded"
+>
+Report Issue
+</button>
                 </>
               )}
               {order.status === "DISPUTED" && (

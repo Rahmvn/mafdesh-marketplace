@@ -4,6 +4,7 @@ import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png
 import { Link, useNavigate } from "react-router-dom";
 import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet } from "lucide-react";
 import { supabase } from '../supabaseClient';
+import { AlertCircle } from "lucide-react";
 
 
 
@@ -211,6 +212,13 @@ const loadCartCount = async () => {
   <ShoppingCart size={18} />
   <span>Orders</span>
 </Link>
+<Link
+to="/admin/disputes"
+className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+>
+<AlertCircle size={18}/>
+<span>Disputes</span>
+</Link>
                 <Link
                   to="/admin/products"
                   className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
@@ -413,6 +421,14 @@ const loadCartCount = async () => {
 >
   <ShoppingCart size={20} />
   <span>Orders</span>
+</Link>
+<Link
+to="/admin/disputes"
+className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+ onClick={() => setMobileMenu(false)}
+>
+<AlertCircle size={20}/>
+<span>Disputes</span>
 </Link>
                   <Link
                     to="/admin/products"

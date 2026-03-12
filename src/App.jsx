@@ -33,8 +33,15 @@ import SellerOrderDetails from './pages/SellerOrderDetails';
 import BuyerOrderDetails from './pages/BuyerOrderDetails';
 import AdminOrders from './pages/AdminOrders.jsx';
 import AdminOrderDetails from "./pages/AdminOrderDetails";
+import AdminDisputes from "./pages/AdminDisputes"
+import BuyerDispute from "./pages/BuyerDispute.jsx"
+import { runOrderAutomation } from "./utils/orderAutomation";
+import {  useEffect } from 'react';
 
 export default function App() {
+  useEffect(() => {
+  runOrderAutomation();
+}, []);
   return (
     <Router>
      
@@ -172,6 +179,15 @@ export default function App() {
           } />
           <Route path="/admin/order/:id" element={
             <ProtectedRoute allowedRoles={['admin']}><AdminOrderDetails />
+            </ProtectedRoute>
+            } />
+          
+            <Route path="/admin/disputes" element={
+            <ProtectedRoute allowedRoles={['admin']}><AdminDisputes/>
+            </ProtectedRoute>
+            } />
+              <Route path="/orders/:id/dispute"  element={
+            <ProtectedRoute allowedRoles={['buyer']}><BuyerDispute/>
             </ProtectedRoute>
             } />
           
