@@ -51,6 +51,19 @@ navigate("/login");
 }
 
 };
+const handleLogout = async () => {
+
+    if (window.confirm('Are you sure you want to logout?')) {
+
+      await supabase.auth.signOut();   // kill Supabase session
+
+      localStorage.clear();            // clear your local data
+
+      window.location.href = '/login'; // hard redirect (no React tricks)
+
+    };
+
+  };
 
 const loadDashboard = async ()=>{
   /* orders */

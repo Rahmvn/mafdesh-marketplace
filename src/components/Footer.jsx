@@ -144,15 +144,15 @@ export default function Footer() {
                 Built with ❤️ in Nigeria 🇳🇬
               </p>
             </div>
-            <div className="flex flex-wrap justify-center gap-4 text-xs">
-              <a href="#" className="text-blue-300 hover:text-orange-400 transition-colors">Privacy Policy</a>
-              <span className="text-blue-700">•</span>
-              <a href="#" className="text-blue-300 hover:text-orange-400 transition-colors">Terms of Service</a>
-              <span className="text-blue-700">•</span>
-              <a href="#" className="text-blue-300 hover:text-orange-400 transition-colors">Cookie Policy</a>
-              <span className="text-blue-700">•</span>
-              <a href="#" className="text-blue-300 hover:text-orange-400 transition-colors">Return Policy</a>
-            </div>
+           {/* // In the legal section at the bottom: */}
+<div className="flex flex-wrap justify-center gap-4 text-xs">
+  <Link to="/privacy" className="text-blue-300 hover:text-orange-400 transition-colors">Privacy Policy</Link>
+  <span className="text-blue-700">•</span>
+  <Link to="/terms" className="text-blue-300 hover:text-orange-400 transition-colors">Terms of Service</Link>
+  <span className="text-blue-700">•</span>
+  <Link to="/policies" className="text-blue-300 hover:text-orange-400 transition-colors">Policies</Link>
+  {/* Keep Cookie and Return as placeholders for now, or link to policies if covered */}
+</div>
           </div>
         </div>
       </div>

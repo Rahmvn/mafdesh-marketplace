@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet } from "lucide-react";
 import { supabase } from '../supabaseClient';
 import { AlertCircle } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 
 
@@ -240,6 +241,13 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
                   <CheckCircle size={18} />
                   <span>Approvals</span>
                 </Link>
+                <Link
+  to="/admin/constitution"
+  className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
+>
+  <BookOpen size={18} />
+  <span>Admin Constitution</span>
+</Link>
               </>
             )}
 
@@ -454,6 +462,14 @@ className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-
                     <CheckCircle size={20} />
                     <span>Approvals</span>
                   </Link>
+                  <Link
+  to="/admin/constitution"
+ className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+ onClick={() => setMobileMenu(false)}
+>
+  <BookOpen size={20} />
+  <span>Admin Constitution</span>
+</Link>
                 </>
               )}
 
