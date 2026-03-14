@@ -41,6 +41,7 @@ import AdminConstitution from "./pages/AdminConstitution";
 import AdminRoute from "./components/AdminRoute";
 import Policies from './pages/policies.jsx';
 import Terms from "./pages/Terms";
+import AdminUserDetails from "./pages/AdminUserDetails";
 
 export default function App() {
   useEffect(() => {
@@ -202,10 +203,13 @@ export default function App() {
             </AdminRoute>
           }
         />
+        <Route path="/admin/users/:id" element={<AdminRoute><AdminUserDetails /></AdminRoute>} />
+
         <Route path="/policies" element={
           <Policies />} />
 
           <Route path="/terms" element={<Terms />} />
+
 
 
 

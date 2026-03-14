@@ -36,76 +36,96 @@ export default function Checkout() {
     if (deliveryState === "Abuja") return 2500;
     return 3000;
   };
-const handleConfirm = async () => {
-  if (deliveryType === "delivery") {
-    if (!deliveryState) return alert("Select delivery state");
-    if (!deliveryAddress) return alert("Enter delivery address");
-  }
 
-  setIsSubmitting(true);
+  // 1. Stock validation before creating order
+  const validateStock = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('stock_quantity')
+      .eq('id', product.id)
+      .single();
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const buyerId = sessionData.session.user.id;
+    if (error || data.stock_quantity < 1) {
+      return false; // insufficient stock
+    }
+    return true;
+  };
 
-  const deliveryFee = calculateDelivery();
-  const platformFee = Math.round(product.price * 0.05);
-  const totalAmount = product.price + deliveryFee;
+  const handleConfirm = async () => {
+    // Validate delivery fields
+    if (deliveryType === "delivery") {
+      if (!deliveryState) return alert("Select delivery state");
+      if (!deliveryAddress) return alert("Enter delivery address");
+    }
 
-  /* STEP 1: REDUCE STOCK SAFELY */
+    setIsSubmitting(true);
 
-  const { data: updatedProduct, error: stockError } = await supabase
-    .from("products")
-    .update({
-      stock_quantity: product.stock_quantity - 1
-    })
-    .eq("id", product.id)
-    .gt("stock_quantity", 0) // prevents overselling
-    .select()
-    .single();
+    // 2. Get current user
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      alert("Please log in");
+      navigate('/login');
+      return;
+    }
+    const buyerId = sessionData.session.user.id;
 
-  if (stockError || !updatedProduct) {
-    alert("Sorry, this item is out of stock.");
+    // 3. Validate stock one last time
+    const stockOk = await validateStock();
+    if (!stockOk) {
+      alert("Sorry, this item is out of stock.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const deliveryFee = calculateDelivery();
+    const platformFee = Math.round(product.price * 0.05);
+    const totalAmount = product.price + deliveryFee;
+
+    // 4. Create order with status 'PENDING'
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        buyer_id: buyerId,
+        seller_id: product.seller_id,
+        product_id: product.id,
+        quantity: 1,
+        product_price: product.price,
+        delivery_fee: deliveryFee,
+        platform_fee: platformFee,
+        total_amount: totalAmount,
+        delivery_state: deliveryType === "delivery" ? deliveryState : null,
+        delivery_address: deliveryType === "delivery" ? deliveryAddress : null,
+        delivery_type: deliveryType,
+        status: "PENDING"   // we use 'PENDING' to match deduct_stock expectation
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error(orderError);
+      alert("Failed to create order");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // 5. Call atomic stock deduction function
+    const { data: success, error: deductError } = await supabase
+      .rpc('deduct_stock', { order_id: order.id });
+
+    if (deductError || !success) {
+      // Stock deduction failed (insufficient stock or already processed)
+      console.error(deductError || 'Stock deduction failed');
+      alert("Sorry, this item is no longer available. Your order has been cancelled.");
+      // Optionally delete the pending order
+      await supabase.from('orders').delete().eq('id', order.id);
+      setIsSubmitting(false);
+      return;
+    }
+
+    // 6. Success – navigate to order confirmation page
+    navigate(`/order-success/${order.id}`);
     setIsSubmitting(false);
-    return;
-  }
-
-  /* STEP 2: CREATE ORDER */
-
-  const { data: order, error } = await supabase
-    .from("orders")
-    .insert({
-      buyer_id: buyerId,
-      seller_id: product.seller_id,
-      product_id: product.id,
-      quantity: 1,
-
-      product_price: product.price,
-      delivery_fee: deliveryFee,
-      platform_fee: platformFee,
-      total_amount: totalAmount,
-
-      delivery_state: deliveryType === "delivery" ? deliveryState : null,
-      delivery_address: deliveryType === "delivery" ? deliveryAddress : null,
-      delivery_type: deliveryType,
-
-      status: "PENDING_PAYMENT"
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error(error);
-    alert("Failed to create order");
-    setIsSubmitting(false);
-    return;
-  }
-
-  /* STEP 3: GO TO PAYMENT */
-
-  navigate(`/pay/${order.id}`);
-
-  setIsSubmitting(false);
-};
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!product) return <div className="min-h-screen flex items-center justify-center">Product not found</div>;
@@ -118,14 +138,11 @@ const handleConfirm = async () => {
       <Navbar />
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-
         <h1 className="text-2xl font-bold text-blue-900 mb-6">Checkout</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
           {/* LEFT SIDE */}
           <div className="md:col-span-2 space-y-6">
-
             {/* PRODUCT SUMMARY */}
             <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
               <h2 className="font-semibold text-blue-900 mb-4">Product</h2>
@@ -147,7 +164,6 @@ const handleConfirm = async () => {
             {/* DELIVERY METHOD */}
             <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
               <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
-
               <div className="flex gap-4">
                 <button
                   onClick={() => setDeliveryType("delivery")}
@@ -159,7 +175,6 @@ const handleConfirm = async () => {
                 >
                   Delivery
                 </button>
-
                 <button
                   onClick={() => setDeliveryType("pickup")}
                   className={`px-4 py-2 rounded-lg border ${
@@ -177,7 +192,6 @@ const handleConfirm = async () => {
             {deliveryType === "delivery" && (
               <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4">
                 <h2 className="font-semibold text-blue-900">Delivery Details</h2>
-
                 <select
                   value={deliveryState}
                   onChange={(e) => setDeliveryState(e.target.value)}
@@ -188,7 +202,6 @@ const handleConfirm = async () => {
                   <option value="Abuja">Abuja</option>
                   <option value="Other">Other</option>
                 </select>
-
                 <textarea
                   placeholder="Enter full delivery address"
                   value={deliveryAddress}
@@ -197,24 +210,20 @@ const handleConfirm = async () => {
                 />
               </div>
             )}
-
           </div>
 
           {/* RIGHT SIDE - ORDER SUMMARY */}
           <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm h-fit">
             <h2 className="font-semibold text-blue-900 mb-4">Order Summary</h2>
-
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Product</span>
                 <span>₦{product.price.toLocaleString()}</span>
               </div>
-
               <div className="flex justify-between">
                 <span>Delivery</span>
                 <span>₦{deliveryFee.toLocaleString()}</span>
               </div>
-
               <div className="border-t pt-3 flex justify-between font-bold text-blue-900">
                 <span>Total</span>
                 <span>₦{total.toLocaleString()}</span>
@@ -226,16 +235,14 @@ const handleConfirm = async () => {
               disabled={isSubmitting}
               className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             >
-              Confirm & Pay
+              {isSubmitting ? "Processing..." : "Confirm Order"}
             </button>
 
             <p className="text-xs text-blue-600 mt-4 text-center">
               Your payment is protected by Mafdesh escrow.
             </p>
           </div>
-
         </div>
-
       </main>
 
       <Footer />

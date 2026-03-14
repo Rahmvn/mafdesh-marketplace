@@ -1,39 +1,40 @@
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { productService } from '../services/productService';
 import { supabase } from '../supabaseClient';
+import { Search, Filter, Eye, Trash2, CheckCircle, XCircle } from 'lucide-react';
 
 export default function AdminProducts() {
+  const navigate = useNavigate();
+  const admin = JSON.parse(localStorage.getItem("mafdesh_user"));
+
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, approved, blocked
+  const [searchTerm, setSearchTerm] = useState('');
+  const [updating, setUpdating] = useState(false);
 
-const handleLogout = async () => {
-
+  const handleLogout = async () => {
     if (window.confirm('Are you sure you want to logout?')) {
-
-      await supabase.auth.signOut();   // kill Supabase session
-
-      localStorage.clear();            // clear your local data
-
-      window.location.href = '/login'; // hard redirect (no React tricks)
-
-    };
-
+      await supabase.auth.signOut();
+      localStorage.clear();
+      window.location.href = '/login';
+    }
   };
-
 
   useEffect(() => {
     loadProducts();
   }, []);
 
   const loadProducts = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const data = await productService.getAllProductsAdmin();
       setProducts(data);
+      applyFilters(data, filter, searchTerm);
     } catch (error) {
       console.error(error);
       alert('Failed to load products');
@@ -42,142 +43,254 @@ const handleLogout = async () => {
     }
   };
 
+  const applyFilters = (productList, statusFilter, search) => {
+    let filtered = productList;
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(p => 
+        statusFilter === 'approved' ? p.is_approved : !p.is_approved
+      );
+    }
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      filtered = filtered.filter(p =>
+        p.name?.toLowerCase().includes(lowerSearch) ||
+        p.seller_name?.toLowerCase().includes(lowerSearch) ||
+        p.users?.business_name?.toLowerCase().includes(lowerSearch)
+      );
+    }
+    setFilteredProducts(filtered);
+  };
+
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    applyFilters(products, newFilter, searchTerm);
+  };
+
+  const handleSearch = (e) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    applyFilters(products, filter, term);
+  };
+
   const handleToggle = async (id, currentStatus) => {
+    const action = currentStatus ? 'Unapprove' : 'Approve';
+    if (!window.confirm(`${action} this product? This action will be logged.`)) return;
+
+    setUpdating(true);
     try {
+      // Update product via service
       await productService.toggleApproval(id, !currentStatus);
-      loadProducts();
+
+      // Log to admin_actions
+      const { error: logError } = await supabase
+        .from('admin_actions')
+        .insert({
+          admin_id: admin.id,
+          order_id: null,
+          action_type: action.toUpperCase() + '_PRODUCT',
+          reason: `Product ${action.toLowerCase()}d`,
+          metadata: { product_id: id, new_status: !currentStatus },
+        });
+
+      if (logError) throw logError;
+
+      // Refresh list
+      await loadProducts();
     } catch (error) {
-      alert('Failed to update product');
+      console.error(error);
+      alert(`Failed to ${action.toLowerCase()} product`);
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleDelete = async (id) => {
-    const confirmDelete = window.confirm('Delete this product permanently?');
-    if (!confirmDelete) return;
+    if (!window.confirm('Delete this product permanently? This action cannot be undone.')) return;
 
+    setUpdating(true);
     try {
+      // Delete product via service
       await productService.deleteProduct(id);
-      loadProducts();
+
+      // Log to admin_actions
+      const { error: logError } = await supabase
+        .from('admin_actions')
+        .insert({
+          admin_id: admin.id,
+          order_id: null,
+          action_type: 'DELETE_PRODUCT',
+          reason: 'Product deleted permanently',
+          metadata: { product_id: id },
+        });
+
+      if (logError) throw logError;
+
+      // Refresh list
+      await loadProducts();
     } catch (error) {
-      alert('Delete failed');
+      console.error(error);
+      alert('Failed to delete product');
+    } finally {
+      setUpdating(false);
     }
   };
-  const filteredProducts = products.filter(p => {
-  if (filter === 'approved') return p.is_approved;
-  if (filter === 'blocked') return !p.is_approved;
-  return true;
-});
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Loading products...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar onLogout={handleLogout} />
 
-      <div className="flex-1 max-w-6xl mx-auto p-6 w-full">
-        <h1 className="text-3xl font-bold text-blue-900 mb-6">
-          Admin – Product Management
-        </h1>
-        <div className="flex gap-3 mb-6">
-  <button
-    onClick={() => setFilter('all')}
-    className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
-  >
-    All
-  </button>
+      <main className="flex-1 max-w-6xl mx-auto p-6 w-full">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-blue-900">
+            Product Management
+          </h1>
+          <div className="text-sm text-gray-600">
+            Total: {products.length} | Filtered: {filteredProducts.length}
+          </div>
+        </div>
 
-  <button
-    onClick={() => setFilter('approved')}
-    className="px-4 py-2 bg-green-600 text-white rounded text-sm"
-  >
-    Approved
-  </button>
+        {/* Filters and Search */}
+        <div className="bg-white rounded-lg border p-4 mb-6 flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-2">
+            <Filter size={18} className="text-gray-500" />
+            <select
+              value={filter}
+              onChange={(e) => handleFilterChange(e.target.value)}
+              className="border rounded p-2 text-sm"
+            >
+              <option value="all">All Products</option>
+              <option value="approved">Approved Only</option>
+              <option value="blocked">Blocked Only</option>
+            </select>
+          </div>
 
-  <button
-    onClick={() => setFilter('blocked')}
-    className="px-4 py-2 bg-orange-600 text-white rounded text-sm"
-  >
-    Blocked
-  </button>
-</div>
+          <div className="flex-1 flex items-center gap-2">
+            <Search size={18} className="text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search by product name or seller..."
+              value={searchTerm}
+              onChange={handleSearch}
+              className="border rounded p-2 flex-1 text-sm"
+            />
+          </div>
+        </div>
 
-        {loading ? (
-          <p className="text-blue-600">Loading...</p>
-        ) : products.length === 0 ? (
-          <p className="text-blue-600">No products available.</p>
+        {filteredProducts.length === 0 ? (
+          <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+            No products found.
+          </div>
         ) : (
           <div className="overflow-x-auto bg-white rounded-lg shadow border border-blue-200">
             <table className="w-full">
               <thead className="bg-blue-100 text-blue-900 text-sm uppercase">
                 <tr>
                   <th className="p-3 text-left">Image</th>
-                  <th className="p-3 text-left">Name</th>
+                  <th className="p-3 text-left">Product</th>
                   <th className="p-3 text-left">Price</th>
                   <th className="p-3 text-left">Seller</th>
                   <th className="p-3 text-center">Status</th>
                   <th className="p-3 text-center">Actions</th>
                 </tr>
               </thead>
-
               <tbody>
                 {filteredProducts.map(product => (
-                  <tr key={product.id} className="border-t border-blue-100">
+                  <tr key={product.id} className="border-t border-blue-100 hover:bg-gray-50">
                     <td className="p-3">
-                      {product.images?.[0] && (
+                      {product.images?.[0] ? (
                         <img
-                          src={product.images?.[0] && !product.images[0].startsWith('blob:') ? product.images[0] : 'https://placehold.co/600x600'}
+                          src={product.images[0].startsWith('blob:') 
+                            ? 'https://placehold.co/600x600' 
+                            : product.images[0]}
                           alt={product.name}
                           className="w-12 h-12 object-cover rounded"
                         />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                          No img
+                        </div>
                       )}
                     </td>
 
-                    <td className="p-3 font-semibold text-blue-900">
-                      {product.name}
+                    <td className="p-3">
+                      <div className="font-semibold text-blue-900">{product.name}</div>
+                      <div className="text-xs text-gray-500">ID: {product.id.slice(0,8)}...</div>
                     </td>
 
-                    <td className="p-3 text-blue-700">
+                    <td className="p-3 text-blue-700 font-medium">
                       ₦{Number(product.price).toLocaleString()}
                     </td>
-<td className="p-3 text-blue-700">
-  <div className="flex flex-col">
-    <span className="font-semibold">
-      {product.users?.business_name ||
-       product.users?.profiles?.full_name ||
-       'Unknown'}
-    </span>
-    <span className="text-xs text-blue-500">
-      @{product.users?.profiles?.username || ''}
-    </span>
-  </div>
-</td>
+
+                    <td className="p-3">
+                      <button
+                        onClick={() => navigate(`/admin/users/${product.seller_id}`)}
+                        className="text-blue-600 hover:underline text-left"
+                      >
+                        <div className="font-semibold">
+                          {product.users?.business_name ||
+                           product.users?.profiles?.full_name ||
+                           'Unknown'}
+                        </div>
+                        <div className="text-xs text-blue-500">
+                          @{product.users?.profiles?.username || ''}
+                        </div>
+                      </button>
+                    </td>
 
                     <td className="p-3 text-center">
                       <span
-                        className={`px-3 py-1 rounded text-xs font-bold ${
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
                           product.is_approved
                             ? 'bg-green-100 text-green-700'
                             : 'bg-orange-100 text-orange-700'
                         }`}
                       >
+                        {product.is_approved ? (
+                          <CheckCircle size={12} />
+                        ) : (
+                          <XCircle size={12} />
+                        )}
                         {product.is_approved ? 'APPROVED' : 'BLOCKED'}
                       </span>
                     </td>
 
-                    <td className="p-3 text-center space-x-2">
-                      <button
-                        onClick={() =>
-                          handleToggle(product.id, product.is_approved)
-                        }
-                        className="px-3 py-1 bg-blue-600 text-white rounded text-xs"
-                      >
-                        {product.is_approved ? 'Unapprove' : 'Approve'}
-                      </button>
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleToggle(product.id, product.is_approved)}
+                          disabled={updating}
+                          className={`px-3 py-1 rounded text-xs font-medium ${
+                            product.is_approved
+                              ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          }`}
+                        >
+                          {product.is_approved ? 'Unapprove' : 'Approve'}
+                        </button>
 
-                      <button
-                        onClick={() => handleDelete(product.id)}
-                        className="px-3 py-1 bg-red-600 text-white rounded text-xs"
-                      >
-                        Delete
-                      </button>
+                        <button
+                          onClick={() => handleDelete(product.id)}
+                          disabled={updating}
+                          className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+
+                        <button
+                          onClick={() => navigate(`/product/${product.id}`)}
+                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -185,8 +298,7 @@ const handleLogout = async () => {
             </table>
           </div>
         )}
-      </div>
-
+      </main>
       <Footer />
     </div>
   );
