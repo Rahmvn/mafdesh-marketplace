@@ -5,6 +5,7 @@ import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { productService } from '../services/productService';
+import { supabase } from "../supabaseClient";
 
 export default function SellerProducts() {
   const navigate = useNavigate();

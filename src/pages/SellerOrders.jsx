@@ -202,7 +202,7 @@ const shippedOrders = orders.filter(
               >
                 View Order
               </button>
-              {order.status === "PAID_ESCROW" && (
+              {/* {order.status === "PAID_ESCROW" && (
   <button
     onClick={() => handleShipOrder(order)}
     className="bg-orange-600 text-white px-4 py-2 rounded text-sm"
@@ -211,7 +211,7 @@ const shippedOrders = orders.filter(
       ? "Ready For Pickup"
       : "Ship Order"}
   </button>
-)}
+)} */}
 
           
 

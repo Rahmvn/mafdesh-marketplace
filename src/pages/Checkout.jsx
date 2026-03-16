@@ -100,6 +100,7 @@ export default function Checkout() {
       })
       .select()
       .single();
+      
 
     if (orderError) {
       console.error(orderError);

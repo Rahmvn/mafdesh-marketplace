@@ -63,7 +63,7 @@ export default function SignUp() {
   setUsernameError("");
   return true;
 };
- const handleSignUp = async (formData) => {
+const handleSignUp = async (formData) => {
   try {
     const { email, password } = formData;
 
@@ -74,41 +74,47 @@ export default function SignUp() {
 
     if (error) throw error;
     if (!data.user) {
-  alert("Signup failed");
-  return false;
-}
+      alert("Signup failed");
+      return false;
+    }
 
-const userId = data.user.id;
+    const userId = data.user.id;
 
-// INSERT PROFILE
-// INSERT PROFILE (ignore if already exists)
-await supabase
+    // Insert into profiles
+   // Insert into profiles
+const { error: profileError } = await supabase
   .from('profiles')
   .upsert({
     id: userId,
-    role: userType,
     full_name: formData.full_name,
     username: formData.username,
     location: formData.location
   }, { onConflict: 'id' });
 
-// INSERT USERS TABLE (ignore if already exists)
-await supabase
-  .from('users')
-  .upsert({
-    id: userId,
-    email: formData.email,
-    role: userType,
-    phone_number: formData.phone_number,
-    business_name: userType === 'seller' ? formData.business_name : null
-  }, { onConflict: 'id' });
+    if (profileError) {
+      console.error('Profile insert error:', profileError);
+      alert('Failed to create profile: ' + profileError.message);
+      return false;
+    }
 
+    // Insert into users
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert({
+        id: userId,
+        email: formData.email,
+        role: userType,
+        phone_number: formData.phone_number,
+        business_name: userType === 'seller' ? formData.business_name : null
+      }, { onConflict: 'id' });
 
-
-   
+    if (userError) {
+      console.error('User insert error:', userError);
+      alert('Failed to create user record: ' + userError.message);
+      return false;
+    }
 
     return true;
-
   } catch (error) {
     console.error(error);
     alert(error.message);

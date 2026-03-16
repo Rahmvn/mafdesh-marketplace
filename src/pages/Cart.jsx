@@ -11,6 +11,7 @@ export default function Cart() {
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cartId, setCartId] = useState(null);
+  const [stockIssues, setStockIssues] = useState([]);
 
   useEffect(() => {
     loadCart();
@@ -113,6 +114,33 @@ const updateQuantity = async (item, change) => {
   window.dispatchEvent(new Event("cartUpdated"));
 };
 
+
+const checkCartStock = async () => {
+  const issues = [];
+  for (const item of cartItems) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('stock_quantity')
+      .eq('id', item.products.id)
+      .single();
+
+    if (data && data.stock_quantity < item.quantity) {
+      issues.push({
+        name: item.products.name,
+        available: data.stock_quantity,
+        requested: item.quantity
+      });
+    }
+  }
+  setStockIssues(issues);
+};
+
+useEffect(() => {
+  if (cartItems.length) {
+    checkCartStock();
+  }
+}, [cartItems]);
+
   const getTotal = () => {
 
     let total = 0;
@@ -124,15 +152,13 @@ const updateQuantity = async (item, change) => {
     return total;
   };
 
-  const checkout = () => {
-
-    if (cartItems.length === 0) {
-      alert("Cart is empty");
-      return;
-    }
-
-    alert("Cart checckout comming soon!");
-  };
+ const checkout = () => {
+  if (cartItems.length === 0) {
+    alert("Cart is empty");
+    return;
+  }
+  alert("Multi‑item checkout coming soon! For now, please buy items individually.");
+};
 
   if (loading) {
     return (
@@ -224,13 +250,23 @@ const updateQuantity = async (item, change) => {
               <p className="text-lg font-bold">
                 Total: ₦{getTotal().toLocaleString()}
               </p>
-
-              <button
-                onClick={checkout}
-                className="mt-4 w-full bg-orange-600 text-white py-3 rounded-lg"
-              >
-                Proceed to Checkout
-              </button>
+  {stockIssues.length > 0 && (
+  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+    <p className="text-red-700 font-semibold mb-2">Some items have stock issues:</p>
+    {stockIssues.map((issue, idx) => (
+      <p key={idx} className="text-sm text-red-600">
+        • {issue.name}: only {issue.available} available, you have {issue.requested}
+      </p>
+    ))}
+  </div>
+)}
+             <button
+  onClick={checkout}
+  disabled={cartItems.length === 0 || stockIssues.length > 0}
+  className="mt-4 w-full bg-orange-600 text-white py-3 rounded-lg disabled:opacity-50"
+>
+  Proceed to Checkout
+</button>
 
             </div>
 
