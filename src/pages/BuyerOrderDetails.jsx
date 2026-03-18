@@ -33,7 +33,6 @@ export default function BuyerOrderDetails() {
   }, [id]);
 
   const loadOrder = async () => {
-    // Fetch order header
     const { data: orderData, error } = await supabase
       .from("orders")
       .select("*")
@@ -46,7 +45,6 @@ export default function BuyerOrderDetails() {
       return;
     }
 
-    // Fetch order items with product details
     const { data: itemsData, error: itemsError } = await supabase
       .from("order_items")
       .select(`
@@ -67,7 +65,6 @@ export default function BuyerOrderDetails() {
       setItems(itemsData || []);
     }
 
-    // Fetch seller info
     const { data: user } = await supabase
       .from("users")
       .select("business_name, phone_number")
@@ -95,7 +92,6 @@ export default function BuyerOrderDetails() {
   };
 
   const confirmDelivery = async () => {
-    // ... (same as before, but need to handle multiple items? The order status is global, so fine)
     const confirm = window.confirm("Confirm you received all items? This will release payment to the seller.");
     if (!confirm) return;
     await supabase
@@ -156,30 +152,41 @@ export default function BuyerOrderDetails() {
     return `${hours}h remaining`;
   };
 
+  // Urgency styling
+  const getUrgencyClass = (deadline) => {
+    if (!deadline) return '';
+    const diff = new Date(deadline) - new Date();
+    if (diff <= 0) return 'text-red-600 font-bold';
+    const hours = diff / (1000 * 60 * 60);
+    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
+    if (hours < 24) return 'text-orange-600 font-semibold';
+    return 'text-gray-600';
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
   const isDelivery = order.delivery_type === "delivery";
   const isPickup = order.delivery_type === "pickup";
 
-  // Timeline steps (same as before)
   const steps = [
-    { label: "Order Placed", active: true, icon: Package },
-    { label: "Payment Secured", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: CheckCircle },
-    { label: isDelivery ? "Processing" : "Seller Preparing", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: Truck },
+    { label: "Order Placed", active: true, icon: Package, desc: "Your order has been placed." },
+    { label: "Payment Secured", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: CheckCircle, desc: "Payment is held in escrow." },
+    { label: isDelivery ? "Processing" : "Seller Preparing", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: Truck, desc: isDelivery ? "Seller has 48 hours to ship." : "Seller has 48 hours to prepare for pickup." },
     {
       label: isDelivery ? "Shipped" : "Ready for Pickup",
       active: ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
-      icon: isDelivery ? Truck : Package
+      icon: isDelivery ? Truck : Package,
+      desc: isDelivery ? "Your order is on its way." : "You can now pick up your order."
     },
     {
       label: isDelivery ? "Delivered" : "Picked Up",
       active: order.status === "COMPLETED",
-      icon: CheckCircle
+      icon: CheckCircle,
+      desc: "Order completed. Payment released to seller."
     },
   ];
 
-  // Action message and buttons (same as before, but adjust messages)
   let actionMessage = "";
   let actionButton = null;
   if (order.status === "PENDING") {
@@ -222,6 +229,71 @@ export default function BuyerOrderDetails() {
     actionMessage = "This order has been cancelled.";
   }
 
+  let infoBox = null;
+  if (order.status === "PAID_ESCROW") {
+    infoBox = (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+          <Clock size={18} /> What's happening?
+        </h3>
+        <p className="text-sm text-blue-700">
+          The seller has <strong className={getUrgencyClass(order.ship_deadline)}>{formatRemaining(order.ship_deadline)}</strong> to prepare your order. 
+          You'll be notified when it's {isDelivery ? "shipped" : "ready for pickup"}.
+        </p>
+      </div>
+    );
+  } else if (order.status === "SHIPPED") {
+    infoBox = (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
+          <Truck size={18} /> Your order is on the way
+        </h3>
+        <p className="text-sm text-green-700">
+          Once you receive all items, please confirm delivery. If you don't confirm within 7 days, 
+          the order will auto‑complete and payment will be released to the seller.
+          {order.auto_complete_at && (
+            <span> Auto‑completes <span className={getUrgencyClass(order.auto_complete_at)}>{formatRemaining(order.auto_complete_at)}</span>.</span>
+          )}
+        </p>
+      </div>
+    );
+  } else if (order.status === "READY_FOR_PICKUP") {
+    infoBox = (
+      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
+          <Package size={18} /> Ready for pickup
+        </h3>
+        <p className="text-sm text-purple-700">
+          You have <strong className={getUrgencyClass(order.auto_cancel_at)}>{formatRemaining(order.auto_cancel_at)}</strong> to pick up your order.
+          If you don't pick up in time, the order will be cancelled and you will be refunded.
+        </p>
+      </div>
+    );
+  } else if (order.status === "DELIVERED") {
+    infoBox = (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> Confirm delivery or report an issue
+        </h3>
+        <p className="text-sm text-yellow-700">
+          You have <strong className={getUrgencyClass(order.dispute_deadline)}>{formatRemaining(order.dispute_deadline)}</strong> to confirm delivery or open a dispute.
+          If you don't act, the order will auto‑complete and payment will be released to the seller.
+        </p>
+      </div>
+    );
+  } else if (order.status === "DISPUTED") {
+    infoBox = (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> Under review
+        </h3>
+        <p className="text-sm text-red-700">
+          Your dispute has been submitted. Our team will investigate and contact you soon.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
@@ -240,7 +312,7 @@ export default function BuyerOrderDetails() {
           </button>
         </div>
 
-        {/* Order Summary Card */}
+        {/* Order Summary */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm text-gray-500">
@@ -267,6 +339,7 @@ export default function BuyerOrderDetails() {
                 />
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
+                  <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
                   <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
                   <p className="text-orange-600 font-medium">
                     ₦{Number(item.price_at_time).toLocaleString()} each
@@ -306,12 +379,28 @@ export default function BuyerOrderDetails() {
           </div>
         )}
 
+        {/* Info Box (dynamic guidance) */}
+        {infoBox}
+
         {/* Timeline */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4">Progress</h2>
           <div className="space-y-4">
             {steps.map((step, index) => {
               const Icon = step.icon;
+              let timerText = null;
+              let urgencyClass = '';
+              if (step.label === "Shipped" && order.auto_complete_at) {
+                timerText = formatRemaining(order.auto_complete_at);
+                urgencyClass = getUrgencyClass(order.auto_complete_at);
+              } else if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
+                timerText = formatRemaining(order.auto_cancel_at);
+                urgencyClass = getUrgencyClass(order.auto_cancel_at);
+              } else if (step.label === "Delivered" && order.dispute_deadline && order.status === "DELIVERED") {
+                timerText = formatRemaining(order.dispute_deadline);
+                urgencyClass = getUrgencyClass(order.dispute_deadline);
+              }
+
               return (
                 <div key={index} className="flex items-start gap-3">
                   <div className={`mt-0.5 ${step.active ? 'text-green-600' : 'text-gray-300'}`}>
@@ -319,14 +408,9 @@ export default function BuyerOrderDetails() {
                   </div>
                   <div>
                     <p className={`font-medium ${step.active ? 'text-gray-900' : 'text-gray-400'}`}>{step.label}</p>
-                    {step.label === "Shipped" && order.auto_complete_at && (
-                      <p className="text-sm text-orange-600">{formatRemaining(order.auto_complete_at)}</p>
-                    )}
-                    {step.label === "Ready for Pickup" && order.auto_cancel_at && (
-                      <p className="text-sm text-orange-600">{formatRemaining(order.auto_cancel_at)}</p>
-                    )}
-                    {step.label === "Delivered" && order.dispute_deadline && order.status === "DELIVERED" && (
-                      <p className="text-sm text-orange-600">Dispute window: {formatRemaining(order.dispute_deadline)}</p>
+                    <p className="text-xs text-gray-500">{step.desc}</p>
+                    {timerText && (
+                      <p className={`text-sm ${urgencyClass}`}>{timerText}</p>
                     )}
                   </div>
                 </div>

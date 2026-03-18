@@ -79,7 +79,7 @@ serve(async (req) => {
       await supabaseAdmin
         .from('orders')
         .update({
-          ship_deadline: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString()
+         ship_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
         })
         .eq('id', orderId)
     }

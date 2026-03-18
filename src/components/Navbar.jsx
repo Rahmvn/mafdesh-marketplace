@@ -1,13 +1,8 @@
-import React from 'react';
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet } from "lucide-react";
+import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet, AlertCircle, BookOpen } from "lucide-react";
 import { supabase } from '../supabaseClient';
-import { AlertCircle } from "lucide-react";
-import { BookOpen } from "lucide-react";
-
-
 
 export default function Navbar({ onLogout }) {
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -16,64 +11,92 @@ export default function Navbar({ onLogout }) {
   const [isVerified, setIsVerified] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [actionRequiredCount, setActionRequiredCount] = useState(0); // For orders needing action
   const navigate = useNavigate();
-  
 
-useEffect(() => {
-  const storedUser = localStorage.getItem('mafdesh_user');
+  useEffect(() => {
+    const storedUser = localStorage.getItem('mafdesh_user');
 
-  if (storedUser) {
-    const userData = JSON.parse(storedUser);
+    if (storedUser) {
+      const userData = JSON.parse(storedUser);
+      setUserRole(userData.role);
+      setIsVerified(userData.is_verified || false);
 
-    setUserRole(userData.role);
-    setIsVerified(userData.is_verified || false);
+      if (userData.role === "buyer") {
+        loadCartCount();
+        loadBuyerActionCount(userData.id);
+      } else if (userData.role === "seller") {
+        loadSellerActionCount(userData.id);
+      }
+    }
 
-    if (userData.role === "buyer") {
+    const handleCartUpdate = () => {
       loadCartCount();
-    }
-  }
+    };
 
-  const handleCartUpdate = () => {
-    loadCartCount();
-  };
+    window.addEventListener("cartUpdated", handleCartUpdate);
 
-  window.addEventListener("cartUpdated", handleCartUpdate);
+    return () => {
+      window.removeEventListener("cartUpdated", handleCartUpdate);
+    };
+  }, []);
 
-  return () => {
-    window.removeEventListener("cartUpdated", handleCartUpdate);
-  };
+  const loadCartCount = async () => {
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("mafdesh_user"));
+      if (!storedUser) return;
 
-}, []);
+      const { data: cart } = await supabase
+        .from("carts")
+        .select("id")
+        .eq("user_id", storedUser.id)
+        .maybeSingle();
 
-const loadCartCount = async () => {
-  try {
-    const storedUser = JSON.parse(localStorage.getItem("mafdesh_user"));
-    if (!storedUser) return;
+      if (!cart) {
+        setCartCount(0);
+        return;
+      }
 
-    const { data: cart } = await supabase
-      .from("carts")
-      .select("id")
-      .eq("user_id", storedUser.id)
-      .maybeSingle();
+      const { data: items } = await supabase
+        .from("cart_items")
+        .select("quantity")
+        .eq("cart_id", cart.id);
 
-    if (!cart) {
+      const count = (items || []).reduce((sum, i) => sum + i.quantity, 0);
+      setCartCount(count);
+    } catch (error) {
+      console.error("Cart count error:", error);
       setCartCount(0);
-      return;
     }
+  };
 
-    const { data: items } = await supabase
-      .from("cart_items")
-      .select("quantity")
-      .eq("cart_id", cart.id);
+  const loadBuyerActionCount = async (userId) => {
+    try {
+      // Count orders that need buyer action: SHIPPED or READY_FOR_PICKUP
+      const { count, error } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("buyer_id", userId)
+        .in("status", ["SHIPPED", "READY_FOR_PICKUP"]);
+      if (!error) setActionRequiredCount(count);
+    } catch (error) {
+      console.error("Buyer action count error:", error);
+    }
+  };
 
-    const count = (items || []).reduce((sum, i) => sum + i.quantity, 0);
-
-    setCartCount(count);
-  } catch (error) {
-    console.error("Cart count error:", error);
-    setCartCount(0);
-  }
-};
+  const loadSellerActionCount = async (userId) => {
+    try {
+      // Count orders needing seller action: PAID_ESCROW
+      const { count, error } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("seller_id", userId)
+        .eq("status", "PAID_ESCROW");
+      if (!error) setActionRequiredCount(count);
+    } catch (error) {
+      console.error("Seller action count error:", error);
+    }
+  };
 
   const getHomePath = () => {
     if (userRole === 'seller') return '/seller/dashboard';
@@ -83,9 +106,7 @@ const loadCartCount = async () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-
     if (!search.trim()) return;
-
     navigate(`/marketplace?search=${encodeURIComponent(search)}`);
   };
 
@@ -103,11 +124,10 @@ const loadCartCount = async () => {
               className="w-auto object-contain transition-all duration-200 group-hover:scale-105"
               style={{ height: "40px" }}
             />
-            {/* branding badge removed per design — no HALAL badge shown here */}
           </Link>
 
           {userRole === 'buyer' && (
-           <div className="hidden md:flex items-center flex-1 max-w-2xl mx-6">
+            <div className="hidden md:flex items-center flex-1 max-w-2xl mx-6">
               <div className="relative w-full">
                 <input
                   type="text"
@@ -120,10 +140,7 @@ const loadCartCount = async () => {
                     navigate(`/marketplace?search=${encodeURIComponent(value)}`);
                   }}
                 />
-                <Search
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500"
-                  size={20}
-                />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500" size={20} />
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
@@ -131,22 +148,24 @@ const loadCartCount = async () => {
                   Search
                 </button>
               </div>
-              
             </div>
           )}
-          
 
           <div className="hidden md:flex items-center gap-1">
             {userRole === 'buyer' && (
-              
               <>
-              <Link
-  to="/orders"
-  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
->
-  <Package size={22} className="group-hover:scale-110 transition-transform" />
-  <span className="text-sm">Orders</span>
-</Link>
+                <Link
+                  to="/orders"
+                  className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
+                >
+                  <Package size={22} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-sm">Orders</span>
+                  {actionRequiredCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md animate-pulse">
+                      {actionRequiredCount}
+                    </span>
+                  )}
+                </Link>
                 <Link
                   to="/cart"
                   className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
@@ -173,10 +192,15 @@ const loadCartCount = async () => {
                 </Link>
                 <Link
                   to="/seller/orders"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
                 >
                   <ShoppingCart size={18} />
                   <span>Orders</span>
+                  {actionRequiredCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md animate-pulse">
+                      {actionRequiredCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/seller/payments"
@@ -207,19 +231,19 @@ const loadCartCount = async () => {
                   <span>Dashboard</span>
                 </Link>
                 <Link
-  to="/admin/orders"
-  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
->
-  <ShoppingCart size={18} />
-  <span>Orders</span>
-</Link>
-<Link
-to="/admin/disputes"
-className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
->
-<AlertCircle size={18}/>
-<span>Disputes</span>
-</Link>
+                  to="/admin/orders"
+                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                >
+                  <ShoppingCart size={18} />
+                  <span>Orders</span>
+                </Link>
+                <Link
+                  to="/admin/disputes"
+                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                >
+                  <AlertCircle size={18} />
+                  <span>Disputes</span>
+                </Link>
                 <Link
                   to="/admin/products"
                   className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
@@ -234,14 +258,13 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
                   <Users size={18} />
                   <span>Users</span>
                 </Link>
-                
                 <Link
-  to="/admin/constitution"
-  className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
->
-  <BookOpen size={18} />
-  <span>Admin Constitution</span>
-</Link>
+                  to="/admin/constitution"
+                  className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
+                >
+                  <BookOpen size={18} />
+                  <span>Admin Constitution</span>
+                </Link>
               </>
             )}
 
@@ -273,26 +296,53 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
                     <span>My Profile</span>
                   </Link>
 
-{userRole === 'buyer' && (
-  <>
-    <Link
-      to="/orders"
-      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-      onClick={() => setShowProfileMenu(false)}
-    >
-      <Package size={18} className="text-blue-600" />
-      <span>My Orders</span>
-    </Link>
-    <Link
-      to="/cart"
-      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-      onClick={() => setShowProfileMenu(false)}
-    >
-      <ShoppingCart size={18} className="text-blue-600" />
-      <span>My Cart</span>
-    </Link>
-  </>
-)}
+                  {userRole === 'buyer' && (
+                    <>
+                      <Link
+                        to="/orders"
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
+                        onClick={() => setShowProfileMenu(false)}
+                      >
+                        <Package size={18} className="text-blue-600" />
+                        <span>My Orders</span>
+                        {actionRequiredCount > 0 && (
+                          <span className="ml-auto bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                            {actionRequiredCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link
+                        to="/cart"
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
+                        onClick={() => setShowProfileMenu(false)}
+                      >
+                        <ShoppingCart size={18} className="text-blue-600" />
+                        <span>My Cart</span>
+                        {cartCount > 0 && (
+                          <span className="ml-auto bg-orange-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                            {cartCount}
+                          </span>
+                        )}
+                      </Link>
+                    </>
+                  )}
+
+                  {userRole === 'seller' && (
+                    <Link
+                      to="/seller/orders"
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
+                      onClick={() => setShowProfileMenu(false)}
+                    >
+                      <ShoppingCart size={18} className="text-blue-600" />
+                      <span>My Orders</span>
+                      {actionRequiredCount > 0 && (
+                        <span className="ml-auto bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                          {actionRequiredCount}
+                        </span>
+                      )}
+                    </Link>
+                  )}
+
                   <div className="border-t border-blue-100 my-2"></div>
                   {onLogout && (
                     <button
@@ -310,7 +360,6 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
               )}
             </div>
           </div>
-          
 
           <button
             className="md:hidden text-blue-700 hover:text-blue-900 transition-all p-2 hover:bg-blue-50 rounded-lg"
@@ -321,34 +370,40 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
         </div>
 
         {mobileMenu && (
-          
           <div className="md:hidden mt-4 pb-4 border-t-2 border-blue-100 pt-4">
             {userRole === 'buyer' && (
-  <div className="mb-4">
-    <input
-      type="text"
-      placeholder="Search products..."
-      className="w-full px-4 py-3 rounded-lg border border-orange-300 focus:outline-none focus:border-orange-500 text-sm"
-      value={search}
-      onChange={(e) => {
-        const value = e.target.value;
-        setSearch(value);
-        navigate(`/marketplace?search=${encodeURIComponent(value)}`);
-      }}
-    />
-  </div>
-)}
-<div className="flex flex-col gap-2">
-  {userRole === 'buyer' && (
-    <>
-      <Link
-        to="/orders"
-        className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-        onClick={() => setMobileMenu(false)}
-      >
-        <Package size={20} />
-        <span>Orders</span>
-      </Link>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  className="w-full px-4 py-3 rounded-lg border border-orange-300 focus:outline-none focus:border-orange-500 text-sm"
+                  value={search}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSearch(value);
+                    navigate(`/marketplace?search=${encodeURIComponent(value)}`);
+                  }}
+                />
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              {userRole === 'buyer' && (
+                <>
+                  <Link
+                    to="/orders"
+                    className="flex items-center justify-between text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package size={20} />
+                      <span>Orders</span>
+                    </div>
+                    {actionRequiredCount > 0 && (
+                      <span className="bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                        {actionRequiredCount}
+                      </span>
+                    )}
+                  </Link>
                   <Link
                     to="/cart"
                     className="flex items-center justify-between text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
@@ -370,20 +425,27 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
               {userRole === 'seller' && (
                 <>
                   <Link
+                    to="/seller/orders"
+                    className="flex items-center justify-between text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart size={20} />
+                      <span>Orders</span>
+                    </div>
+                    {actionRequiredCount > 0 && (
+                      <span className="bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                        {actionRequiredCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link
                     to="/seller/products"
                     className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
                     onClick={() => setMobileMenu(false)}
                   >
                     <Package size={20} />
                     <span>Products</span>
-                  </Link>
-                  <Link
-                    to="/seller/orders"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <ShoppingCart size={20} />
-                    <span>Orders</span>
                   </Link>
                   <Link
                     to="/seller/payments"
@@ -417,21 +479,21 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
                     <span>Dashboard</span>
                   </Link>
                   <Link
-  to="/admin/orders"
-  className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-  onClick={() => setMobileMenu(false)}
->
-  <ShoppingCart size={20} />
-  <span>Orders</span>
-</Link>
-<Link
-to="/admin/disputes"
-className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
- onClick={() => setMobileMenu(false)}
->
-<AlertCircle size={20}/>
-<span>Disputes</span>
-</Link>
+                    to="/admin/orders"
+                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <ShoppingCart size={20} />
+                    <span>Orders</span>
+                  </Link>
+                  <Link
+                    to="/admin/disputes"
+                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <AlertCircle size={20} />
+                    <span>Disputes</span>
+                  </Link>
                   <Link
                     to="/admin/products"
                     className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
@@ -448,15 +510,14 @@ className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-
                     <Users size={20} />
                     <span>Users</span>
                   </Link>
-                
                   <Link
-  to="/admin/constitution"
- className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
- onClick={() => setMobileMenu(false)}
->
-  <BookOpen size={20} />
-  <span>Admin Constitution</span>
-</Link>
+                    to="/admin/constitution"
+                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}
+                  >
+                    <BookOpen size={20} />
+                    <span>Admin Constitution</span>
+                  </Link>
                 </>
               )}
 
