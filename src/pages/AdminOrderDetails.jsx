@@ -393,7 +393,13 @@ export default function AdminOrderDetails() {
             )}
           </div>
         </div>
-
+{/* Deadlines */}
+<div className="bg-white p-6 rounded-lg border">
+  <h2 className="font-semibold mb-4">Timers</h2>
+  {order.ship_deadline && <p>Ship by: {new Date(order.ship_deadline).toLocaleString()}</p>}
+  {order.auto_complete_at && <p>Auto‑complete: {new Date(order.auto_complete_at).toLocaleString()}</p>}
+  {order.auto_cancel_at && <p>Auto‑cancel: {new Date(order.auto_cancel_at).toLocaleString()}</p>}
+</div>
         {/* RESOLUTION FORM (only for disputed orders) */}
         {order.status === "DISPUTED" && (
           <div className="bg-white rounded-lg border p-6 mt-6">

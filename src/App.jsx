@@ -43,6 +43,7 @@ import Policies from './pages/policies.jsx';
 import Terms from "./pages/Terms";
 import AdminUserDetails from "./pages/AdminUserDetails";
 import OrderSuccess from "./pages/OrderSuccess.jsx"
+import MultiCheckout from './pages/MultiCheckout';
 
 export default function App() {
   useEffect(() => {
@@ -214,7 +215,7 @@ export default function App() {
           <Route path="/order-success/:id" element={<OrderSuccess />} />
 
 
-
+<Route path="/checkout/multi" element={<MultiCheckout />} />
 
       </Routes>
 

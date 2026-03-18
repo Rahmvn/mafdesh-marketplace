@@ -5,20 +5,19 @@ import Footer from "../components/Footer";
 import { supabase } from "../supabaseClient";
 
 export default function Cart() {
-
   const navigate = useNavigate();
 
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cartId, setCartId] = useState(null);
   const [stockIssues, setStockIssues] = useState([]);
+  const [removedItems, setRemovedItems] = useState([]);
 
   useEffect(() => {
     loadCart();
   }, []);
 
   const loadCart = async () => {
-
     const { data: sessionData } = await supabase.auth.getSession();
 
     if (!sessionData.session) {
@@ -28,35 +27,28 @@ export default function Cart() {
 
     const userId = sessionData.session.user.id;
 
-    /* get cart */
-
-    const { data: cart } = await supabase
+    // Get or create cart
+    let { data: cart } = await supabase
       .from("carts")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
 
-  if (!cart) {
-  const { data: newCart } = await supabase
-    .from("carts")
-    .insert({
-      user_id: userId
-    })
-    .select()
-    .single();
+    if (!cart) {
+      const { data: newCart } = await supabase
+        .from("carts")
+        .insert({ user_id: userId })
+        .select()
+        .single();
+      setCartId(newCart.id);
+      setCartItems([]);
+      setLoading(false);
+      return;
+    }
+    setCartId(cart.id);
 
-  setCartId(newCart.id);
-  setCartItems([]);
-  setLoading(false);
-  return;
-
-}
-setCartId(cart.id);
-   
-
-/* get cart items */
-
-    const { data, error } = await supabase
+    // Get cart items with product details
+    const { data: items, error } = await supabase
       .from("cart_items")
       .select(`
         *,
@@ -73,91 +65,108 @@ setCartId(cart.id);
 
     if (error) {
       console.error(error);
-    } else {
-      setCartItems(data);
+      setLoading(false);
+      return;
     }
 
+    // Check current stock for each item and remove if out of stock
+    const validItems = [];
+    const removed = [];
+    for (const item of items) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("stock_quantity")
+        .eq("id", item.product_id)
+        .single();
+
+      if (product?.stock_quantity > 0) {
+        validItems.push(item);
+      } else {
+        // Remove from cart
+        await supabase.from("cart_items").delete().eq("id", item.id);
+        removed.push(item.products?.name || "Product");
+      }
+    }
+
+    if (removed.length > 0) {
+      setRemovedItems(removed);
+    }
+    setCartItems(validItems);
     setLoading(false);
   };
 
   const removeItem = async (id) => {
-
     const confirm = window.confirm("Remove item from cart?");
     if (!confirm) return;
 
-    await supabase
-      .from("cart_items")
-      .delete()
-      .eq("id", id);
-
+    await supabase.from("cart_items").delete().eq("id", id);
     loadCart();
   };
 
-const updateQuantity = async (item, change) => {
+  const updateQuantity = async (item, change) => {
+    const newQty = item.quantity + change;
 
-  const newQty = item.quantity + change;
+    if (newQty < 1) return;
 
-  if (newQty < 1) return;
-
-  if (newQty > item.products.stock_quantity) {
-    alert("Only " + item.products.stock_quantity + " items available");
-    return;
-  }
-
-  await supabase
-    .from("cart_items")
-    .update({ quantity: newQty })
-    .eq("id", item.id);
-
-  loadCart();
-
-  window.dispatchEvent(new Event("cartUpdated"));
-};
-
-
-const checkCartStock = async () => {
-  const issues = [];
-  for (const item of cartItems) {
-    const { data, error } = await supabase
-      .from('products')
-      .select('stock_quantity')
-      .eq('id', item.products.id)
-      .single();
-
-    if (data && data.stock_quantity < item.quantity) {
-      issues.push({
-        name: item.products.name,
-        available: data.stock_quantity,
-        requested: item.quantity
-      });
+    if (newQty > item.products.stock_quantity) {
+      alert("Only " + item.products.stock_quantity + " items available");
+      return;
     }
-  }
-  setStockIssues(issues);
-};
 
-useEffect(() => {
-  if (cartItems.length) {
-    checkCartStock();
-  }
-}, [cartItems]);
+    await supabase
+      .from("cart_items")
+      .update({ quantity: newQty })
+      .eq("id", item.id);
+
+    loadCart();
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const checkCartStock = async () => {
+    const issues = [];
+    for (const item of cartItems) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('stock_quantity')
+        .eq('id', item.products.id)
+        .single();
+
+      if (data && data.stock_quantity < item.quantity) {
+        issues.push({
+          name: item.products.name,
+          available: data.stock_quantity,
+          requested: item.quantity
+        });
+      }
+    }
+    setStockIssues(issues);
+  };
+
+  useEffect(() => {
+    if (cartItems.length) {
+      checkCartStock();
+    }
+  }, [cartItems]);
 
   const getTotal = () => {
-
     let total = 0;
-
     cartItems.forEach(item => {
       total += item.products.price * item.quantity;
     });
-
     return total;
   };
 
- const checkout = () => {
+const checkout = () => {
   if (cartItems.length === 0) {
     alert("Cart is empty");
     return;
   }
-  alert("Multi‑item checkout coming soon! For now, please buy items individually.");
+  if (stockIssues.length > 0) {
+    alert("Please resolve stock issues before checkout.");
+    return;
+  }
+  // Navigate to multi-checkout with cart items
+  navigate('/checkout/multi', { state: { cartItems } });
 };
 
   if (loading) {
@@ -170,32 +179,35 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
-
       <Navbar />
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-
         <h1 className="text-2xl font-bold text-blue-900 mb-6">
           Shopping Cart
         </h1>
 
-        {cartItems.length === 0 ? (
+        {removedItems.length > 0 && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+            <p className="text-orange-700 font-semibold">Some items were removed because they are out of stock:</p>
+            <ul className="list-disc pl-5 mt-2 text-orange-600">
+              {removedItems.map((name, idx) => (
+                <li key={idx}>{name}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
+        {cartItems.length === 0 ? (
           <div className="bg-white p-8 rounded-xl border text-center">
             <p>Your cart is empty.</p>
           </div>
-
         ) : (
-
           <div className="space-y-6">
-
             {cartItems.map(item => (
-
               <div
                 key={item.id}
                 className="bg-white p-4 rounded-xl border flex gap-4"
               >
-
                 <img
                   src={item.products?.images?.[0]}
                   alt={item.products?.name}
@@ -203,35 +215,29 @@ useEffect(() => {
                 />
 
                 <div className="flex-1">
-
                   <p className="font-semibold text-blue-900">
                     {item.products?.name}
                   </p>
-
                   <p className="text-orange-600 font-bold">
                     ₦{Number(item.products?.price).toLocaleString()}
                   </p>
 
                   <div className="flex items-center gap-3 mt-3">
-
                     <button
                       onClick={() => updateQuantity(item, -1)}
                       className="px-3 py-1 bg-gray-200 rounded"
                     >
                       -
                     </button>
-
                     <span>{item.quantity}</span>
-
-                   <button
-  disabled={item.quantity >= item.products.stock_quantity}
-  onClick={() => updateQuantity(item, 1)}
->
+                    <button
+                      disabled={item.quantity >= item.products.stock_quantity}
+                      onClick={() => updateQuantity(item, 1)}
+                      className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                    >
                       +
                     </button>
-
                   </div>
-
                 </div>
 
                 <button
@@ -240,44 +246,36 @@ useEffect(() => {
                 >
                   Remove
                 </button>
-
               </div>
-
             ))}
 
             <div className="bg-white p-6 rounded-xl border">
-
               <p className="text-lg font-bold">
                 Total: ₦{getTotal().toLocaleString()}
               </p>
-  {stockIssues.length > 0 && (
-  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-    <p className="text-red-700 font-semibold mb-2">Some items have stock issues:</p>
-    {stockIssues.map((issue, idx) => (
-      <p key={idx} className="text-sm text-red-600">
-        • {issue.name}: only {issue.available} available, you have {issue.requested}
-      </p>
-    ))}
-  </div>
-)}
-             <button
-  onClick={checkout}
-  disabled={cartItems.length === 0 || stockIssues.length > 0}
-  className="mt-4 w-full bg-orange-600 text-white py-3 rounded-lg disabled:opacity-50"
->
-  Proceed to Checkout
-</button>
-
+              {stockIssues.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <p className="text-red-700 font-semibold mb-2">Some items have stock issues:</p>
+                  {stockIssues.map((issue, idx) => (
+                    <p key={idx} className="text-sm text-red-600">
+                      • {issue.name}: only {issue.available} available, you have {issue.requested}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={checkout}
+                disabled={cartItems.length === 0 || stockIssues.length > 0}
+                className="mt-4 w-full bg-orange-600 text-white py-3 rounded-lg disabled:opacity-50"
+              >
+                Proceed to Checkout
+              </button>
             </div>
-
           </div>
-
         )}
-
       </main>
 
       <Footer />
-
     </div>
   );
 }

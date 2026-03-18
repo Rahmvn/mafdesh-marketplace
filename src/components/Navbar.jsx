@@ -234,13 +234,7 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
                   <Users size={18} />
                   <span>Users</span>
                 </Link>
-                <Link
-                  to="/admin/approvals"
-                  className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
-                >
-                  <CheckCircle size={18} />
-                  <span>Approvals</span>
-                </Link>
+                
                 <Link
   to="/admin/constitution"
   className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
@@ -376,7 +370,7 @@ className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibo
               {userRole === 'seller' && (
                 <>
                   <Link
-                    to="/seller/dashboard"
+                    to="/seller/products"
                     className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
                     onClick={() => setMobileMenu(false)}
                   >
@@ -454,14 +448,7 @@ className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-
                     <Users size={20} />
                     <span>Users</span>
                   </Link>
-                  <Link
-                    to="/admin/approvals"
-                    className="flex items-center gap-3 text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <CheckCircle size={20} />
-                    <span>Approvals</span>
-                  </Link>
+                
                   <Link
   to="/admin/constitution"
  className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"

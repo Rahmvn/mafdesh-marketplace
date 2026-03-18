@@ -1,13 +1,13 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, AlertCircle, Search } from 'lucide-react';
+import { ArrowLeft, Upload, AlertCircle, Search, Plus, X } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { productService } from '../services/productService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
 import Footer from '../components/Footer';
-import {v4 as uuidv4} from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import ProductPreviewModal from '../components/ProductPreviewModal';
 
 export default function AddProduct() {
@@ -16,18 +16,19 @@ export default function AddProduct() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState(null);
 
-const [formData, setFormData] = useState({
-  name: '',
-  category: '',
-  price: '',
-  stock: '',
-  overview: '',
-  features: '',
-  specs: '',
-  images: [null, null, null, null, null],
-});
+  const [formData, setFormData] = useState({
+    name: '',
+    category: '',
+    price: '',
+    stock: '',
+    overview: '',
+    features: '',
+    specs: '',
+    images: [null, null, null, null, null],
+    pickupLocations: [], // new array for pickup locations
+  });
 
-
+  const [newLocation, setNewLocation] = useState(''); // for adding new pickup location
   const [errors, setErrors] = useState({});
   const [isUploading, setIsUploading] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
@@ -61,23 +62,22 @@ const [formData, setFormData] = useState({
     checkAuth();
   }, [navigate]);
 
-const handleImageChange = (index, file) => {
-  if (!file) return;
+  const handleImageChange = (index, file) => {
+    if (!file) return;
 
-  if (file.size > 3 * 1024 * 1024) {
-    alert("Each image must be less than 3MB");
-    return;
-  }
+    if (file.size > 3 * 1024 * 1024) {
+      alert("Each image must be less than 3MB");
+      return;
+    }
 
-  const updatedImages = [...formData.images];
-  updatedImages[index] = file;
+    const updatedImages = [...formData.images];
+    updatedImages[index] = file;
 
-  setFormData(prev => ({
-    ...prev,
-    images: updatedImages
-  }));
-};
-
+    setFormData(prev => ({
+      ...prev,
+      images: updatedImages
+    }));
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -87,46 +87,64 @@ const handleImageChange = (index, file) => {
     }
   };
 
-const validate = () => {
-  const newErrors = {};
+  // Pickup locations handlers
+  const addPickupLocation = () => {
+    if (newLocation.trim()) {
+      setFormData(prev => ({
+        ...prev,
+        pickupLocations: [...prev.pickupLocations, newLocation.trim()]
+      }));
+      setNewLocation('');
+    }
+  };
 
-  const requiredImages = formData.images.slice(0, 3);
+  const removePickupLocation = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      pickupLocations: prev.pickupLocations.filter((_, i) => i !== index)
+    }));
+  };
 
-  if (!formData.name.trim() || formData.name.trim().length < 5) {
-    newErrors.name = 'Product name must be at least 5 characters';
-  }
+  const validate = () => {
+    const newErrors = {};
 
-  if (formData.name.toLowerCase().includes('test')) {
-    newErrors.name = 'Invalid product name';
-  }
-  if (!formData.overview || formData.overview.length < 40) {
-  newErrors.overview = "Overview must be at least 40 characters";
-}
+    const requiredImages = formData.images.slice(0, 3);
 
-if (!formData.features || formData.features.split('\n').length < 3) {
-  newErrors.features = "Add at least 3 key features";
-}
+    if (!formData.name.trim() || formData.name.trim().length < 5) {
+      newErrors.name = 'Product name must be at least 5 characters';
+    }
 
-  if (!formData.category) {
-    newErrors.category = 'Category is required';
-  }
+    if (formData.name.toLowerCase().includes('test')) {
+      newErrors.name = 'Invalid product name';
+    }
+    if (!formData.overview || formData.overview.length < 40) {
+      newErrors.overview = "Overview must be at least 40 characters";
+    }
 
-  if (!formData.price || isNaN(formData.price) || parseFloat(formData.price) <= 0) {
-    newErrors.price = 'Enter a valid price';
-  }
+    if (!formData.features || formData.features.split('\n').length < 3) {
+      newErrors.features = "Add at least 3 key features";
+    }
 
-  if (!formData.stock || parseInt(formData.stock) < 0) {
-    newErrors.stock = 'Enter valid stock quantity';
-  }
+    if (!formData.category) {
+      newErrors.category = 'Category is required';
+    }
 
+    if (!formData.price || isNaN(formData.price) || parseFloat(formData.price) <= 0) {
+      newErrors.price = 'Enter a valid price';
+    }
 
-  if (requiredImages.some(img => img === null)) {
-    newErrors.images = 'At least 3 images are required';
-  }
+    if (!formData.stock || parseInt(formData.stock) < 0) {
+      newErrors.stock = 'Enter valid stock quantity';
+    }
 
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-};
+    if (requiredImages.some(img => img === null)) {
+      newErrors.images = 'At least 3 images are required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const confirmUpload = async () => {
     try {
       if (!validate() || !currentUser) return;
@@ -173,7 +191,8 @@ ${formData.specs}
         price: parseFloat(formData.price),
         stock_quantity: parseInt(formData.stock),
         is_approved: true, // default approved
-        images: uploadedUrls, // first image as main display
+        images: uploadedUrls,
+        pickup_locations: formData.pickupLocations, // save pickup locations
       };
 
       await productService.createProduct(productData);
@@ -187,12 +206,14 @@ ${formData.specs}
       setIsUploading(false);
     }
   };
-const handlePreview = () => {
-  if (!validate()) return;
 
-  setPreviewData(formData);
-  setShowPreview(true);
-};
+  const handlePreview = () => {
+    if (!validate()) return;
+
+    setPreviewData(formData);
+    setShowPreview(true);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
@@ -228,7 +249,6 @@ const handlePreview = () => {
               />
               {errors.name && <p className="text-sm text-orange-600 mt-1">{errors.name}</p>}
             </div>
-            
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
@@ -272,6 +292,7 @@ const handlePreview = () => {
                     )}
                   </div>
                 )}
+                {errors.category && <p className="text-sm text-orange-600 mt-1">{errors.category}</p>}
               </div>
 
               <div>
@@ -308,101 +329,143 @@ const handlePreview = () => {
               {errors.stock && <p className="text-sm text-orange-600 mt-1">{errors.stock}</p>}
             </div>
 
+            {/* Pickup Locations Section */}
             <div>
               <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Product Image <span className="text-orange-500">*</span>
+                Pickup Locations (Optional)
               </label>
-           <div className="space-y-4">
-  <p className="text-sm text-blue-600">
-    Upload at least 3 images. First image will be the main display.
-  </p>
+              <p className="text-sm text-blue-600 mb-2">
+                Add locations where buyers can pick up this item (e.g., malls, landmarks). Leave empty if not offering pickup.
+              </p>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="e.g., Ikeja City Mall"
+                  className="flex-1 px-4 py-2 border border-blue-200 rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={addPickupLocation}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+                >
+                  <Plus size={18} /> Add
+                </button>
+              </div>
+              <div className="space-y-2">
+                {formData.pickupLocations.map((loc, index) => (
+                  <div key={index} className="flex items-center gap-2 bg-blue-50 p-2 rounded">
+                    <span className="flex-1">{loc}</span>
+                    <button
+                      type="button"
+                      onClick={() => removePickupLocation(index)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-{formData.images.map((img, index) => (
-  <div key={index}>
-    <label className="block text-sm font-semibold text-blue-900 mb-1">
-      {index === 0
-        ? "Main Image (Required)"
-        : index < 3
-        ? `Image ${index + 1} (Required)`
-        : `Image ${index + 1} (Optional)`}
-    </label>
+            <div>
+              <label className="block text-sm font-semibold text-blue-900 mb-2">
+                Product Images <span className="text-orange-500">*</span>
+              </label>
+              <div className="space-y-4">
+                <p className="text-sm text-blue-600">
+                  Upload at least 3 images. First image will be the main display.
+                </p>
 
-    <input
-      type="file"
-      accept="image/*"
-      onChange={(e) => handleImageChange(index, e.target.files[0])}
-    />
-    {img && (
-      <img
-        src={URL.createObjectURL(img)}
-        alt="preview"
-        className="w-full max-h-[500px] object-contain rounded-lg border bg-white"
-      />
-    )}
-  </div>
-))}
-</div>
+                {formData.images.map((img, index) => (
+                  <div key={index}>
+                    <label className="block text-sm font-semibold text-blue-900 mb-1">
+                      {index === 0
+                        ? "Main Image (Required)"
+                        : index < 3
+                          ? `Image ${index + 1} (Required)`
+                          : `Image ${index + 1} (Optional)`}
+                    </label>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleImageChange(index, e.target.files[0])}
+                    />
+                    {img && (
+                      <img
+                        src={URL.createObjectURL(img)}
+                        alt="preview"
+                        className="w-full max-h-[500px] object-contain rounded-lg border bg-white mt-2"
+                      />
+                    )}
+                  </div>
+                ))}
+                {errors.images && <p className="text-sm text-orange-600 mt-1">{errors.images}</p>}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-blue-900 mb-2">
                 Product Description <span className="text-orange-500">*</span>
               </label>
-              <div>
-  <label className="block text-sm font-semibold text-blue-900 mb-2">
-    Product Overview *
-  </label>
-  <textarea
-    name="overview"
-    value={formData.overview}
-    onChange={handleChange}
-    placeholder="Clearly explain what this product is..."
-    rows="3"
-    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-  />
-</div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-blue-900 mb-2">
+                    Product Overview *
+                  </label>
+                  <textarea
+                    name="overview"
+                    value={formData.overview}
+                    onChange={handleChange}
+                    placeholder="Clearly explain what this product is..."
+                    rows="3"
+                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+                  />
+                  {errors.overview && <p className="text-sm text-orange-600 mt-1">{errors.overview}</p>}
+                  <p className="text-xs text-blue-600 mt-1">{formData.overview.length} characters</p>
+                </div>
 
-<div>
-  <label className="block text-sm font-semibold text-blue-900 mb-2">
-    Key Features * (List at least 3)
-  </label>
-  <textarea
-    name="features"
-    value={formData.features}
-    onChange={handleChange}
-    placeholder={`• Feature 1
-• Feature 2
-• Feature 3`}
-    rows="4"
-    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-  />
-</div>
+                <div>
+                  <label className="block text-sm font-semibold text-blue-900 mb-2">
+                    Key Features * (List at least 3)
+                  </label>
+                  <textarea
+                    name="features"
+                    value={formData.features}
+                    onChange={handleChange}
+                    placeholder={`• Feature 1\n• Feature 2\n• Feature 3`}
+                    rows="4"
+                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+                  />
+                  {errors.features && <p className="text-sm text-orange-600 mt-1">{errors.features}</p>}
+                </div>
 
-<div>
-  <label className="block text-sm font-semibold text-blue-900 mb-2">
-    Specifications (Optional)
-  </label>
-  <textarea
-    name="specs"
-    value={formData.specs}
-    onChange={handleChange}
-    placeholder="Size, weight, material, compatibility..."
-    rows="3"
-    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-  />
-</div>
-  {errors.overview && <p className="text-sm text-orange-600 mt-1">{errors.overview}</p>}
-  <p className="text-xs text-blue-600 mt-1">{formData.overview.length} characters</p>
-</div>
+                <div>
+                  <label className="block text-sm font-semibold text-blue-900 mb-2">
+                    Specifications (Optional)
+                  </label>
+                  <textarea
+                    name="specs"
+                    value={formData.specs}
+                    onChange={handleChange}
+                    placeholder="Size, weight, material, compatibility..."
+                    rows="3"
+                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
 
-{showPreview && (
-  <ProductPreviewModal
-    previewData={previewData}
-    onClose={() => setShowPreview(false)}
-    onConfirm={confirmUpload}
-    isUploading={isUploading}
-  />
-)}
+            {showPreview && (
+              <ProductPreviewModal
+                previewData={previewData}
+                onClose={() => setShowPreview(false)}
+                onConfirm={confirmUpload}
+                isUploading={isUploading}
+              />
+            )}
 
             <div className="flex gap-4 pt-4">
               <button
@@ -413,7 +476,7 @@ const handlePreview = () => {
                 Cancel
               </button>
               <button
-                type='button'
+                type="button"
                 onClick={handlePreview}
                 disabled={isUploading}
                 className="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors shadow-md disabled:opacity-50"

@@ -36,7 +36,8 @@ export default function PublicProducts() {
       const response = await fetch('/api/products/public');
       if (response.ok) {
         let data = await response.json();
-        let filtered = data.products || [];
+        // Filter out products with stock_quantity <= 0
+        let filtered = (data.products || []).filter(p => p.stock_quantity > 0);
 
         // Filter by category
         if (selectedCategory !== 'All Categories') {

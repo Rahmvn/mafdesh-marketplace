@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { productService } from '../services/productService';
 import { supabase } from '../supabaseClient';
-import { Search, Filter, Eye, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Filter, Eye, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react';
 
 export default function AdminProducts() {
   const navigate = useNavigate();
@@ -13,7 +13,7 @@ export default function AdminProducts() {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, approved, blocked
+  const [filter, setFilter] = useState('all'); // all, approved, pending
   const [searchTerm, setSearchTerm] = useState('');
   const [updating, setUpdating] = useState(false);
 
@@ -45,10 +45,10 @@ export default function AdminProducts() {
 
   const applyFilters = (productList, statusFilter, search) => {
     let filtered = productList;
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(p => 
-        statusFilter === 'approved' ? p.is_approved : !p.is_approved
-      );
+    if (statusFilter === 'approved') {
+      filtered = filtered.filter(p => p.is_approved);
+    } else if (statusFilter === 'pending') {
+      filtered = filtered.filter(p => !p.is_approved);
     }
     if (search) {
       const lowerSearch = search.toLowerCase();
@@ -78,23 +78,16 @@ export default function AdminProducts() {
 
     setUpdating(true);
     try {
-      // Update product via service
       await productService.toggleApproval(id, !currentStatus);
 
-      // Log to admin_actions
-      const { error: logError } = await supabase
-        .from('admin_actions')
-        .insert({
-          admin_id: admin.id,
-          order_id: null,
-          action_type: action.toUpperCase() + '_PRODUCT',
-          reason: `Product ${action.toLowerCase()}d`,
-          metadata: { product_id: id, new_status: !currentStatus },
-        });
+      await supabase.from('admin_actions').insert({
+        admin_id: admin.id,
+        order_id: null,
+        action_type: action.toUpperCase() + '_PRODUCT',
+        reason: `Product ${action.toLowerCase()}d`,
+        metadata: { product_id: id, new_status: !currentStatus },
+      });
 
-      if (logError) throw logError;
-
-      // Refresh list
       await loadProducts();
     } catch (error) {
       console.error(error);
@@ -109,23 +102,16 @@ export default function AdminProducts() {
 
     setUpdating(true);
     try {
-      // Delete product via service
       await productService.deleteProduct(id);
 
-      // Log to admin_actions
-      const { error: logError } = await supabase
-        .from('admin_actions')
-        .insert({
-          admin_id: admin.id,
-          order_id: null,
-          action_type: 'DELETE_PRODUCT',
-          reason: 'Product deleted permanently',
-          metadata: { product_id: id },
-        });
+      await supabase.from('admin_actions').insert({
+        admin_id: admin.id,
+        order_id: null,
+        action_type: 'DELETE_PRODUCT',
+        reason: 'Product deleted permanently',
+        metadata: { product_id: id },
+      });
 
-      if (logError) throw logError;
-
-      // Refresh list
       await loadProducts();
     } catch (error) {
       console.error(error);
@@ -147,13 +133,13 @@ export default function AdminProducts() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar onLogout={handleLogout} />
 
-      <main className="flex-1 max-w-6xl mx-auto p-6 w-full">
+      <main className="flex-1 max-w-7xl mx-auto p-6 w-full">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-blue-900">
             Product Management
           </h1>
           <div className="text-sm text-gray-600">
-            Total: {products.length} | Filtered: {filteredProducts.length}
+            Total: {products.length} | Pending: {products.filter(p => !p.is_approved).length}
           </div>
         </div>
 
@@ -168,7 +154,7 @@ export default function AdminProducts() {
             >
               <option value="all">All Products</option>
               <option value="approved">Approved Only</option>
-              <option value="blocked">Blocked Only</option>
+              <option value="pending">Pending Approval</option>
             </select>
           </div>
 
@@ -197,6 +183,7 @@ export default function AdminProducts() {
                   <th className="p-3 text-left">Product</th>
                   <th className="p-3 text-left">Price</th>
                   <th className="p-3 text-left">Seller</th>
+                  <th className="p-3 text-left">Last Updated</th>
                   <th className="p-3 text-center">Status</th>
                   <th className="p-3 text-center">Actions</th>
                 </tr>
@@ -245,6 +232,10 @@ export default function AdminProducts() {
                       </button>
                     </td>
 
+                    <td className="p-3 text-xs text-gray-500">
+                      {product.updated_at ? new Date(product.updated_at).toLocaleDateString() : '-'}
+                    </td>
+
                     <td className="p-3 text-center">
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
@@ -256,9 +247,9 @@ export default function AdminProducts() {
                         {product.is_approved ? (
                           <CheckCircle size={12} />
                         ) : (
-                          <XCircle size={12} />
+                          <Clock size={12} />
                         )}
-                        {product.is_approved ? 'APPROVED' : 'BLOCKED'}
+                        {product.is_approved ? 'APPROVED' : 'PENDING'}
                       </span>
                     </td>
 

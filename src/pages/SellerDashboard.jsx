@@ -155,7 +155,7 @@ Seller Dashboard
 
 </div>
 
-<button
+{/* <button
 onClick={() => navigate("/seller/products/new")}
 className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-lg flex items-center gap-2"
 >
@@ -163,7 +163,7 @@ className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-lg fle
 <Plus className="w-5 h-5" />
 Add Product
 
-</button>
+</button> */}
 
 </div>
 

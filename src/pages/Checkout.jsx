@@ -4,6 +4,16 @@ import { supabase } from '../supabaseClient';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
+// Helper to generate random order number
+const generateOrderNumber = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // avoid confusing characters
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+};
+
 export default function Checkout() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -13,6 +23,7 @@ export default function Checkout() {
   const [deliveryType, setDeliveryType] = useState("delivery");
   const [deliveryState, setDeliveryState] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [selectedPickup, setSelectedPickup] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -22,7 +33,7 @@ export default function Checkout() {
   const loadProduct = async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select('*, pickup_locations')
       .eq('id', id)
       .single();
 
@@ -37,7 +48,6 @@ export default function Checkout() {
     return 3000;
   };
 
-  // 1. Stock validation before creating order
   const validateStock = async () => {
     const { data, error } = await supabase
       .from('products')
@@ -45,22 +55,23 @@ export default function Checkout() {
       .eq('id', product.id)
       .single();
 
-    if (error || data.stock_quantity < 1) {
-      return false; // insufficient stock
-    }
+    if (error || data.stock_quantity < 1) return false;
     return true;
   };
 
   const handleConfirm = async () => {
-    // Validate delivery fields
     if (deliveryType === "delivery") {
       if (!deliveryState) return alert("Select delivery state");
       if (!deliveryAddress) return alert("Enter delivery address");
     }
+    if (deliveryType === "pickup") {
+      if (product.pickup_locations?.length > 0 && !selectedPickup) {
+        return alert("Please select a pickup location");
+      }
+    }
 
     setIsSubmitting(true);
 
-    // 2. Get current user
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       alert("Please log in");
@@ -69,7 +80,6 @@ export default function Checkout() {
     }
     const buyerId = sessionData.session.user.id;
 
-    // 3. Validate stock one last time
     const stockOk = await validateStock();
     if (!stockOk) {
       alert("Sorry, this item is out of stock.");
@@ -81,7 +91,10 @@ export default function Checkout() {
     const platformFee = Math.round(product.price * 0.05);
     const totalAmount = product.price + deliveryFee;
 
-    // 4. Create order with status 'PENDING'
+    // Generate friendly order number
+    const orderNumber = generateOrderNumber();
+
+    // Create order with selected pickup location if applicable
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
@@ -96,11 +109,12 @@ export default function Checkout() {
         delivery_state: deliveryType === "delivery" ? deliveryState : null,
         delivery_address: deliveryType === "delivery" ? deliveryAddress : null,
         delivery_type: deliveryType,
-        status: "PENDING"   // we use 'PENDING' to match deduct_stock expectation
+        selected_pickup_location: deliveryType === "pickup" ? selectedPickup : null,
+        order_number: orderNumber,
+        status: "PENDING"
       })
       .select()
       .single();
-      
 
     if (orderError) {
       console.error(orderError);
@@ -109,23 +123,41 @@ export default function Checkout() {
       return;
     }
 
-    // 5. Call atomic stock deduction function
-    const { data: success, error: deductError } = await supabase
-      .rpc('deduct_stock', { order_id: order.id });
+    // Call atomic stock deduction (via edge function)
+    try {
+      const token = sessionData.session.access_token;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ orderId: order.id }),
+        }
+      );
 
-    if (deductError || !success) {
-      // Stock deduction failed (insufficient stock or already processed)
-      console.error(deductError || 'Stock deduction failed');
-      alert("Sorry, this item is no longer available. Your order has been cancelled.");
-      // Optionally delete the pending order
-      await supabase.from('orders').delete().eq('id', order.id);
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          alert('Sorry, this item is no longer available. Your order has been cancelled.');
+          await supabase.from('orders').delete().eq('id', order.id);
+        } else {
+          alert('Payment confirmation failed. Please contact support.');
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Success – redirect to order confirmation page
+      navigate(`/order-success/${order.id}`);
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred. Please try again.');
       setIsSubmitting(false);
-      return;
     }
-
-    // 6. Success – navigate to order confirmation page
-    navigate(`/order-success/${order.id}`);
-    setIsSubmitting(false);
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -162,34 +194,60 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* DELIVERY METHOD */}
-            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
-              <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setDeliveryType("delivery")}
-                  className={`px-4 py-2 rounded-lg border ${
-                    deliveryType === "delivery"
-                      ? "border-orange-500 bg-orange-50 text-orange-600"
-                      : "border-blue-200 text-blue-700"
-                  }`}
-                >
-                  Delivery
-                </button>
-                <button
-                  onClick={() => setDeliveryType("pickup")}
-                  className={`px-4 py-2 rounded-lg border ${
-                    deliveryType === "pickup"
-                      ? "border-orange-500 bg-orange-50 text-orange-600"
-                      : "border-blue-200 text-blue-700"
-                  }`}
-                >
-                  Pickup
-                </button>
-              </div>
-            </div>
+           {/* DELIVERY METHOD */}
+<div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
+  <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
+  <div className="flex gap-4">
+    <button
+      onClick={() => setDeliveryType("delivery")}
+      className={`px-4 py-2 rounded-lg border ${
+        deliveryType === "delivery"
+          ? "border-orange-500 bg-orange-50 text-orange-600"
+          : "border-blue-200 text-blue-700"
+      }`}
+    >
+      Delivery
+    </button>
 
-            {/* DELIVERY ADDRESS */}
+    {product.pickup_locations?.length > 0 && (
+      <button
+        onClick={() => setDeliveryType("pickup")}
+        className={`px-4 py-2 rounded-lg border ${
+          deliveryType === "pickup"
+            ? "border-orange-500 bg-orange-50 text-orange-600"
+            : "border-blue-200 text-blue-700"
+        }`}
+      >
+        Pickup
+      </button>
+    )}
+  </div>
+
+  {/* Pickup location dropdown */}
+  {deliveryType === "pickup" && product.pickup_locations?.length > 0 && (
+    <div className="mt-4">
+      <label className="block text-sm font-semibold text-blue-900 mb-2">
+        Select Pickup Location
+      </label>
+      <select
+        value={selectedPickup}
+        onChange={(e) => setSelectedPickup(e.target.value)}
+        className="w-full border border-blue-200 rounded-lg p-3"
+        required
+      >
+        <option value="">Choose a pickup point</option>
+        {product.pickup_locations.map((loc, idx) => (
+          <option key={idx} value={loc}>{loc}</option>
+        ))}
+      </select>
+      <p className="text-sm text-gray-500 mt-2">
+        The seller has up to 72 hours to prepare your item for pickup. You'll be notified when it's ready.
+      </p>
+    </div>
+  )}
+</div>
+
+            {/* DELIVERY ADDRESS (if delivery) */}
             {deliveryType === "delivery" && (
               <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4">
                 <h2 className="font-semibold text-blue-900">Delivery Details</h2>

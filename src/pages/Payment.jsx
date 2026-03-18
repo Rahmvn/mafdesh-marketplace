@@ -65,6 +65,13 @@ const handlePayment = async () => {
   } finally {
     setProcessing(false);
   }
+
+const { error: deadlineError } = await supabase
+  .from('orders')
+  .update({
+    ship_deadline: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString()
+  })
+  .eq('id', order.id);
 };
 
 
