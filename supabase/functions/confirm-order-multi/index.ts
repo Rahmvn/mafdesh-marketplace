@@ -2,9 +2,6 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 serve(async (req) => {
-  // Log request method
-  console.log('Request method:', req.method);
-
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -16,7 +13,6 @@ serve(async (req) => {
   }
 
   try {
-    // Log headers (excluding sensitive ones)
     console.log('Auth header present:', !!req.headers.get('Authorization'));
 
     const authHeader = req.headers.get('Authorization')
@@ -94,47 +90,46 @@ serve(async (req) => {
 
     // Call the RPC
     console.log('Calling deduct_stock_bulk RPC');
-const { data: success, error: rpcError } = await supabaseAdmin.rpc('deduct_stock_bulk', {
-  p_order_id: orderId,   // note: key must match function parameter name
-});
-if (rpcError) {
-  console.error('RPC error details:', rpcError);
-  return new Response(JSON.stringify({ 
-    error: rpcError.message, 
-    details: rpcError,
-    hint: 'Check RPC function logic and database logs'
-  }), {
-    status: 500,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-  });
-}
+    const { data: success, error: rpcError } = await supabaseAdmin.rpc('deduct_stock_bulk', {
+      p_order_id: orderId,
+    });
+    if (rpcError) {
+      console.error('RPC error details:', rpcError);
+      return new Response(JSON.stringify({ 
+        error: rpcError.message, 
+        details: rpcError,
+        hint: 'Check RPC function logic and database logs'
+      }), {
+        status: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
-if (!success) {
-  console.log('RPC returned false – insufficient stock or order not PENDING');
-  return new Response(JSON.stringify({ error: 'Cannot complete order' }), {
-    status: 409,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-  });
-}
+    if (!success) {
+      console.log('RPC returned false – insufficient stock or order not PENDING');
+      return new Response(JSON.stringify({ error: 'Cannot complete order' }), {
+        status: 409,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     console.log('Stock deducted successfully');
 
-    // Optionally set ship_deadline
-    const { data: order } = await supabaseAdmin
-      .from('orders')
-      .select('delivery_type')
-      .eq('id', orderId)
-      .single()
+// Always set ship_deadline for all orders (48h)
+const { data: order } = await supabaseAdmin
+  .from('orders')
+  .select('delivery_type')
+  .eq('id', orderId)
+  .single()
 
-    if (order && order.delivery_type === 'delivery') {
-      await supabaseAdmin
-        .from('orders')
-        .update({
-          ship_deadline: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString()
-        })
-        .eq('id', orderId)
-      console.log('Ship deadline set');
-    }
+if (order) {
+  await supabaseAdmin
+    .from('orders')
+    .update({
+      ship_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    })
+    .eq('id', orderId)
+}
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

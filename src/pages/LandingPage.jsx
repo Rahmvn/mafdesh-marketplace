@@ -21,16 +21,14 @@ export default function LandingPage() {
   useEffect(() => {
     loadProducts();
   }, []);
-  const loadProducts = async () => {
+const loadProducts = async () => {
   setIsLoading(true);
-
   const { data, error } = await supabase
     .from('products')
     .select('*')
+    .gt('stock_quantity', 0)  // 👈 only show in‑stock products
     .order('created_at', { ascending: false });
-
   if (!error) setProducts(data || []);
-
   setIsLoading(false);
 };
  

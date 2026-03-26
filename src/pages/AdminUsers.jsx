@@ -11,7 +11,7 @@ import {
   UserCheck,
   UserX,
   AlertCircle,
-  ChevronDown,
+  CheckCircle,
 } from "lucide-react";
 
 export default function AdminUsers() {
@@ -53,7 +53,6 @@ export default function AdminUsers() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // Fetch all users from 'users' table with profile data
       const { data: usersData, error } = await supabase
         .from("users")
         .select(`
@@ -64,6 +63,8 @@ export default function AdminUsers() {
           business_name,
           status,
           created_at,
+          is_verified,
+          verification_expiry,
           profiles!inner (
             full_name,
             username,
@@ -73,7 +74,6 @@ export default function AdminUsers() {
 
       if (error) throw error;
 
-      // For each user, get dispute history counts from the view
       const usersWithHistory = await Promise.all(
         (usersData || []).map(async (user) => {
           const { data: history } = await supabase
@@ -132,43 +132,6 @@ export default function AdminUsers() {
     applyFilters(users, roleFilter, term);
   };
 
-  const updateUserRole = async (userId, newRole) => {
-    if (!window.confirm(`Change user role to ${newRole}? This action will be logged.`)) return;
-
-    setUpdating(true);
-    try {
-      // Update users table
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ role: newRole })
-        .eq("id", userId);
-
-      if (updateError) throw updateError;
-
-      // Log to admin_actions
-      const { error: logError } = await supabase
-        .from("admin_actions")
-        .insert({
-          admin_id: admin.id,
-          order_id: null, // not order-related
-          action_type: "UPDATE_USER_ROLE",
-          reason: `Changed role to ${newRole}`,
-          metadata: { user_id: userId, new_role: newRole },
-        });
-
-      if (logError) throw logError;
-
-      // Refresh list
-      await loadUsers();
-      alert("User role updated successfully");
-    } catch (err) {
-      console.error("Error updating role:", err);
-      alert("Failed to update role");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const toggleUserStatus = async (userId, currentStatus) => {
     const newStatus = currentStatus === "active" ? "suspended" : "active";
     const action = newStatus === "active" ? "Activate" : "Suspend";
@@ -184,7 +147,6 @@ export default function AdminUsers() {
 
       if (updateError) throw updateError;
 
-      // Log
       await supabase.from("admin_actions").insert({
         admin_id: admin.id,
         order_id: null,
@@ -198,6 +160,38 @@ export default function AdminUsers() {
     } catch (err) {
       console.error("Error toggling status:", err);
       alert("Failed to update status");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const toggleVerification = async (userId, currentVerified) => {
+    const newVerified = !currentVerified;
+    const action = newVerified ? "Verify" : "Unverify";
+    if (!window.confirm(`${action} this seller? This action will be logged.`)) return;
+
+    setUpdating(true);
+    try {
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ is_verified: newVerified })
+        .eq("id", userId);
+
+      if (updateError) throw updateError;
+
+      await supabase.from("admin_actions").insert({
+        admin_id: admin.id,
+        order_id: null,
+        action_type: action.toUpperCase() + "_USER",
+        reason: `Seller ${action.toLowerCase()}ed`,
+        metadata: { user_id: userId, new_verified: newVerified },
+      });
+
+      await loadUsers();
+      alert(`Seller ${action.toLowerCase()}ed successfully`);
+    } catch (err) {
+      console.error("Error toggling verification:", err);
+      alert("Failed to update verification");
     } finally {
       setUpdating(false);
     }
@@ -225,7 +219,6 @@ export default function AdminUsers() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="bg-white rounded-lg border p-4 mb-6 flex flex-wrap gap-4 items-center">
           <div className="flex items-center gap-2">
             <Filter size={18} className="text-gray-500" />
@@ -253,7 +246,6 @@ export default function AdminUsers() {
           </div>
         </div>
 
-        {/* Flagged Users Alert */}
         {filteredUsers.filter(u => u.dispute_count > 3).length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-3">
             <AlertCircle size={20} className="text-red-600" />
@@ -263,24 +255,25 @@ export default function AdminUsers() {
           </div>
         )}
 
-        {/* Users Table */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
+        {/* Scrollable table container */}
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full text-sm min-w-[800px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="p-3 text-left">User</th>
                 <th className="p-3 text-left">Contact</th>
                 <th className="p-3 text-left">Role</th>
                 <th className="p-3 text-left">Status</th>
+                <th className="p-3 text-left">Verified</th>
                 <th className="p-3 text-left">Disputes</th>
                 <th className="p-3 text-left">Joined</th>
                 <th className="p-3 text-left">Actions</th>
-              </tr>
+               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-6 text-center text-gray-500">
+                  <td colSpan="8" className="p-6 text-center text-gray-500">
                     No users found.
                   </td>
                 </tr>
@@ -297,16 +290,7 @@ export default function AdminUsers() {
                       <div className="text-xs text-gray-500">{user.location || "—"}</div>
                     </td>
                     <td className="p-3">
-                      <select
-                        value={user.role}
-                        onChange={(e) => updateUserRole(user.id, e.target.value)}
-                        disabled={updating}
-                        className="border rounded p-1 text-xs"
-                      >
-                        <option value="buyer">Buyer</option>
-                        <option value="seller">Seller</option>
-                        <option value="admin">Admin</option>
-                      </select>
+                      <span className="capitalize">{user.role}</span>
                     </td>
                     <td className="p-3">
                       <span
@@ -323,6 +307,17 @@ export default function AdminUsers() {
                         )}
                         {user.status || "active"}
                       </span>
+                    </td>
+                    <td className="p-3">
+                      {user.is_verified ? (
+                        <span className="inline-flex items-center gap-1 text-green-600">
+                          <CheckCircle size={14} /> Yes
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-gray-500">
+                          No
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
                       <div className="text-sm">
@@ -356,6 +351,19 @@ export default function AdminUsers() {
                         >
                           {user.status === "active" ? "Suspend" : "Activate"}
                         </button>
+                        {user.role === "seller" && (
+                          <button
+                            onClick={() => toggleVerification(user.id, user.is_verified)}
+                            disabled={updating}
+                            className={`text-xs ${
+                              user.is_verified
+                                ? "text-red-600 hover:underline"
+                                : "text-green-600 hover:underline"
+                            }`}
+                          >
+                            {user.is_verified ? "Unverify" : "Verify"}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

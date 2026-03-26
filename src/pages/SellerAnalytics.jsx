@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, Eye, ShoppingCart, DollarSign, Users, BarChart3, Shield, Lock, Download, Calendar, Moon, Sun, RefreshCw, Filter } from 'lucide-react';
 import Navbar from '../components/Navbar';

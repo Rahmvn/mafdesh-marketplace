@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet, AlertCircle, BookOpen } from "lucide-react";
+import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet, AlertCircle, BookOpen, CreditCard } from "lucide-react";
 import { supabase } from '../supabaseClient';
 
 export default function Navbar({ onLogout }) {
@@ -267,6 +267,13 @@ export default function Navbar({ onLogout }) {
                 </Link>
               </>
             )}
+            <Link
+  to="/admin/bank-approvals"
+  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+>
+  <CreditCard size={18} />
+  <span>Bank Approvals</span>
+</Link>
 
             <Link
               to="/support"
@@ -520,6 +527,8 @@ export default function Navbar({ onLogout }) {
                   </Link>
                 </>
               )}
+              <Link to="/admin/bank-approvals"  className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
+                    onClick={() => setMobileMenu(false)}>    <CreditCard size={18} />   <span>Bank Change Requests</span></Link>
 
               <Link
                 to="/profile"

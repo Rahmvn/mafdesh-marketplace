@@ -3,12 +3,22 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { Search, Filter, Clock, Package, Truck, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 export default function BuyerOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [orderItemsMap, setOrderItemsMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [now, setNow] = useState(new Date());
+
+  // Update current time every second for timers
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     loadOrders();
@@ -21,15 +31,12 @@ export default function BuyerOrders() {
       return;
     }
 
-    // Fetch orders, excluding PENDING (not paid)
+    // Fetch orders (excluding PENDING)
     const { data: ordersData, error: ordersError } = await supabase
       .from('orders')
-      .select(`
-        *,
-        products:products!orders_product_id_fkey (name, images)
-      `)
+      .select('*')
       .eq('buyer_id', user.id)
-      .neq('status', 'PENDING') // hide pending orders
+      .neq('status', 'PENDING')
       .order('created_at', { ascending: false });
 
     if (ordersError) {
@@ -42,25 +49,55 @@ export default function BuyerOrders() {
     const itemsMap = {};
 
     if (orderIds.length > 0) {
-      // Fetch order_items with product details
+      // Fetch order_items for multi‑item orders
       const { data: itemsData, error: itemsError } = await supabase
         .from('order_items')
         .select(`
-          *,
-          products:products!order_items_product_id_fkey (name, images)
+          order_id,
+          quantity,
+          price_at_time,
+          product:products (id, name, images)
         `)
         .in('order_id', orderIds);
 
       if (itemsError) {
         console.error('Order items error:', itemsError);
       } else {
-        // Group items by order_id
         itemsData.forEach(item => {
           if (!itemsMap[item.order_id]) {
             itemsMap[item.order_id] = [];
           }
           itemsMap[item.order_id].push(item);
         });
+      }
+
+      // Handle legacy single‑item orders without order_items
+      const legacyOrders = ordersData.filter(o => o.product_id && !itemsMap[o.id]);
+      if (legacyOrders.length > 0) {
+        const legacyProductIds = legacyOrders.map(o => o.product_id);
+        const { data: products, error: productsError } = await supabase
+          .from('products')
+          .select('id, name, images')
+          .in('id', legacyProductIds);
+
+        if (productsError) {
+          console.error('Products error:', productsError);
+        } else {
+          const productMap = {};
+          products.forEach(p => { productMap[p.id] = p; });
+
+          legacyOrders.forEach(order => {
+            const product = productMap[order.product_id];
+            if (product) {
+              itemsMap[order.id] = [{
+                order_id: order.id,
+                quantity: order.quantity,
+                price_at_time: order.product_price,
+                product: product
+              }];
+            }
+          });
+        }
       }
     }
 
@@ -69,18 +106,39 @@ export default function BuyerOrders() {
     setLoading(false);
   };
 
+  const formatRemaining = (deadline) => {
+    if (!deadline) return null;
+    const diff = new Date(deadline) - now;
+    if (diff <= 0) return 'Expired';
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  };
+
+  const getUrgencyClass = (deadline) => {
+    if (!deadline) return '';
+    const diff = new Date(deadline) - now;
+    if (diff <= 0) return 'text-red-600 font-bold';
+    const hours = diff / (1000 * 60 * 60);
+    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
+    if (hours < 24) return 'text-orange-600 font-semibold';
+    return 'text-gray-600';
+  };
+
   const handleConfirmDelivery = async (orderId) => {
     const confirmAction = window.confirm(
-      "Confirm that you received the item. You have inspected it and it matches the description."
+      "Confirm that you received the item(s). You have inspected them and they match the description."
     );
     if (!confirmAction) return;
 
     const { error } = await supabase
       .from("orders")
-      .update({
-        status: "DELIVERED",
-        delivered_at: new Date()
-      })
+      .update({ status: "DELIVERED", delivered_at: new Date() })
       .eq("id", orderId);
 
     if (error) {
@@ -112,98 +170,204 @@ export default function BuyerOrders() {
     loadOrders();
   };
 
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'COMPLETED': return 'bg-green-100 text-green-700';
+      case 'DELIVERED': return 'bg-purple-100 text-purple-700';
+      case 'SHIPPED': return 'bg-blue-100 text-blue-700';
+      case 'PAID_ESCROW': return 'bg-orange-100 text-orange-700';
+      case 'DISPUTED': return 'bg-red-100 text-red-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  // Filter orders based on search and status
+  const filteredOrders = orders.filter(order => {
+    if (statusFilter !== 'ALL' && order.status !== statusFilter) return false;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const items = orderItemsMap[order.id] || [];
+      const firstItemName = items[0]?.product?.name?.toLowerCase() || '';
+      const orderNumber = (order.order_number || order.id).toLowerCase();
+      return firstItemName.includes(term) || orderNumber.includes(term);
+    }
+    return true;
+  });
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-blue-50">
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-        <h1 className="text-2xl font-bold text-blue-900 mb-6">My Orders</h1>
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Orders</h1>
+          <p className="text-gray-600">Track and manage your purchases</p>
+        </div>
 
-        {orders.length === 0 ? (
-          <div className="bg-white p-8 rounded-xl border border-blue-100 text-center">
-            <p className="text-blue-700">You have no orders yet.</p>
+        {/* Search and Filter Bar */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px] relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by order number or product name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter size={18} className="text-gray-500" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg p-2 text-sm"
+            >
+              <option value="ALL">All Orders</option>
+              <option value="PAID_ESCROW">Payment Secured</option>
+              <option value="SHIPPED">Shipped</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="DISPUTED">Disputed</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        {filteredOrders.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No orders found</p>
+            <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filter</p>
           </div>
         ) : (
           <div className="space-y-6">
-            {orders.map(order => {
-              // Check if this order has items in order_items (multi‑item)
-              const items = orderItemsMap[order.id];
-              const isMultiItem = items && items.length > 0;
-              // Fallback to old single‑item data
-              const product = order.products;
-              const itemCount = isMultiItem ? items.length : 1;
-              const mainImage = isMultiItem
-                ? items[0]?.products?.images?.[0]
-                : product?.images?.[0];
-              const itemName = isMultiItem
-                ? `${items[0]?.products?.name}${items.length > 1 ? ` +${items.length - 1} more` : ''}`
-                : product?.name;
+            {filteredOrders.map(order => {
+              const items = orderItemsMap[order.id] || [];
+              const firstItem = items[0]?.product;
+              const mainImage = firstItem?.images?.[0] || '/placeholder.png';
+              const mainName = firstItem?.name || 'Product';
+              const itemCount = items.length;
+
+              // Determine action needed and timer
+              let actionNeeded = null;
+              let timerText = null;
+              let timerClass = '';
+
+              if (order.status === 'SHIPPED') {
+                actionNeeded = 'Confirm delivery';
+              } else if (order.status === 'READY_FOR_PICKUP') {
+                actionNeeded = 'Pick up items';
+                if (order.auto_cancel_at) {
+                  timerText = formatRemaining(order.auto_cancel_at);
+                  timerClass = getUrgencyClass(order.auto_cancel_at);
+                }
+              } else if (order.status === 'DELIVERED') {
+                actionNeeded = 'Confirm or dispute';
+                if (order.dispute_deadline) {
+                  timerText = formatRemaining(order.dispute_deadline);
+                  timerClass = getUrgencyClass(order.dispute_deadline);
+                }
+              }
 
               return (
-                <div
-                  key={order.id}
-                  className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm"
-                >
-                  <div className="flex flex-col md:flex-row gap-4 justify-between">
-                    {/* LEFT */}
-                    <div className="flex gap-4">
-                      <img
-                        src={mainImage || "/placeholder.png"}
-                        alt={itemName}
-                        className="w-20 h-20 object-contain border rounded-lg"
-                      />
-                      <div>
-                        <p className="font-semibold text-blue-900">{itemName}</p>
-                        <p className="text-sm text-blue-600 mt-1">
-                          ₦{Number(order.total_amount).toLocaleString()}
-                        </p>
-                        <p className="text-xs mt-2 text-gray-500">
-                          Ordered on {new Date(order.created_at).toLocaleDateString()}
-                        </p>
-                        {isMultiItem && (
-                          <p className="text-xs text-gray-500 mt-1">{items.length} items</p>
-                        )}
+                <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="p-5 flex flex-col md:flex-row gap-4">
+                    <img
+                      src={mainImage}
+                      alt={mainName}
+                      className="w-24 h-24 object-contain border rounded-lg"
+                    />
+                    <div className="flex-1">
+                      <div className="flex flex-wrap justify-between items-start gap-2">
+                        <div>
+                          <p className="font-semibold text-gray-900 text-lg">{mainName}</p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            Order #{order.order_number || order.id.slice(0,8)}
+                          </p>
+                          {itemCount > 1 && (
+                            <p className="text-xs text-gray-500 mt-1">{itemCount} items</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
+                            {order.status.replaceAll('_', ' ')}
+                          </span>
+                          <button
+                            onClick={() => navigate(`/buyer/orders/${order.id}`)}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            View Details →
+                          </button>
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      onClick={() => navigate(`/buyer/orders/${order.id}`)}
-                      className="text-blue-600 text-sm underline"
-                    >
-                      View Order
-                    </button>
+                      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                        <span className="text-gray-600">Total: <span className="font-bold text-gray-900">₦{Number(order.total_amount).toLocaleString()}</span></span>
+                        <span className="text-gray-600">Placed: {new Date(order.created_at).toLocaleDateString()}</span>
+                      </div>
 
-                    {/* RIGHT */}
-                    <div className="flex flex-col items-start md:items-end gap-3">
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        order.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                        order.status === 'DELIVERED' ? 'bg-purple-100 text-purple-700' :
-                        order.status === 'SHIPPED' ? 'bg-blue-100 text-blue-700' :
-                        order.status === 'PAID_ESCROW' ? 'bg-orange-100 text-orange-700' :
-                        order.status === 'DISPUTED' ? 'bg-red-100 text-red-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {order.status === "SHIPPED" && (
+                      {/* Timer and Action Buttons */}
+                      {timerText && (
+                        <div className="mt-3 flex items-center gap-2 text-sm">
+                          <Clock size={16} className={timerClass} />
+                          <span className={timerClass}>Time remaining: {timerText}</span>
+                        </div>
+                      )}
+
+                      {order.status === 'SHIPPED' && (
+                        <div className="mt-4 flex gap-3">
                           <button
                             onClick={() => handleConfirmDelivery(order.id)}
-                            className="bg-green-600 text-white px-4 py-2 rounded text-sm"
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
                           >
                             Confirm Delivery
                           </button>
-                        )}
-                        {order.status === "DELIVERED" && (
                           <button
                             onClick={() => handleReportIssue(order.id)}
-                            className="bg-red-600 text-white px-4 py-2 rounded text-sm"
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
                           >
-                            Report Problem
+                            Report Issue
                           </button>
-                        )}
-                        {order.status.replaceAll('_', ' ')}
-                      </span>
+                        </div>
+                      )}
+
+                      {order.status === 'READY_FOR_PICKUP' && (
+                        <div className="mt-4 flex gap-3">
+                          <button
+                            onClick={() => navigate(`/buyer/orders/${order.id}`)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                          >
+                            View Pickup Details
+                          </button>
+                          <button
+                            onClick={() => handleReportIssue(order.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                          >
+                            Report Issue
+                          </button>
+                        </div>
+                      )}
+
+                      {order.status === 'DELIVERED' && (
+                        <div className="mt-4 flex gap-3">
+                          <button
+                            onClick={() => handleConfirmDelivery(order.id)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                          >
+                            Confirm Delivery
+                          </button>
+                          <button
+                            onClick={() => handleReportIssue(order.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                          >
+                            Report Issue
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

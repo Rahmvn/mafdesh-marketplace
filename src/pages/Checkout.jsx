@@ -6,7 +6,7 @@ import Footer from '../components/Footer';
 
 // Helper to generate random order number
 const generateOrderNumber = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // avoid confusing characters
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
   for (let i = 0; i < 8; i++) {
     result += chars[Math.floor(Math.random() * chars.length)];
@@ -88,13 +88,11 @@ export default function Checkout() {
     }
 
     const deliveryFee = calculateDelivery();
-    const platformFee = Math.round(product.price * 0.05);
-    const totalAmount = product.price + deliveryFee;
+    const platformFee = Math.round(product.price * 0.05); // 5% platform fee (internal)
+    const totalAmount = product.price + deliveryFee; // Buyer pays product + delivery only
 
-    // Generate friendly order number
     const orderNumber = generateOrderNumber();
 
-    // Create order with selected pickup location if applicable
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert({
@@ -123,7 +121,6 @@ export default function Checkout() {
       return;
     }
 
-    // Call atomic stock deduction (via edge function)
     try {
       const token = sessionData.session.access_token;
       const response = await fetch(
@@ -151,7 +148,6 @@ export default function Checkout() {
         return;
       }
 
-      // Success – redirect to order confirmation page
       navigate(`/order-success/${order.id}`);
     } catch (err) {
       console.error(err);
@@ -194,58 +190,58 @@ export default function Checkout() {
               </div>
             </div>
 
-           {/* DELIVERY METHOD */}
-<div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
-  <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
-  <div className="flex gap-4">
-    <button
-      onClick={() => setDeliveryType("delivery")}
-      className={`px-4 py-2 rounded-lg border ${
-        deliveryType === "delivery"
-          ? "border-orange-500 bg-orange-50 text-orange-600"
-          : "border-blue-200 text-blue-700"
-      }`}
-    >
-      Delivery
-    </button>
+            {/* DELIVERY METHOD */}
+            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
+              <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setDeliveryType("delivery")}
+                  className={`px-4 py-2 rounded-lg border ${
+                    deliveryType === "delivery"
+                      ? "border-orange-500 bg-orange-50 text-orange-600"
+                      : "border-blue-200 text-blue-700"
+                  }`}
+                >
+                  Delivery
+                </button>
 
-    {product.pickup_locations?.length > 0 && (
-      <button
-        onClick={() => setDeliveryType("pickup")}
-        className={`px-4 py-2 rounded-lg border ${
-          deliveryType === "pickup"
-            ? "border-orange-500 bg-orange-50 text-orange-600"
-            : "border-blue-200 text-blue-700"
-        }`}
-      >
-        Pickup
-      </button>
-    )}
-  </div>
+                {product.pickup_locations?.length > 0 && (
+                  <button
+                    onClick={() => setDeliveryType("pickup")}
+                    className={`px-4 py-2 rounded-lg border ${
+                      deliveryType === "pickup"
+                        ? "border-orange-500 bg-orange-50 text-orange-600"
+                        : "border-blue-200 text-blue-700"
+                    }`}
+                  >
+                    Pickup
+                  </button>
+                )}
+              </div>
 
-  {/* Pickup location dropdown */}
-  {deliveryType === "pickup" && product.pickup_locations?.length > 0 && (
-    <div className="mt-4">
-      <label className="block text-sm font-semibold text-blue-900 mb-2">
-        Select Pickup Location
-      </label>
-      <select
-        value={selectedPickup}
-        onChange={(e) => setSelectedPickup(e.target.value)}
-        className="w-full border border-blue-200 rounded-lg p-3"
-        required
-      >
-        <option value="">Choose a pickup point</option>
-        {product.pickup_locations.map((loc, idx) => (
-          <option key={idx} value={loc}>{loc}</option>
-        ))}
-      </select>
-      <p className="text-sm text-gray-500 mt-2">
-        The seller has up to 72 hours to prepare your item for pickup. You'll be notified when it's ready.
-      </p>
-    </div>
-  )}
-</div>
+              {/* Pickup location dropdown */}
+              {deliveryType === "pickup" && product.pickup_locations?.length > 0 && (
+                <div className="mt-4">
+                  <label className="block text-sm font-semibold text-blue-900 mb-2">
+                    Select Pickup Location
+                  </label>
+                  <select
+                    value={selectedPickup}
+                    onChange={(e) => setSelectedPickup(e.target.value)}
+                    className="w-full border border-blue-200 rounded-lg p-3"
+                    required
+                  >
+                    <option value="">Choose a pickup point</option>
+                    {product.pickup_locations.map((loc, idx) => (
+                      <option key={idx} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                  <p className="text-sm text-gray-500 mt-2">
+                    The seller has up to 48 hours to prepare your item for pickup. You'll be notified when it's ready.
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* DELIVERY ADDRESS (if delivery) */}
             {deliveryType === "delivery" && (

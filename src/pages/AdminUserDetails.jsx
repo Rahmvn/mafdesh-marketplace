@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle } from "lucide-react";
+import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, CheckCircle } from "lucide-react";
 
 export default function AdminUserDetails() {
   const { id } = useParams();
@@ -19,24 +19,19 @@ export default function AdminUserDetails() {
   const loadUser = async () => {
     setLoading(true);
     try {
-      // Fetch user from users and profiles
+      // Fetch user data
       const { data: userData, error } = await supabase
         .from("users")
         .select(`
           *,
-          profiles!inner (
-            full_name,
-            username,
-            location
-          )
+          profiles!inner (full_name, username, location)
         `)
         .eq("id", id)
         .single();
-
       if (error) throw error;
 
-      // Fetch dispute history from orders where user is buyer or seller
-      const { data: disputesData } = await supabase
+      // Fetch dispute orders (both open and resolved)
+      const { data: disputesData, error: disputesError } = await supabase
         .from("orders")
         .select(`
           id,
@@ -47,11 +42,38 @@ export default function AdminUserDetails() {
           resolution_type,
           constitution_section,
           resolved_at,
-          product:products(name)
+          product_id
         `)
+        .or(`status.eq.DISPUTED,dispute_status.neq.none`)
         .or(`buyer_id.eq.${id},seller_id.eq.${id}`)
-        .neq("dispute_status", "none")
         .order("disputed_at", { ascending: false });
+
+      if (disputesError) throw disputesError;
+
+      // Enrich each order with product name
+      const enrichedDisputes = await Promise.all(
+        (disputesData || []).map(async (order) => {
+          let productName = "—";
+          if (order.product_id) {
+            // Single‑item order
+            const { data: prod } = await supabase
+              .from("products")
+              .select("name")
+              .eq("id", order.product_id)
+              .maybeSingle();
+            productName = prod?.name || "Unknown product";
+          } else {
+            // Multi‑item order – fetch first product name
+            const { data: items } = await supabase
+              .from("order_items")
+              .select("product:products(name)")
+              .eq("order_id", order.id)
+              .limit(1);
+            productName = items?.[0]?.product?.name || "Multiple items";
+          }
+          return { ...order, productName };
+        })
+      );
 
       setUser({
         ...userData,
@@ -59,7 +81,7 @@ export default function AdminUserDetails() {
         username: userData.profiles?.username,
         location: userData.profiles?.location,
       });
-      setDisputes(disputesData || []);
+      setDisputes(enrichedDisputes);
     } catch (err) {
       console.error("Error loading user:", err);
     } finally {
@@ -68,19 +90,11 @@ export default function AdminUserDetails() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading user...
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center">Loading user...</div>;
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        User not found
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center">User not found</div>;
   }
 
   return (
@@ -131,6 +145,19 @@ export default function AdminUserDetails() {
               </p>
             </div>
             <div>
+              <p className="text-sm text-gray-500">Verified Seller</p>
+              <p className="font-medium flex items-center gap-1">
+                {user.is_verified ? (
+                  <>
+                    <CheckCircle size={16} className="text-green-600" />
+                    <span className="text-green-600">Yes</span>
+                  </>
+                ) : (
+                  "No"
+                )}
+              </p>
+            </div>
+            <div>
               <p className="text-sm text-gray-500">Joined</p>
               <p className="font-medium">{new Date(user.created_at).toLocaleDateString()}</p>
             </div>
@@ -145,38 +172,46 @@ export default function AdminUserDetails() {
           {disputes.length === 0 ? (
             <p className="text-gray-500">No disputes found for this user.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="p-2 text-left">Order ID</th>
-                  <th className="p-2 text-left">Product</th>
-                  <th className="p-2 text-left">Reason</th>
-                  <th className="p-2 text-left">Resolution</th>
-                  <th className="p-2 text-left">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {disputes.map((d) => (
-                  <tr key={d.id} className="border-b">
-                    <td className="p-2">{d.id.slice(0, 8)}...</td>
-                    <td className="p-2">{d.product?.name || "—"}</td>
-                    <td className="p-2">{d.dispute_reason || "—"}</td>
-                    <td className="p-2">
-                      {d.resolution_type ? (
-                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                          {d.resolution_type} ({d.constitution_section})
-                        </span>
-                      ) : (
-                        "Pending"
-                      )}
-                    </td>
-                    <td className="p-2">
-                      {d.disputed_at ? new Date(d.disputed_at).toLocaleDateString() : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
+                <thead>
+                  <tr className="border-b">
+                    <th className="p-2 text-left">Order ID</th>
+                    <th className="p-2 text-left">Product</th>
+                    <th className="p-2 text-left">Reason</th>
+                    <th className="p-2 text-left">Resolution</th>
+                    <th className="p-2 text-left">Date</th>
+                   </tr>
+                </thead>
+                <tbody>
+                  {disputes.map((d) => (
+                    <tr key={d.id} className="border-b">
+                     <td className="p-2" title={d.id}>
+  {d.id.slice(0, 8)}...
+</td>
+                      <td className="p-2">{d.productName}</td>
+                      <td className="p-2">{d.dispute_reason || "—"}</td>
+                      <td className="p-2">
+                        {d.resolution_type ? (
+                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                            {d.resolution_type} ({d.constitution_section})
+                          </span>
+                        ) : d.status === "DISPUTED" ? (
+                          <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
+                            Open
+                          </span>
+                        ) : (
+                          "Pending"
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {d.disputed_at ? new Date(d.disputed_at).toLocaleDateString() : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </main>

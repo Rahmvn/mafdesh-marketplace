@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle, Shield, TrendingUp, Star, ArrowLeft, CreditCard, Lock, AlertCircle, Zap, Users, Award, Clock, Download } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { verificationAPI, authAPI } from '../services/api';
+import { supabase } from '../supabaseClient';
+
 
 export default function VerificationSubscription() {
   const navigate = useNavigate();
@@ -188,51 +189,81 @@ Website: www.mafdesh.com
     URL.revokeObjectURL(url);
   };
 
-  const handlePayment = async () => {
-    if (!isFormValid()) {
-      alert('Please fill in all payment details correctly.');
-      return;
+const handlePayment = async () => {
+  if (!isFormValid()) {
+    alert('Please fill in all payment details correctly.');
+    return;
+  }
+
+  if (!currentUser) {
+    alert('Error: User information not found. Please try again.');
+    return;
+  }
+
+  setProcessing(true);
+
+  try {
+    // Simulate payment processing delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Generate a fake reference and receipt data
+    const reference = `MAFDESH_VER_${Date.now()}`;
+    const expiresAt = new Date();
+    if (selectedPlan === 'yearly') {
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    } else {
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
     }
 
-    if (!currentUser) {
-      alert('Error: User information not found. Please try again.');
-      return;
-    }
+    // Update the users table to mark as verified
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        is_verified: true,
+        verification_expiry: expiresAt.toISOString()
+      })
+      .eq('id', currentUser.id);
 
-    setProcessing(true);
+    if (updateError) throw updateError;
 
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const reference = `MAFDESH_VER_${Date.now()}`;
-      
-      const response = await verificationAPI.verify(reference, selectedPlan);
-      
-      if (response.success) {
-        setReceipt(response.receipt);
-        
-        downloadReceipt(response.receipt);
-        
-        const updatedUserData = await authAPI.getCurrentUser();
-        const updatedUser = {
-          ...currentUser,
-          ...updatedUserData.user,
-          is_verified: true
-        };
-        localStorage.setItem('mafdesh_user', JSON.stringify(updatedUser));
-        setCurrentUser(updatedUser);
-        
-        setShowSuccess(true);
-      } else {
-        throw new Error('Payment verification failed');
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      alert('Payment failed. Please try again. If the problem persists, contact support@mafdesh.com');
-    } finally {
-      setProcessing(false);
-    }
-  };
+    // Optionally record the payment in verification_payments table
+    await supabase.from('verification_payments').insert({
+      seller_id: currentUser.id,
+      plan_type: selectedPlan,
+      amount: plans[selectedPlan].priceNum,
+      payment_reference: reference,
+      payment_status: 'successful',
+      expires_at: expiresAt.toISOString()
+    });
+
+    // Update local storage
+    const updatedUser = { ...currentUser, is_verified: true };
+    localStorage.setItem('mafdesh_user', JSON.stringify(updatedUser));
+    setCurrentUser(updatedUser);
+
+    // Prepare receipt data
+    const receiptData = {
+      paymentId: 'PAY-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+      reference: reference,
+      sellerName: currentUser.full_name || currentUser.business_name || 'Seller',
+      businessName: currentUser.business_name || 'N/A',
+      email: currentUser.email,
+      planType: selectedPlan,
+      amount: plans[selectedPlan].priceNum,
+      date: new Date().toISOString(),
+      expiresAt: expiresAt.toISOString()
+    };
+    setReceipt(receiptData);
+    downloadReceipt(receiptData);
+
+    setShowSuccess(true);
+  } catch (error) {
+    console.error('Payment error:', error);
+    alert('Payment simulation failed. Please try again.');
+  } finally {
+    setProcessing(false);
+  }
+};
   
   const handleSuccessClose = () => {
     navigate('/seller/dashboard');

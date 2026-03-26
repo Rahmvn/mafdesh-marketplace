@@ -45,6 +45,8 @@ import AdminUserDetails from "./pages/AdminUserDetails";
 import OrderSuccess from "./pages/OrderSuccess.jsx"
 import MultiCheckout from './pages/MultiCheckout';
 
+import AdminBankApprovals from './pages/AdminBankApprovals';
+
 export default function App() {
   useEffect(() => {
     runOrderAutomation();
@@ -216,6 +218,11 @@ export default function App() {
 
 
 <Route path="/checkout/multi" element={<MultiCheckout />} />
+<Route path="/admin/bank-approvals" element={
+  <ProtectedRoute allowedRoles={['admin']}>
+    <AdminBankApprovals />
+  </ProtectedRoute>
+} />
 
       </Routes>
 

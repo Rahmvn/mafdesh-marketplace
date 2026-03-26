@@ -72,33 +72,20 @@ export default function BuyerDashboard() {
 
 
 
-  const loadProducts = async () => {
-
-    try {
-
-      setIsLoading(true);
-
-
-
-      const data = await productService.getAllProducts();
-
-      console.log("GET ALL PRODUCTS RETURN:", data);
-
-
-
-      setProducts(data);
-
-    } catch (error) {
-
-      console.error('Error loading products:', error);
-
-    } finally {
-
-      setIsLoading(false);
-
-    }
-
-  };
+const loadProducts = async () => {
+  try {
+    setIsLoading(true);
+    const data = await productService.getAllProducts();
+    // Only keep products with stock > 0
+    const filtered = data.filter(p => p.stock_quantity > 0);
+    console.log("GET ALL PRODUCTS RETURN:", filtered);
+    setProducts(filtered);
+  } catch (error) {
+    console.error('Error loading products:', error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
 
 

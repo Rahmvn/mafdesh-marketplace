@@ -5,7 +5,6 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { MapPin, Truck } from 'lucide-react';
 
-// Helper to generate random order number
 const generateOrderNumber = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
@@ -25,11 +24,10 @@ export default function MultiCheckout() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Calculate totals (platform fee removed)
   const subtotal = cartItems.reduce((sum, item) => sum + item.products.price * item.quantity, 0);
   const deliveryFee = deliveryType === 'delivery' ? (deliveryState === 'Lagos' ? 2000 : deliveryState === 'Abuja' ? 2500 : 3000) : 0;
-  const platformFee = 0; // No platform fee
-  const total = subtotal + deliveryFee;
+  const platformFee = Math.round(subtotal * 0.05);
+  const total = subtotal + deliveryFee; // Buyer pays subtotal + delivery only
 
   const handleConfirm = async () => {
     if (deliveryType === 'delivery') {
@@ -47,20 +45,18 @@ export default function MultiCheckout() {
     }
     const buyerId = sessionData.session.user.id;
 
-    // Generate order number
     const orderNumber = generateOrderNumber();
 
-    // Create order (header)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
         buyer_id: buyerId,
-        seller_id: cartItems[0].products.seller_id, // For now, assume all items from same seller
+        seller_id: cartItems[0].products.seller_id,
         product_id: null,
         quantity: null,
         product_price: null,
         delivery_fee: deliveryFee,
-        platform_fee: platformFee, // set to 0
+        platform_fee: platformFee,
         total_amount: total,
         delivery_state: deliveryType === 'delivery' ? deliveryState : null,
         delivery_address: deliveryType === 'delivery' ? deliveryAddress : null,
@@ -78,7 +74,6 @@ export default function MultiCheckout() {
       return;
     }
 
-    // Create order items
     const orderItems = cartItems.map(item => ({
       order_id: order.id,
       product_id: item.product_id,
@@ -98,7 +93,6 @@ export default function MultiCheckout() {
       return;
     }
 
-    // Call edge function to process payment and deduct stock
     try {
       const token = sessionData.session.access_token;
       const response = await fetch(
@@ -126,8 +120,6 @@ export default function MultiCheckout() {
         return;
       }
 
-      // Success – clear cart and redirect
-      // Get cart id from first item (all belong to same cart)
       const cartId = cartItems[0].cart_id;
       for (const item of cartItems) {
         await supabase
@@ -142,7 +134,6 @@ export default function MultiCheckout() {
       console.error(err);
       alert('An error occurred. Please try again.');
       setIsSubmitting(false);
-    
     }
   };
 

@@ -2,7 +2,6 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -68,10 +67,10 @@ serve(async (req) => {
       })
     }
 
-    // Set ship_deadline for all orders (72 hours after payment)
+    // Set ship_deadline for all orders (48 hours after payment)
     const { data: order } = await supabaseAdmin
       .from('orders')
-      .select('delivery_type')
+      .select('id')
       .eq('id', orderId)
       .single()
 
@@ -79,7 +78,7 @@ serve(async (req) => {
       await supabaseAdmin
         .from('orders')
         .update({
-         ship_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+          ship_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
         })
         .eq('id', orderId)
     }

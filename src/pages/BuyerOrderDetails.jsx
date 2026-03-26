@@ -4,6 +4,8 @@ import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Phone } from "lucide-react";
+import VerificationBadge from "../components/VerificationBadge";
+import DisputeThread from "../components/DisputeThread";
 
 export default function BuyerOrderDetails() {
   const { id } = useParams();
@@ -13,6 +15,21 @@ export default function BuyerOrderDetails() {
   const [seller, setSeller] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const [existingReviews, setExistingReviews] = useState([]);
+  const [reviewModal, setReviewModal] = useState({ open: false, productId: null, productName: '' });
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [disputeModal, setDisputeModal] = useState(false);
+  const [disputeMessage, setDisputeMessage] = useState('');
+  const [disputeImages, setDisputeImages] = useState([]);
+  const [uploadingDispute, setUploadingDispute] = useState(false);
+
+  // Update current time every second
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     loadOrder();
@@ -22,10 +39,7 @@ export default function BuyerOrderDetails() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
-        (payload) => {
-          console.log('Order updated:', payload.new);
-          loadOrder();
-        }
+        () => loadOrder()
       )
       .subscribe();
 
@@ -45,6 +59,7 @@ export default function BuyerOrderDetails() {
       return;
     }
 
+    // Fetch order items
     const { data: itemsData, error: itemsError } = await supabase
       .from("order_items")
       .select(`
@@ -58,16 +73,41 @@ export default function BuyerOrderDetails() {
       `)
       .eq("order_id", id);
 
-    if (itemsError) {
-      console.error(itemsError);
-      setItems([]);
-    } else {
-      setItems(itemsData || []);
+    let finalItems = [];
+    if (!itemsError && itemsData && itemsData.length > 0) {
+      finalItems = itemsData;
+    } else if (orderData.product_id) {
+      const { data: product, error: prodError } = await supabase
+        .from("products")
+        .select("id, name, images")
+        .eq("id", orderData.product_id)
+        .single();
+      if (!prodError && product) {
+        finalItems = [{
+          quantity: orderData.quantity,
+          price_at_time: orderData.product_price,
+          product: product
+        }];
+      }
+    }
+    setItems(finalItems);
+
+    // Fetch existing reviews for these products by this buyer (across all orders)
+    const productIds = finalItems.map(item => item.product.id);
+    if (productIds.length > 0) {
+      const { data: existingProductReviews } = await supabase
+        .from('reviews')
+        .select('product_id')
+        .eq('buyer_id', orderData.buyer_id)
+        .in('product_id', productIds);
+      const reviewedProductIds = existingProductReviews?.map(r => r.product_id) || [];
+      setExistingReviews(reviewedProductIds);
     }
 
+    // Fetch seller info
     const { data: user } = await supabase
       .from("users")
-      .select("business_name, phone_number")
+      .select("business_name, phone_number, is_verified")
       .eq("id", orderData.seller_id)
       .maybeSingle();
 
@@ -81,6 +121,7 @@ export default function BuyerOrderDetails() {
     setSeller({
       name: user?.business_name || profile?.full_name || "Seller",
       phone: user?.phone_number,
+      is_verified: user?.is_verified || false,
     });
     setLoading(false);
   };
@@ -92,8 +133,7 @@ export default function BuyerOrderDetails() {
   };
 
   const confirmDelivery = async () => {
-    const confirm = window.confirm("Confirm you received all items? This will release payment to the seller.");
-    if (!confirm) return;
+    if (!window.confirm("Confirm you received all items? This will release payment to the seller.")) return;
     await supabase
       .from("orders")
       .update({
@@ -106,8 +146,11 @@ export default function BuyerOrderDetails() {
   };
 
   const confirmPickup = async () => {
-    const confirm = window.confirm("Have you picked up all items? This will complete the order.");
-    if (!confirm) return;
+    if (order.auto_cancel_at && new Date(order.auto_cancel_at) <= now) {
+      alert("Pickup deadline has passed. You can no longer pick up the items.");
+      return;
+    }
+    if (!window.confirm("Have you picked up all items? This will complete the order.")) return;
     await supabase
       .from("orders")
       .update({
@@ -119,21 +162,64 @@ export default function BuyerOrderDetails() {
     loadOrder();
   };
 
-  const reportIssue = async () => {
-    const reason = prompt("Please describe the issue with this order:");
-    if (!reason || reason.trim().length < 5) {
-      alert("Please provide a valid reason.");
+  const uploadDisputeImages = async (files) => {
+    const urls = [];
+    for (const file of files) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `dispute_${order.id}_${Date.now()}_${Math.random()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from('dispute-evidence')
+        .upload(fileName, file);
+      if (error) throw error;
+      const { data: urlData } = supabase.storage
+        .from('dispute-evidence')
+        .getPublicUrl(fileName);
+      urls.push(urlData.publicUrl);
+    }
+    return urls;
+  };
+
+  const submitDispute = async () => {
+    if (!disputeMessage.trim()) {
+      alert('Please describe the issue.');
       return;
     }
-    await supabase
-      .from("orders")
-      .update({
-        status: "DISPUTED",
-        dispute_reason: reason,
-        disputed_at: new Date()
-      })
-      .eq("id", order.id);
-    loadOrder();
+    setUploadingDispute(true);
+    try {
+      let uploadedUrls = [];
+      if (disputeImages.length > 0) {
+        uploadedUrls = await uploadDisputeImages(disputeImages);
+      }
+      const { error: msgError } = await supabase
+        .from('dispute_messages')
+        .insert({
+          order_id: order.id,
+          sender_id: order.buyer_id,
+          sender_role: 'buyer',
+          message: disputeMessage.trim(),
+          images: uploadedUrls
+        });
+      if (msgError) throw msgError;
+      await supabase
+        .from('orders')
+        .update({
+          status: 'DISPUTED',
+          dispute_reason: disputeMessage.trim(),
+          disputed_at: new Date().toISOString(),
+          dispute_status: 'open'
+        })
+        .eq('id', order.id);
+      alert('Dispute submitted successfully. Our team will review.');
+      setDisputeModal(false);
+      setDisputeMessage('');
+      setDisputeImages([]);
+      loadOrder();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit dispute. Please try again.');
+    } finally {
+      setUploadingDispute(false);
+    }
   };
 
   const cancelOrder = async () => {
@@ -144,18 +230,21 @@ export default function BuyerOrderDetails() {
 
   const formatRemaining = (deadline) => {
     if (!deadline) return null;
-    const diff = new Date(deadline) - new Date();
+    const diff = new Date(deadline) - now;
     if (diff <= 0) return "Expired";
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    if (days > 0) return `${days}d ${hours}h remaining`;
-    return `${hours}h remaining`;
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
   };
 
-  // Urgency styling
   const getUrgencyClass = (deadline) => {
     if (!deadline) return '';
-    const diff = new Date(deadline) - new Date();
+    const diff = new Date(deadline) - now;
     if (diff <= 0) return 'text-red-600 font-bold';
     const hours = diff / (1000 * 60 * 60);
     if (hours < 6) return 'text-red-600 font-bold animate-pulse';
@@ -163,28 +252,80 @@ export default function BuyerOrderDetails() {
     return 'text-gray-600';
   };
 
+  const isExpired = (deadline) => {
+    if (!deadline) return false;
+    return new Date(deadline) <= now;
+  };
+
+  const submitReview = async () => {
+    if (!reviewModal.productId) return;
+    const { error } = await supabase
+      .from('reviews')
+      .insert({
+        order_id: order.id,
+        product_id: reviewModal.productId,
+        buyer_id: order.buyer_id,
+        rating,
+        comment: comment.trim() || null
+      });
+    if (error) {
+      if (error.code === '23505') {
+        alert('You have already reviewed this product.');
+      } else {
+        alert('Failed to submit review. Please try again.');
+      }
+      console.error(error);
+      return;
+    }
+    alert('Review submitted successfully!');
+    setReviewModal({ open: false, productId: null, productName: '' });
+    const { data: newReviews } = await supabase
+      .from('reviews')
+      .select('product_id')
+      .eq('buyer_id', order.buyer_id)
+      .in('product_id', items.map(i => i.product.id));
+    const reviewedProductIds = newReviews?.map(r => r.product_id) || [];
+    setExistingReviews(reviewedProductIds);
+    setRating(5);
+    setComment('');
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
   const isDelivery = order.delivery_type === "delivery";
   const isPickup = order.delivery_type === "pickup";
+  const isSingleItem = order.product_price !== null && items.length === 1;
+  const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
+  const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
+
+  const shipDeadlineExpired = isExpired(order.ship_deadline);
+  const pickupDeadlineExpired = isExpired(order.auto_cancel_at);
+  const disputeDeadlineExpired = isExpired(order.dispute_deadline);
 
   const steps = [
     { label: "Order Placed", active: true, icon: Package, desc: "Your order has been placed." },
     { label: "Payment Secured", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: CheckCircle, desc: "Payment is held in escrow." },
-    { label: isDelivery ? "Processing" : "Seller Preparing", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: Truck, desc: isDelivery ? "Seller has 48 hours to ship." : "Seller has 48 hours to prepare for pickup." },
+    {
+      label: isDelivery ? "Processing" : "Seller Preparing",
+      active: (order.status === "PAID_ESCROW" && !shipDeadlineExpired) || ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
+      icon: Truck,
+      desc: isDelivery ? "Seller has 48 hours to ship." : "Seller has 48 hours to prepare for pickup.",
+      expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
+    },
     {
       label: isDelivery ? "Shipped" : "Ready for Pickup",
       active: ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: isDelivery ? Truck : Package,
-      desc: isDelivery ? "Your order is on its way." : "You can now pick up your order."
+      desc: isDelivery ? "Your order is on its way." : "You can now pick up your order.",
+      expired: (order.status === "READY_FOR_PICKUP" && pickupDeadlineExpired)
     },
     {
       label: isDelivery ? "Delivered" : "Picked Up",
       active: order.status === "COMPLETED",
       icon: CheckCircle,
       desc: "Order completed. Payment released to seller."
-    },
+    }
   ];
 
   let actionMessage = "";
@@ -202,94 +343,113 @@ export default function BuyerOrderDetails() {
     actionButton = (
       <>
         <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">I've Received All Items</button>
-        <button onClick={reportIssue} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
+        <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
       </>
     );
   } else if (order.status === "READY_FOR_PICKUP") {
-    actionMessage = "Your order is ready for pickup. Please collect all items from the seller.";
-    actionButton = (
-      <>
-        <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">I've Picked Up All Items</button>
-        <button onClick={reportIssue} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
-      </>
-    );
+    if (pickupDeadlineExpired) {
+      actionMessage = "The pickup window has expired. This order will be cancelled.";
+    } else {
+      actionMessage = "Your order is ready for pickup. Please collect all items from the seller.";
+      actionButton = (
+        <>
+          <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">I've Picked Up All Items</button>
+          <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
+        </>
+      );
+    }
   } else if (order.status === "DELIVERED") {
-    actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
-    actionButton = (
-      <>
-        <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Delivery</button>
-        <button onClick={reportIssue} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
-      </>
-    );
+    if (disputeDeadlineExpired) {
+      actionMessage = "The dispute window has passed. The order will auto‑complete.";
+    } else {
+      actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
+      actionButton = (
+        <>
+          <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Delivery</button>
+          <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
+        </>
+      );
+    }
   } else if (order.status === "COMPLETED") {
     actionMessage = "Order completed! Thank you for shopping with us.";
   } else if (order.status === "DISPUTED") {
     actionMessage = "This order is under review. Our team will investigate.";
   } else if (order.status === "CANCELLED") {
     actionMessage = "This order has been cancelled.";
+  } else if (order.status === "REFUNDED") {
+    actionMessage = "This order has been refunded.";
   }
 
   let infoBox = null;
   if (order.status === "PAID_ESCROW") {
-    infoBox = (
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
-          <Clock size={18} /> What's happening?
-        </h3>
-        <p className="text-sm text-blue-700">
-          The seller has <strong className={getUrgencyClass(order.ship_deadline)}>{formatRemaining(order.ship_deadline)}</strong> to prepare your order. 
-          You'll be notified when it's {isDelivery ? "shipped" : "ready for pickup"}.
-        </p>
-      </div>
-    );
-  } else if (order.status === "SHIPPED") {
-    infoBox = (
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
-          <Truck size={18} /> Your order is on the way
-        </h3>
-        <p className="text-sm text-green-700">
-          Once you receive all items, please confirm delivery. If you don't confirm within 7 days, 
-          the order will auto‑complete and payment will be released to the seller.
-          {order.auto_complete_at && (
-            <span> Auto‑completes <span className={getUrgencyClass(order.auto_complete_at)}>{formatRemaining(order.auto_complete_at)}</span>.</span>
-          )}
-        </p>
-      </div>
-    );
+    if (shipDeadlineExpired) {
+      infoBox = (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Seller missed deadline</h3>
+          <p className="text-sm text-red-700">The seller did not prepare your order in time. The order will be cancelled and you will be refunded.</p>
+        </div>
+      );
+    } else {
+      infoBox = (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2"><Clock size={18} /> What's happening?</h3>
+          <p className="text-sm text-blue-700">
+            The seller has <strong className={getUrgencyClass(order.ship_deadline)}>{formatRemaining(order.ship_deadline)}</strong> to prepare your order.
+            You'll be notified when it's {isDelivery ? "shipped" : "ready for pickup"}.
+          </p>
+        </div>
+      );
+    }
   } else if (order.status === "READY_FOR_PICKUP") {
-    infoBox = (
-      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
-          <Package size={18} /> Ready for pickup
-        </h3>
-        <p className="text-sm text-purple-700">
-          You have <strong className={getUrgencyClass(order.auto_cancel_at)}>{formatRemaining(order.auto_cancel_at)}</strong> to pick up your order.
-          If you don't pick up in time, the order will be cancelled and you will be refunded.
-        </p>
-      </div>
-    );
+    if (pickupDeadlineExpired) {
+      infoBox = (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Pickup window closed</h3>
+          <p className="text-sm text-red-700">You did not pick up your order in time. The order will be cancelled and you will be refunded.</p>
+        </div>
+      );
+    } else {
+      infoBox = (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-purple-800 mb-2 flex items-center gap-2"><Package size={18} /> Ready for pickup</h3>
+          <p className="text-sm text-purple-700">
+            You have <strong className={getUrgencyClass(order.auto_cancel_at)}>{formatRemaining(order.auto_cancel_at)}</strong> to pick up your order.
+            If you don't pick up in time, the order will be cancelled and you will be refunded.
+          </p>
+        </div>
+      );
+    }
   } else if (order.status === "DELIVERED") {
-    infoBox = (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2">
-          <AlertCircle size={18} /> Confirm delivery or report an issue
-        </h3>
-        <p className="text-sm text-yellow-700">
-          You have <strong className={getUrgencyClass(order.dispute_deadline)}>{formatRemaining(order.dispute_deadline)}</strong> to confirm delivery or open a dispute.
-          If you don't act, the order will auto‑complete and payment will be released to the seller.
-        </p>
-      </div>
-    );
+    if (disputeDeadlineExpired) {
+      infoBox = (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Dispute window closed</h3>
+          <p className="text-sm text-gray-700">You did not confirm or dispute in time. The order will auto‑complete and payment will be released.</p>
+        </div>
+      );
+    } else {
+      infoBox = (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Confirm delivery or report an issue</h3>
+          <p className="text-sm text-yellow-700">
+            You have <strong className={getUrgencyClass(order.dispute_deadline)}>{formatRemaining(order.dispute_deadline)}</strong> to confirm delivery or open a dispute.
+            If you don't act, the order will auto‑complete and payment will be released to the seller.
+          </p>
+        </div>
+      );
+    }
   } else if (order.status === "DISPUTED") {
     infoBox = (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
-          <AlertCircle size={18} /> Under review
-        </h3>
-        <p className="text-sm text-red-700">
-          Your dispute has been submitted. Our team will investigate and contact you soon.
-        </p>
+        <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Under review</h3>
+        <p className="text-sm text-red-700">Your dispute has been submitted. Our team will investigate and contact you soon.</p>
+      </div>
+    );
+  } else if (order.status === "REFUNDED") {
+    infoBox = (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-green-800 mb-2 flex items-center gap-2"><CheckCircle size={18} /> Order Refunded</h3>
+        <p className="text-sm text-green-700">The order has been refunded. The amount will be credited back to your original payment method.</p>
       </div>
     );
   }
@@ -322,6 +482,7 @@ export default function BuyerOrderDetails() {
               order.status === "COMPLETED" ? "bg-green-100 text-green-700" :
               order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
               order.status === "DISPUTED" ? "bg-orange-100 text-orange-700" :
+              order.status === "REFUNDED" ? "bg-green-100 text-green-700" :
               "bg-blue-100 text-blue-700"
             }`}>
               {order.status.replaceAll("_", " ")}
@@ -330,23 +491,41 @@ export default function BuyerOrderDetails() {
 
           {/* Items list */}
           <div className="space-y-4">
-            {items.map((item, idx) => (
-              <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
-                <img
-                  src={item.product?.images?.[0] || "/placeholder.png"}
-                  alt={item.product?.name}
-                  className="w-16 h-16 object-contain border rounded"
-                />
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
-                  <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
-                  <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                  <p className="text-orange-600 font-medium">
-                    ₦{Number(item.price_at_time).toLocaleString()} each
-                  </p>
-                </div>
-              </div>
-            ))}
+            {items.length === 0 ? (
+              <p className="text-gray-500">No items found for this order.</p>
+            ) : (
+              items.map((item, idx) => {
+                const imageUrl = item.product?.images?.[0];
+                const safeImageUrl = imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/')) ? imageUrl : '/placeholder.png';
+                const isReviewed = existingReviews.includes(item.product.id);
+                return (
+                  <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
+                    <img
+                      src={safeImageUrl}
+                      alt={item.product?.name}
+                      className="w-16 h-16 object-contain border rounded"
+                      onError={(e) => { e.target.src = '/placeholder.png'; }}
+                    />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
+                      <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
+                      <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                      <p className="text-orange-600 font-medium">
+                        ₦{Number(item.price_at_time).toLocaleString()} each
+                      </p>
+                      {order.status === "COMPLETED" && !isReviewed && (
+                        <button
+                          onClick={() => setReviewModal({ open: true, productId: item.product.id, productName: item.product.name })}
+                          className="mt-2 text-sm text-blue-600 underline"
+                        >
+                          Write a Review
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -354,7 +533,10 @@ export default function BuyerOrderDetails() {
         {seller && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
-            <p className="text-gray-700">{seller.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-gray-700">{seller.name}</p>
+              {seller.is_verified && <VerificationBadge />}
+            </div>
             {isPickup && seller.phone && (
               <div className="flex items-center gap-2 mt-2 text-gray-700">
                 <Phone size={16} className="text-gray-500" />
@@ -364,14 +546,34 @@ export default function BuyerOrderDetails() {
           </div>
         )}
 
-        {/* Pickup Location / Delivery Address */}
-        {order.selected_pickup_location && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-3">Pickup Location</h2>
-            <p className="text-gray-700">{order.selected_pickup_location}</p>
+        {/* Pickup / Delivery Info */}
+        {isPickup && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 border-l-4 border-l-orange-500">
+            <h2 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              <MapPin size={20} className="text-orange-500" />
+              Pickup Location
+            </h2>
+            {order.selected_pickup_location ? (
+              <p className="text-lg font-bold text-gray-800">{order.selected_pickup_location}</p>
+            ) : (
+              <p className="text-gray-500">The seller will provide pickup details. Contact them for arrangement.</p>
+            )}
+            {order.auto_cancel_at && (
+              <div className="mt-3 p-3 bg-orange-50 rounded-lg">
+                <p className="text-sm font-medium text-orange-800 flex items-center gap-1">
+                  <Clock size={16} />
+                  Pickup deadline:
+                </p>
+                <p className={`text-xl font-bold ${getUrgencyClass(order.auto_cancel_at)}`}>
+                  {formatRemaining(order.auto_cancel_at)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be picked up by {new Date(order.auto_cancel_at).toLocaleString()}
+                </p>
+              </div>
+            )}
           </div>
         )}
-
         {isDelivery && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-3">Delivery Address</h2>
@@ -379,8 +581,17 @@ export default function BuyerOrderDetails() {
           </div>
         )}
 
-        {/* Info Box (dynamic guidance) */}
         {infoBox}
+
+        {/* Dispute Thread */}
+        {order.status === "DISPUTED" && (
+          <DisputeThread
+            orderId={order.id}
+            currentUserId={order.buyer_id}
+            currentUserRole="buyer"
+            orderStatus={order.status}
+          />
+        )}
 
         {/* Timeline */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
@@ -390,28 +601,30 @@ export default function BuyerOrderDetails() {
               const Icon = step.icon;
               let timerText = null;
               let urgencyClass = '';
-              if (step.label === "Shipped" && order.auto_complete_at) {
-                timerText = formatRemaining(order.auto_complete_at);
-                urgencyClass = getUrgencyClass(order.auto_complete_at);
-              } else if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
-                timerText = formatRemaining(order.auto_cancel_at);
-                urgencyClass = getUrgencyClass(order.auto_cancel_at);
-              } else if (step.label === "Delivered" && order.dispute_deadline && order.status === "DELIVERED") {
-                timerText = formatRemaining(order.dispute_deadline);
-                urgencyClass = getUrgencyClass(order.dispute_deadline);
+              if (!isFinalState) {
+                if (step.label === "Shipped" && order.auto_complete_at) {
+                  timerText = formatRemaining(order.auto_complete_at);
+                  urgencyClass = getUrgencyClass(order.auto_complete_at);
+                } else if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
+                  timerText = formatRemaining(order.auto_cancel_at);
+                  urgencyClass = getUrgencyClass(order.auto_cancel_at);
+                } else if (step.label === "Delivered" && order.dispute_deadline && order.status === "DELIVERED") {
+                  timerText = formatRemaining(order.dispute_deadline);
+                  urgencyClass = getUrgencyClass(order.dispute_deadline);
+                }
               }
-
               return (
                 <div key={index} className="flex items-start gap-3">
-                  <div className={`mt-0.5 ${step.active ? 'text-green-600' : 'text-gray-300'}`}>
+                  <div className={`mt-0.5 ${step.active ? 'text-green-600' : (step.expired ? 'text-red-500' : 'text-gray-300')}`}>
                     <Icon size={20} />
                   </div>
                   <div>
-                    <p className={`font-medium ${step.active ? 'text-gray-900' : 'text-gray-400'}`}>{step.label}</p>
+                    <p className={`font-medium ${step.active ? 'text-gray-900' : (step.expired ? 'text-red-600' : 'text-gray-400')}`}>
+                      {step.label}
+                      {step.expired && <span className="ml-2 text-xs text-red-500">(Expired)</span>}
+                    </p>
                     <p className="text-xs text-gray-500">{step.desc}</p>
-                    {timerText && (
-                      <p className={`text-sm ${urgencyClass}`}>{timerText}</p>
-                    )}
+                    {timerText && <p className={`text-sm ${urgencyClass}`}>{timerText}</p>}
                   </div>
                 </div>
               );
@@ -423,14 +636,29 @@ export default function BuyerOrderDetails() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-3">Payment Summary</h2>
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span>Items Subtotal</span>
-              <span>₦{items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0).toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Delivery</span>
-              <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
-            </div>
+            {isSingleItem ? (
+              <>
+                <div className="flex justify-between">
+                  <span>Product</span>
+                  <span>₦{Number(order.product_price).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Delivery</span>
+                  <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span>Items Subtotal</span>
+                  <span>₦{subtotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Delivery</span>
+                  <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
+                </div>
+              </>
+            )}
             <div className="border-t pt-2 flex justify-between font-bold">
               <span>Total</span>
               <span>₦{Number(order.total_amount).toLocaleString()}</span>
@@ -449,6 +677,102 @@ export default function BuyerOrderDetails() {
           </div>
         </div>
       </main>
+
+      {/* Dispute Modal */}
+      {disputeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Report an Issue</h3>
+            <textarea
+              value={disputeMessage}
+              onChange={(e) => setDisputeMessage(e.target.value)}
+              placeholder="Please describe the issue with this order..."
+              rows="4"
+              className="w-full border rounded p-2 mb-4"
+              required
+            />
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Upload Evidence (photos)</label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setDisputeImages(Array.from(e.target.files))}
+                className="w-full"
+              />
+              {disputeImages.length > 0 && (
+                <div className="mt-2 text-sm text-gray-600">
+                  {disputeImages.length} file(s) selected
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDisputeModal(false)}
+                className="px-4 py-2 border rounded"
+                disabled={uploadingDispute}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitDispute}
+                disabled={uploadingDispute}
+                className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50"
+              >
+                {uploadingDispute ? 'Uploading...' : 'Submit Dispute'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {reviewModal.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Review: {reviewModal.productName}</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Rating (1-5 stars)</label>
+              <div className="flex gap-2">
+                {[1,2,3,4,5].map(star => (
+                  <button
+                    key={star}
+                    onClick={() => setRating(star)}
+                    className={`text-2xl ${star <= rating ? 'text-yellow-500' : 'text-gray-300'}`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Comment (optional)</label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows="3"
+                className="w-full border rounded p-2"
+                placeholder="Share your experience with this product..."
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setReviewModal({ open: false, productId: null, productName: '' })}
+                className="px-4 py-2 border rounded"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitReview}
+                className="px-4 py-2 bg-orange-600 text-white rounded"
+              >
+                Submit Review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Footer />
     </div>
   );

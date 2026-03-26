@@ -29,11 +29,18 @@ export default function AdminOrderDetails() {
   const admin = JSON.parse(localStorage.getItem("mafdesh_user"));
 
   const [order, setOrder] = useState(null);
-  const [product, setProduct] = useState(null);
+  const [items, setItems] = useState([]);
   const [buyer, setBuyer] = useState(null);
   const [seller, setSeller] = useState(null);
   const [evidence, setEvidence] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(new Date());
+
+  // Update current time every second
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Dispute history
   const [buyerHistory, setBuyerHistory] = useState(null);
@@ -79,12 +86,46 @@ export default function AdminOrderDetails() {
         return;
       }
 
-      // 2. Fetch product
-      const { data: productData } = await supabase
-        .from("products")
-        .select("name,images")
-        .eq("id", orderData.product_id)
-        .single();
+      // 2. Fetch order_items (multi‑item orders)
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_items")
+        .select(`
+          quantity,
+          price_at_time,
+          product:products (
+            id,
+            name,
+            images
+          )
+        `)
+        .eq("order_id", id);
+
+      let finalItems = [];
+      if (!itemsError && itemsData && itemsData.length > 0) {
+        finalItems = itemsData;
+      } else if (orderData.product_id) {
+        // Legacy single‑item order (no order_items)
+        const { data: product, error: prodError } = await supabase
+          .from("products")
+          .select("id, name, images")
+          .eq("id", orderData.product_id)
+          .single();
+        if (!prodError && product) {
+          finalItems = [{
+            quantity: orderData.quantity,
+            price_at_time: orderData.product_price,
+            product: product
+          }];
+        } else {
+          console.error("Fallback product fetch error:", prodError);
+          finalItems = [{
+            quantity: orderData.quantity,
+            price_at_time: orderData.product_price,
+            product: { id: orderData.product_id, name: "Product not found", images: [] }
+          }];
+        }
+      }
+      setItems(finalItems);
 
       // 3. Fetch buyer
       const { data: buyerUser } = await supabase
@@ -113,11 +154,10 @@ export default function AdminOrderDetails() {
         .maybeSingle();
 
       setOrder(orderData);
-      setProduct(productData || {});
       setBuyer({ ...buyerUser, ...buyerProfile });
       setSeller({ ...sellerUser, ...sellerProfile });
 
-      // 5. Load dispute images
+      // 5. Load dispute images (if any)
       if (orderData.dispute_images?.length) {
         const urls = [];
         for (const path of orderData.dispute_images) {
@@ -159,6 +199,30 @@ export default function AdminOrderDetails() {
     }
   };
 
+  const formatRemaining = (deadline) => {
+    if (!deadline) return null;
+    const diff = new Date(deadline) - now;
+    if (diff <= 0) return "Expired";
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  };
+
+  const getUrgencyClass = (deadline) => {
+    if (!deadline) return '';
+    const diff = new Date(deadline) - now;
+    if (diff <= 0) return 'text-red-600 font-bold';
+    const hours = diff / (1000 * 60 * 60);
+    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
+    if (hours < 24) return 'text-orange-600 font-semibold';
+    return 'text-gray-600';
+  };
+
   const handleResolve = async (e) => {
     e.preventDefault();
 
@@ -189,7 +253,7 @@ export default function AdminOrderDetails() {
 
       if (actionError) throw actionError;
 
-      // Update order
+      // Update order – final status and clear deadlines
       const updateData = {
         dispute_status: "resolved",
         resolved_by: admin.id,
@@ -197,6 +261,11 @@ export default function AdminOrderDetails() {
         constitution_section: constitutionSection,
         resolution_notes: notes,
         resolved_at: new Date().toISOString(),
+        // Clear all deadlines
+        ship_deadline: null,
+        auto_cancel_at: null,
+        auto_complete_at: null,
+        dispute_deadline: null,
       };
 
       if (resolutionType === "full_refund" || resolutionType === "partial_refund") {
@@ -244,6 +313,9 @@ export default function AdminOrderDetails() {
     );
   }
 
+  const isSingleItem = order.product_price !== null;
+  const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
+
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
@@ -259,26 +331,13 @@ export default function AdminOrderDetails() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* PRODUCT */}
-          <div className="bg-white p-6 rounded-lg border">
-            <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
-              <Package size={20} className="text-orange-600" />
-              Product
-            </h2>
-            <img
-              src={product?.images?.[0]}
-              alt={product?.name}
-              className="w-40 h-40 object-contain mb-4"
-            />
-            <p className="font-semibold text-lg">{product?.name}</p>
-          </div>
-
           {/* ORDER INFO */}
           <div className="bg-white p-6 rounded-lg border">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <DollarSign size={20} className="text-orange-600" />
               Order Info
             </h2>
+            <p><strong>Order Number:</strong> {order.order_number || order.id.slice(0,8)}</p>
             <p><strong>Order ID:</strong> {order.id}</p>
             <p><strong>Status:</strong> {order.status}</p>
             <p><strong>Amount:</strong> ₦{Number(order.total_amount).toLocaleString()}</p>
@@ -309,6 +368,40 @@ export default function AdminOrderDetails() {
             <p><strong>Email:</strong> {seller?.email ?? "Unknown"}</p>
             <p><strong>Phone:</strong> {seller?.phone_number ?? "Unknown"}</p>
             <p><strong>ID:</strong> {seller?.id ?? "Unknown"}</p>
+          </div>
+
+          {/* ITEMS (multi‑item support + legacy single‑item) */}
+          <div className="bg-white p-6 rounded-lg border md:col-span-2">
+            <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
+              <Package size={20} className="text-orange-600" />
+              Items
+            </h2>
+            {items.length === 0 ? (
+              <p className="text-gray-500">No items found for this order.</p>
+            ) : (
+              <div className="space-y-4">
+                {items.map((item, idx) => {
+                  const imageUrl = item.product?.images?.[0] || '/placeholder.png';
+                  return (
+                    <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
+                      <img
+                        src={imageUrl}
+                        alt={item.product?.name}
+                        className="w-16 h-16 object-contain border rounded"
+                      />
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
+                        <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
+                        <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                        <p className="text-orange-600 font-medium">
+                          ₦{Number(item.price_at_time).toLocaleString()} each
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* DELIVERY INFO */}
@@ -393,13 +486,27 @@ export default function AdminOrderDetails() {
             )}
           </div>
         </div>
-{/* Deadlines */}
-<div className="bg-white p-6 rounded-lg border">
-  <h2 className="font-semibold mb-4">Timers</h2>
-  {order.ship_deadline && <p>Ship by: {new Date(order.ship_deadline).toLocaleString()}</p>}
-  {order.auto_complete_at && <p>Auto‑complete: {new Date(order.auto_complete_at).toLocaleString()}</p>}
-  {order.auto_cancel_at && <p>Auto‑cancel: {new Date(order.auto_cancel_at).toLocaleString()}</p>}
-</div>
+
+        {/* Deadlines with live countdown */}
+        <div className="bg-white p-6 rounded-lg border mt-6">
+          <h2 className="font-semibold mb-4">Timers</h2>
+          {order.ship_deadline && (
+            <p className={`text-sm ${getUrgencyClass(order.ship_deadline)}`}>
+              Ship by: {formatRemaining(order.ship_deadline)}
+            </p>
+          )}
+          {order.auto_complete_at && (
+            <p className={`text-sm ${getUrgencyClass(order.auto_complete_at)}`}>
+              Auto‑complete: {formatRemaining(order.auto_complete_at)}
+            </p>
+          )}
+          {order.auto_cancel_at && (
+            <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at)}`}>
+              Auto‑cancel: {formatRemaining(order.auto_cancel_at)}
+            </p>
+          )}
+        </div>
+
         {/* RESOLUTION FORM (only for disputed orders) */}
         {order.status === "DISPUTED" && (
           <div className="bg-white rounded-lg border p-6 mt-6">

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Shield, ShoppingCart } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
-
+import VerificationBadge from '../components/VerificationBadge'; // import
 export default function PublicProducts() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

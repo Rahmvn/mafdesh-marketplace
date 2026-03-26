@@ -1,81 +1,117 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-Deno.cron('process-order-deadlines', '*/5 * * * *', async () => {
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  )
-
-  const now = new Date().toISOString()
-
-  // 1. Auto‑cancel orders not shipped/prepared within 72 hours
-  const { data: cancelledOrders, error: cancelError } = await supabase
-    .from('orders')
-    .update({
-      status: 'CANCELLED',
-      cancelled_at: now,
-    })
-    .eq('status', 'PAID_ESCROW')
-    .lte('ship_deadline', now)
-    .select('id, buyer_id, seller_id, total_amount')
-
-  if (cancelledOrders) {
-    for (const order of cancelledOrders) {
-      await supabase.from('admin_actions').insert({
-        admin_id: null,
-        order_id: order.id,
-        action_type: 'AUTO_CANCEL',
-        reason: 'Seller did not prepare order within 72 hours',
-        metadata: { cancelled_at: now },
-      })
-      // TODO: Trigger refund logic when real payments are integrated
+Deno.serve(async (req) => {
+  try {
+    // Validate secret (if provided)
+    const authHeader = req.headers.get('Authorization')
+    const expectedSecret = Deno.env.get('CRON_SECRET')
+    if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
+      return new Response('Unauthorized', { status: 401 })
     }
-  }
 
-  // 2. Auto‑complete orders after delivery window (no dispute)
-  const { data: completedOrders, error: completeError } = await supabase
-    .from('orders')
-    .update({
-      status: 'COMPLETED',
-      completed_at: now,
-    })
-    .eq('status', 'DELIVERED')
-    .lte('dispute_deadline', now)
-    .select('id')
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
 
-  if (completedOrders) {
-    for (const order of completedOrders) {
-      await supabase.from('admin_actions').insert({
-        admin_id: null,
-        order_id: order.id,
-        action_type: 'AUTO_COMPLETE',
-        reason: 'Buyer did not dispute within 72 hours of delivery',
-        metadata: { completed_at: now },
-      })
+    const now = new Date().toISOString()
+    const results = []
+
+    // 1. Auto‑refund orders not shipped/prepared within 48 hours
+    const { data: refunded, error: err1 } = await supabase
+      .from('orders')
+      .update({ status: 'REFUNDED', cancelled_at: now })
+      .eq('status', 'PAID_ESCROW')
+      .lte('ship_deadline', now)
+      .neq('status', 'DISPUTED')
+      .select('id')
+    if (err1) console.error('Error in step 1:', err1)
+    if (refunded?.length) {
+      results.push(`Refunded ${refunded.length} unpaid orders`)
+      for (const order of refunded) {
+        await supabase.from('admin_actions').insert({
+          admin_id: null,
+          order_id: order.id,
+          action_type: 'AUTO_REFUND',
+          reason: 'Seller did not prepare order within 48 hours',
+          metadata: { cancelled_at: now },
+        })
+      }
     }
-  }
 
-  // 3. Auto‑cancel orders not picked up within 72 hours
-  const { data: pickupCancelled, error: pickupError } = await supabase
-    .from('orders')
-    .update({
-      status: 'CANCELLED',
-      cancelled_at: now,
-    })
-    .eq('status', 'READY_FOR_PICKUP')
-    .lte('pickup_deadline', now)
-    .is('picked_up_at', null)
-    .select('id')
-
-  if (pickupCancelled) {
-    for (const order of pickupCancelled) {
-      await supabase.from('admin_actions').insert({
-        admin_id: null,
-        order_id: order.id,
-        action_type: 'AUTO_CANCEL',
-        reason: 'Buyer did not pick up within 72 hours',
-        metadata: { cancelled_at: now },
-      })
+    // 2. Auto‑complete orders after delivery window
+    const { data: completed, error: err2 } = await supabase
+      .from('orders')
+      .update({ status: 'COMPLETED', completed_at: now })
+      .eq('status', 'DELIVERED')
+      .lte('dispute_deadline', now)
+      .neq('status', 'DISPUTED')
+      .select('id')
+    if (err2) console.error('Error in step 2:', err2)
+    if (completed?.length) {
+      results.push(`Completed ${completed.length} orders`)
+      for (const order of completed) {
+        await supabase.from('admin_actions').insert({
+          admin_id: null,
+          order_id: order.id,
+          action_type: 'AUTO_COMPLETE',
+          reason: 'Buyer did not dispute within 72 hours of delivery',
+          metadata: { completed_at: now },
+        })
+      }
     }
+
+    // 3. Auto‑refund orders not picked up within 48 hours
+    const { data: pickupRefunded, error: err3 } = await supabase
+      .from('orders')
+      .update({ status: 'REFUNDED', cancelled_at: now })
+      .eq('status', 'READY_FOR_PICKUP')
+      .lte('auto_cancel_at', now)
+      .is('picked_up_at', null)
+      .neq('status', 'DISPUTED')
+      .select('id')
+    if (err3) console.error('Error in step 3:', err3)
+    if (pickupRefunded?.length) {
+      results.push(`Refunded ${pickupRefunded.length} unpicked orders`)
+      for (const order of pickupRefunded) {
+        await supabase.from('admin_actions').insert({
+          admin_id: null,
+          order_id: order.id,
+          action_type: 'AUTO_REFUND',
+          reason: 'Buyer did not pick up within 48 hours',
+          metadata: { cancelled_at: now },
+        })
+      }
+    }
+
+    // 4. Auto‑refund orders shipped but not delivered within 7 days
+    const { data: undelivered, error: err4 } = await supabase
+      .from('orders')
+      .update({ status: 'REFUNDED', cancelled_at: now })
+      .eq('status', 'SHIPPED')
+      .lte('delivery_deadline', now)
+      .neq('status', 'DISPUTED')
+      .select('id')
+    if (err4) console.error('Error in step 4:', err4)
+    if (undelivered?.length) {
+      results.push(`Refunded ${undelivered.length} undelivered orders`)
+      for (const order of undelivered) {
+        await supabase.from('admin_actions').insert({
+          admin_id: null,
+          order_id: order.id,
+          action_type: 'AUTO_REFUND',
+          reason: 'Seller did not mark order as delivered within 7 days of shipping',
+          metadata: { cancelled_at: now },
+        })
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, results }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch (err) {
+    console.error('Fatal error:', err)
+    return new Response(`Internal server error: ${err.message}`, { status: 500 })
   }
 })
