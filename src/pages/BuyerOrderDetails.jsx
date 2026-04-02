@@ -150,7 +150,13 @@ export default function BuyerOrderDetails() {
       alert("Pickup deadline has passed. You can no longer pick up the items.");
       return;
     }
-    if (!window.confirm("Have you picked up all items? This will complete the order.")) return;
+    // Enhanced confirmation message
+    if (!window.confirm(
+      "⚠️ IMPORTANT: Please inspect all items thoroughly before confirming.\n\n" +
+      "Once you confirm pickup, the transaction is considered complete and you will NOT be able to request a refund or open a dispute.\n\n" +
+      "If anything is wrong with the items, please use the 'Report a Problem' button instead of confirming.\n\n" +
+      "Have you inspected and received all items in good condition?"
+    )) return;
     await supabase
       .from("orders")
       .update({
@@ -350,10 +356,10 @@ export default function BuyerOrderDetails() {
     if (pickupDeadlineExpired) {
       actionMessage = "The pickup window has expired. This order will be cancelled.";
     } else {
-      actionMessage = "Your order is ready for pickup. Please collect all items from the seller.";
+      actionMessage = "Your order is ready for pickup. Please inspect the items carefully before confirming pickup. Once confirmed, the sale is final and you cannot request a refund.";
       actionButton = (
         <>
-          <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">I've Picked Up All Items</button>
+          <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Pickup & Release Payment</button>
           <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
         </>
       );
@@ -410,12 +416,29 @@ export default function BuyerOrderDetails() {
       );
     } else {
       infoBox = (
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-purple-800 mb-2 flex items-center gap-2"><Package size={18} /> Ready for pickup</h3>
-          <p className="text-sm text-purple-700">
-            You have <strong className={getUrgencyClass(order.auto_cancel_at)}>{formatRemaining(order.auto_cancel_at)}</strong> to pick up your order.
-            If you don't pick up in time, the order will be cancelled and you will be refunded.
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-orange-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Important: Inspect Before Confirming</h3>
+          <p className="text-sm text-orange-700 mb-2">
+            Before you confirm pickup, <strong>carefully inspect all items</strong> for damage, correctness, and condition.
           </p>
+          <p className="text-sm text-orange-700">
+            <strong>Once you confirm, the sale is final.</strong> You will not be able to open a dispute or request a refund for any issues discovered after confirmation.
+          </p>
+          <p className="text-sm text-orange-700 mt-2">
+            If anything is wrong, use the <strong>"Report a Problem"</strong> button below instead of confirming.
+          </p>
+          <div className="mt-3 p-3 bg-orange-100 rounded-lg">
+            <p className="text-sm font-medium text-orange-800 flex items-center gap-1">
+              <Clock size={16} />
+              Pickup deadline:
+            </p>
+            <p className={`text-xl font-bold ${getUrgencyClass(order.auto_cancel_at)}`}>
+              {formatRemaining(order.auto_cancel_at)}
+            </p>
+            <p className="text-xs text-gray-600 mt-1">
+              Must be picked up by {new Date(order.auto_cancel_at).toLocaleString()}
+            </p>
+          </div>
         </div>
       );
     }

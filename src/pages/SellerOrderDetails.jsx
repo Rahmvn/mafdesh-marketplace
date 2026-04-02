@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { Package, Truck, CheckCircle, Clock, MapPin, Phone, AlertCircle, XCircle } from "lucide-react";
+import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
 
 export default function SellerOrderDetails() {
   const { id } = useParams();
@@ -96,7 +97,6 @@ export default function SellerOrderDetails() {
 
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
-    // Check if deadline expired
     if (order.ship_deadline && new Date(order.ship_deadline) <= now) {
       alert("Cannot mark as shipped – deadline has passed.");
       return;
@@ -140,30 +140,6 @@ export default function SellerOrderDetails() {
     loadOrder();
   };
 
-  const formatRemaining = (deadline) => {
-    if (!deadline) return null;
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return "Expired";
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
-    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-    return `${seconds}s`;
-  };
-
-  const getUrgencyClass = (deadline) => {
-    if (!deadline) return '';
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return 'text-red-600 font-bold';
-    const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
-    if (hours < 24) return 'text-orange-600 font-semibold';
-    return 'text-gray-600';
-  };
-
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
@@ -175,6 +151,30 @@ export default function SellerOrderDetails() {
   const shipDeadlineExpired = order.ship_deadline && new Date(order.ship_deadline) <= now;
   const pickupDeadlineExpired = order.auto_cancel_at && new Date(order.auto_cancel_at) <= now;
   const disputeDeadlineExpired = order.dispute_deadline && new Date(order.dispute_deadline) <= now;
+
+  // --- Compute net earnings (what the seller actually receives) ---
+  let baseEarnings = isSingleItem
+    ? order.product_price + order.delivery_fee - order.platform_fee
+    : subtotal + order.delivery_fee - order.platform_fee;
+
+  let netEarnings = baseEarnings;
+  let refundInfo = null;
+
+  if (order.status === "REFUNDED") {
+    if (order.resolution_type === "full_refund") {
+      netEarnings = 0;
+      refundInfo = { type: "full_refund" };
+    } else if (order.resolution_type === "partial_refund" && order.resolution_amount) {
+      netEarnings = baseEarnings - order.resolution_amount;
+      refundInfo = { type: "partial_refund", amount: order.resolution_amount };
+    } else {
+      netEarnings = 0; // fallback
+      refundInfo = { type: "full_refund" };
+    }
+  } else if (order.status === "CANCELLED") {
+    netEarnings = 0;
+    refundInfo = { type: "cancelled" };
+  }
 
   const steps = [
     { label: "Order Placed", active: true, icon: Package, desc: "Buyer has placed this order." },
@@ -221,7 +221,7 @@ export default function SellerOrderDetails() {
             <Clock size={18} /> Your next steps
           </h3>
           <p className="text-sm text-blue-700">
-            You have <strong className={getUrgencyClass(order.ship_deadline)}>{formatRemaining(order.ship_deadline)}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
+            You have <strong className={getUrgencyClass(order.ship_deadline, now)}>{formatRemaining(order.ship_deadline, now)}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
             If you don't act by then, the order will be automatically cancelled and the buyer will be refunded.
           </p>
         </div>
@@ -246,7 +246,7 @@ export default function SellerOrderDetails() {
             <Package size={18} /> Awaiting pickup
           </h3>
           <p className="text-sm text-purple-700">
-            The buyer has <strong className={getUrgencyClass(order.auto_cancel_at)}>{formatRemaining(order.auto_cancel_at)}</strong> to pick up the items.
+            The buyer has <strong className={getUrgencyClass(order.auto_cancel_at, now)}>{formatRemaining(order.auto_cancel_at, now)}</strong> to pick up the items.
             If they don't pick up in time, the order will be cancelled and the buyer refunded.
           </p>
         </div>
@@ -271,7 +271,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Waiting for confirmation
           </h3>
           <p className="text-sm text-yellow-700">
-            The buyer has <strong className={getUrgencyClass(order.dispute_deadline)}>{formatRemaining(order.dispute_deadline)}</strong> to confirm delivery or open a dispute.
+            The buyer has <strong className={getUrgencyClass(order.dispute_deadline, now)}>{formatRemaining(order.dispute_deadline, now)}</strong> to confirm delivery or open a dispute.
             After that, the order will auto‑complete and funds will be released to you.
           </p>
         </div>
@@ -363,7 +363,7 @@ export default function SellerOrderDetails() {
           </div>
         </div>
 
-        {/* Payment */}
+        {/* Payment Summary */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-3">Payment</h2>
           {isSingleItem ? (
@@ -371,23 +371,75 @@ export default function SellerOrderDetails() {
               <p className="text-gray-600">Product: ₦{Number(order.product_price).toLocaleString()}</p>
               <p className="text-gray-600">Delivery Fee: ₦{Number(order.delivery_fee).toLocaleString()}</p>
               <p className="text-gray-600">Platform Fee: ₦{Number(order.platform_fee).toLocaleString()}</p>
-              <p className="font-bold text-green-700 mt-2">
-                You receive: ₦{(order.product_price + order.delivery_fee - order.platform_fee).toLocaleString()}
-              </p>
             </>
           ) : (
             <>
-              <p className="text-gray-600">
-                Items Subtotal: ₦{subtotal.toLocaleString()}
-              </p>
+              <p className="text-gray-600">Items Subtotal: ₦{subtotal.toLocaleString()}</p>
               <p className="text-gray-600">Delivery Fee: ₦{Number(order.delivery_fee).toLocaleString()}</p>
               <p className="text-gray-600">Platform Fee: ₦{Number(order.platform_fee).toLocaleString()}</p>
-              <p className="font-bold text-green-700 mt-2">
-                You receive: ₦{(subtotal + order.delivery_fee - order.platform_fee).toLocaleString()}
-              </p>
             </>
           )}
+          <p className={`font-bold mt-2 ${netEarnings > 0 ? 'text-green-700' : 'text-red-600'}`}>
+            You receive: ₦{netEarnings.toLocaleString()}
+            {refundInfo && refundInfo.type === 'partial_refund' && (
+              <span className="text-xs text-gray-500 ml-2">(after partial refund)</span>
+            )}
+            {refundInfo && refundInfo.type === 'full_refund' && (
+              <span className="text-xs text-gray-500 ml-2">(fully refunded)</span>
+            )}
+            {refundInfo && refundInfo.type === 'cancelled' && (
+              <span className="text-xs text-gray-500 ml-2">(cancelled)</span>
+            )}
+          </p>
         </div>
+
+        {/* Refund / Cancellation Info Box (only when relevant) */}
+        {order.status === "REFUNDED" && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 mb-6">
+            <h2 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
+              <AlertCircle size={18} />
+              Order Refunded
+            </h2>
+            <div className="space-y-2 text-sm">
+              {order.resolution_type === "full_refund" && (
+                <>
+                  <p><strong>Full refund</strong> was issued to the buyer.</p>
+                  <p>You receive: <span className="font-bold text-red-600">₦0</span></p>
+                </>
+              )}
+              {order.resolution_type === "partial_refund" && order.resolution_amount && (
+                <>
+                  <p><strong>Partial refund</strong> of <span className="font-bold">₦{Number(order.resolution_amount).toLocaleString()}</span> was issued to the buyer.</p>
+                  <p>You receive: <span className="font-bold text-green-700">₦{netEarnings.toLocaleString()}</span></p>
+                  <p className="text-xs text-gray-500">Original payout ₦{baseEarnings.toLocaleString()} – refund ₦{order.resolution_amount.toLocaleString()}</p>
+                </>
+              )}
+              {order.resolution_type === "cancelled" && (
+                <>
+                  <p><strong>Order cancelled</strong> by admin.</p>
+                  <p>No funds released to seller.</p>
+                  <p>You receive: <span className="font-bold text-red-600">₦0</span></p>
+                </>
+              )}
+              {order.constitution_section && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Decision based on constitution section: <strong>{order.constitution_section}</strong>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {order.status === "CANCELLED" && order.resolution_type !== "cancelled" && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+            <h2 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+              <XCircle size={18} />
+              Order Cancelled
+            </h2>
+            <p>The order was automatically cancelled (e.g., seller didn’t ship, buyer didn’t pick up).</p>
+            <p>You receive: <span className="font-bold text-red-600">₦0</span></p>
+          </div>
+        )}
 
         {infoBox}
 
@@ -395,10 +447,10 @@ export default function SellerOrderDetails() {
         {!isFinalState && (order.ship_deadline || order.auto_cancel_at || order.auto_complete_at || order.dispute_deadline) && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-3">Timers</h2>
-            {order.ship_deadline && <p className={`text-sm ${getUrgencyClass(order.ship_deadline)}`}>Ship by: {formatRemaining(order.ship_deadline)}</p>}
-            {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at)}`}>Auto‑cancel: {formatRemaining(order.auto_cancel_at)}</p>}
-            {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at)}`}>Auto‑complete: {formatRemaining(order.auto_complete_at)}</p>}
-            {order.dispute_deadline && <p className={`text-sm ${getUrgencyClass(order.dispute_deadline)}`}>Dispute window: {formatRemaining(order.dispute_deadline)}</p>}
+            {order.ship_deadline && <p className={`text-sm ${getUrgencyClass(order.ship_deadline, now)}`}>Ship by: {formatRemaining(order.ship_deadline, now)}</p>}
+            {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at, now)}`}>Auto‑cancel: {formatRemaining(order.auto_cancel_at, now)}</p>}
+            {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>Auto‑complete: {formatRemaining(order.auto_complete_at, now)}</p>}
+            {order.dispute_deadline && <p className={`text-sm ${getUrgencyClass(order.dispute_deadline, now)}`}>Dispute window: {formatRemaining(order.dispute_deadline, now)}</p>}
           </div>
         )}
 
@@ -410,14 +462,14 @@ export default function SellerOrderDetails() {
               const Icon = step.icon;
               let timerText = null, urgencyClass = '';
               if (step.label === "Shipped" && order.auto_complete_at && !isFinalState) {
-                timerText = formatRemaining(order.auto_complete_at);
-                urgencyClass = getUrgencyClass(order.auto_complete_at);
+                timerText = formatRemaining(order.auto_complete_at, now);
+                urgencyClass = getUrgencyClass(order.auto_complete_at, now);
               } else if (step.label === "Ready for Pickup" && order.auto_cancel_at && !isFinalState) {
-                timerText = formatRemaining(order.auto_cancel_at);
-                urgencyClass = getUrgencyClass(order.auto_cancel_at);
+                timerText = formatRemaining(order.auto_cancel_at, now);
+                urgencyClass = getUrgencyClass(order.auto_cancel_at, now);
               } else if (step.label === "Delivered" && order.dispute_deadline && !isFinalState && order.status === "DELIVERED") {
-                timerText = formatRemaining(order.dispute_deadline);
-                urgencyClass = getUrgencyClass(order.dispute_deadline);
+                timerText = formatRemaining(order.dispute_deadline, now);
+                urgencyClass = getUrgencyClass(order.dispute_deadline, now);
               }
               return (
                 <div key={index} className="flex items-start gap-3">
@@ -438,14 +490,6 @@ export default function SellerOrderDetails() {
           </div>
         </div>
 
-        {order.delivery_deadline && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <p className={`text-sm ${getUrgencyClass(order.delivery_deadline)}`}>
-              Deliver by: {formatRemaining(order.delivery_deadline)}
-            </p>
-          </div>
-        )}
-
         {/* Actions */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           {order.status === "PAID_ESCROW" && (
@@ -455,8 +499,8 @@ export default function SellerOrderDetails() {
                   Time left to {isDelivery ? "ship" : "mark ready for pickup"}:
                 </p>
                 {order.ship_deadline ? (
-                  <p className={`text-2xl font-bold ${getUrgencyClass(order.ship_deadline)}`}>
-                    {formatRemaining(order.ship_deadline)}
+                  <p className={`text-2xl font-bold ${getUrgencyClass(order.ship_deadline, now)}`}>
+                    {formatRemaining(order.ship_deadline, now)}
                   </p>
                 ) : (
                   <p className="text-red-600 text-sm">Deadline not set. Please contact support.</p>
@@ -471,9 +515,8 @@ export default function SellerOrderDetails() {
                 </button>
               )}
               {order.ship_deadline && !isFinalState && (
-                <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.ship_deadline)}`}>
+                <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.ship_deadline, now)}`}>
                   Must {isDelivery ? "ship" : "mark ready"} by {new Date(order.ship_deadline).toLocaleString()}
-                  
                 </p>
               )}
             </div>

@@ -22,6 +22,7 @@ async getAllProducts() {
       )
     `)
     .eq('is_approved', true)
+    .gt('stock_quantity', 0) // ✅ ADD THIS LINE
     .order('created_at', { ascending: false });
 
   if (error) throw error;

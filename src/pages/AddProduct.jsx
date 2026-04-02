@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, AlertCircle, Search, Plus, X } from 'lucide-react';
+import { ArrowLeft, Upload, AlertCircle, Search, Plus, X, CreditCard } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { productService } from '../services/productService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
@@ -13,6 +13,8 @@ import ProductPreviewModal from '../components/ProductPreviewModal';
 export default function AddProduct() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
+  const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
+  const [checkingBank, setCheckingBank] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState(null);
 
@@ -25,10 +27,10 @@ export default function AddProduct() {
     features: '',
     specs: '',
     images: [null, null, null, null, null],
-    pickupLocations: [], // new array for pickup locations
+    pickupLocations: [],
   });
 
-  const [newLocation, setNewLocation] = useState(''); // for adding new pickup location
+  const [newLocation, setNewLocation] = useState('');
   const [errors, setErrors] = useState({});
   const [isUploading, setIsUploading] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
@@ -38,45 +40,61 @@ export default function AddProduct() {
     cat.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
-  useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
+useEffect(() => {
+  const checkAuth = async () => {
+    const storedUser = localStorage.getItem('mafdesh_user');
+    if (!storedUser) {
+      alert('Please log in to access this page.');
+      navigate('/login');
+      return;
+    }
 
-      if (!storedUser) {
-        alert('Please log in to access this page.');
-        navigate('/login');
-        return;
+    const userData = JSON.parse(storedUser);
+    if (userData.role !== 'seller') {
+      alert('Access denied. Only sellers can add products.');
+      navigate('/login');
+      return;
+    }
+
+    setCurrentUser(userData);
+
+    // Fetch the user's bank details and approval status
+    try {
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('bank_details_approved, bank_name, account_number')
+        .eq('id', userData.id)
+        .single();
+
+      if (error || !user) {
+        throw new Error('User not found');
       }
 
-      const userData = JSON.parse(storedUser);
+      // Determine if bank details exist and are approved
+      const hasBankDetails = user.bank_name && user.account_number;
+      const isApproved = user.bank_details_approved === true;
+      setBankDetailsApproved(hasBankDetails && isApproved);
+    } catch (err) {
+      console.error('Error fetching bank details approval:', err);
+      setBankDetailsApproved(false);
+    } finally {
+      setCheckingBank(false);
+    }
+  };
 
-      if (userData.role !== 'seller') {
-        alert('Access denied. Only sellers can add products.');
-        navigate('/login');
-        return;
-      }
-
-      setCurrentUser(userData);
-    };
-
-    checkAuth();
-  }, [navigate]);
+  checkAuth();
+}, [navigate]);
 
   const handleImageChange = (index, file) => {
     if (!file) return;
-
     if (file.size > 3 * 1024 * 1024) {
-      alert("Each image must be less than 3MB");
+      alert('Each image must be less than 3MB');
       return;
     }
 
     const updatedImages = [...formData.images];
     updatedImages[index] = file;
-
-    setFormData(prev => ({
-      ...prev,
-      images: updatedImages
-    }));
+    setFormData(prev => ({ ...prev, images: updatedImages }));
   };
 
   const handleChange = (e) => {
@@ -87,7 +105,6 @@ export default function AddProduct() {
     }
   };
 
-  // Pickup locations handlers
   const addPickupLocation = () => {
     if (newLocation.trim()) {
       setFormData(prev => ({
@@ -107,36 +124,29 @@ export default function AddProduct() {
 
   const validate = () => {
     const newErrors = {};
-
     const requiredImages = formData.images.slice(0, 3);
 
     if (!formData.name.trim() || formData.name.trim().length < 5) {
       newErrors.name = 'Product name must be at least 5 characters';
     }
-
     if (formData.name.toLowerCase().includes('test')) {
       newErrors.name = 'Invalid product name';
     }
     if (!formData.overview || formData.overview.length < 40) {
-      newErrors.overview = "Overview must be at least 40 characters";
+      newErrors.overview = 'Overview must be at least 40 characters';
     }
-
     if (!formData.features || formData.features.split('\n').length < 3) {
-      newErrors.features = "Add at least 3 key features";
+      newErrors.features = 'Add at least 3 key features';
     }
-
     if (!formData.category) {
       newErrors.category = 'Category is required';
     }
-
     if (!formData.price || isNaN(formData.price) || parseFloat(formData.price) <= 0) {
       newErrors.price = 'Enter a valid price';
     }
-
     if (!formData.stock || parseInt(formData.stock) < 0) {
       newErrors.stock = 'Enter valid stock quantity';
     }
-
     if (requiredImages.some(img => img === null)) {
       newErrors.images = 'At least 3 images are required';
     }
@@ -181,27 +191,26 @@ ${formData.features}
 
 Specifications:
 ${formData.specs}
-`;
+`.trim();
 
       const productData = {
-        description: fullDescription.trim(),
+        description: fullDescription,
         seller_id: currentUser.id,
         name: formData.name.trim(),
         category: formData.category,
         price: parseFloat(formData.price),
         stock_quantity: parseInt(formData.stock),
-        is_approved: true, // default approved
+        is_approved: true,
         images: uploadedUrls,
-        pickup_locations: formData.pickupLocations, // save pickup locations
+        pickup_locations: formData.pickupLocations,
       };
 
       await productService.createProduct(productData);
-
-      alert("Product uploaded");
-      navigate("/seller/products");
+      alert('Product uploaded successfully');
+      navigate('/seller/products');
     } catch (err) {
       console.error(err);
-      alert("Upload failed");
+      alert('Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
     }
@@ -209,10 +218,45 @@ ${formData.specs}
 
   const handlePreview = () => {
     if (!validate()) return;
-
     setPreviewData(formData);
     setShowPreview(true);
   };
+
+  if (checkingBank) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
+        <div className="text-blue-600 font-semibold">Loading...</div>
+      </div>
+    );
+  }
+
+  // If bank details are not approved, show message and link to profile
+  if (!bankDetailsApproved) {
+    return (
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center border border-blue-200">
+            <div className="flex justify-center mb-4">
+              <CreditCard className="w-16 h-16 text-orange-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-blue-900 mb-2">Bank Details Required</h2>
+            <p className="text-blue-700 mb-6">
+              To list products on Mafdesh, you must first provide your bank account details for payouts.
+              Your details will be reviewed by an admin.
+            </p>
+            <button
+              onClick={() => navigate('/profile')}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              Go to Profile to Add Bank Details
+            </button>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -244,8 +288,9 @@ ${formData.specs}
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="e.g., Wireless Headphones"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.name ? 'border-orange-500' : 'border-blue-200'
-                  }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                  errors.name ? 'border-orange-500' : 'border-blue-200'
+                }`}
               />
               {errors.name && <p className="text-sm text-orange-600 mt-1">{errors.name}</p>}
             </div>
@@ -305,8 +350,9 @@ ${formData.specs}
                   value={formData.price}
                   onChange={handleChange}
                   placeholder="e.g., 15000 or ₦15,000"
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.price ? 'border-orange-500' : 'border-blue-200'
-                    }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                    errors.price ? 'border-orange-500' : 'border-blue-200'
+                  }`}
                 />
                 {errors.price && <p className="text-sm text-orange-600 mt-1">{errors.price}</p>}
               </div>
@@ -323,8 +369,9 @@ ${formData.specs}
                 onChange={handleChange}
                 placeholder="e.g., 50"
                 min="0"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.stock ? 'border-orange-500' : 'border-blue-200'
-                  }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+                  errors.stock ? 'border-orange-500' : 'border-blue-200'
+                }`}
               />
               {errors.stock && <p className="text-sm text-orange-600 mt-1">{errors.stock}</p>}
             </div>

@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { useNavigate } from "react-router-dom";
 import { Search, Filter, Clock, Package, Truck, CheckCircle, AlertCircle, User, Eye } from "lucide-react";
+import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
 
 export default function AdminOrders() {
   const navigate = useNavigate();
@@ -35,32 +36,9 @@ export default function AdminOrders() {
     }
   };
 
-  const formatRemaining = (deadline) => {
-    if (!deadline) return null;
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return "Expired";
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-    return `${seconds}s`;
-  };
-
-  const getUrgencyClass = (deadline) => {
-    if (!deadline) return '';
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return 'text-red-600 font-bold';
-    const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
-    if (hours < 24) return 'text-orange-600 font-semibold';
-    return 'text-gray-600';
-  };
-
-  const loadOrders = async () => {
+  const loadOrders = async (filter = null) => {
     setLoading(true);
+    const activeFilter = filter !== null ? filter : statusFilter;
 
     let query = supabase
       .from("orders")
@@ -80,8 +58,8 @@ export default function AdminOrders() {
       `)
       .order("created_at", { ascending: false });
 
-    if (statusFilter !== "ALL") {
-      query = query.eq("status", statusFilter);
+    if (activeFilter !== "ALL") {
+      query = query.eq("status", activeFilter);
     }
 
     const { data, error } = await query;
@@ -105,7 +83,7 @@ export default function AdminOrders() {
       });
     }
 
-    // For multi‑item orders, fetch order_items and build product list
+    // Multi‑item orders: fetch order_items and build product list
     const multiItemIds = data.filter(o => !o.product_id).map(o => o.id);
     let multiItemMap = {};
     if (multiItemIds.length > 0) {
@@ -125,19 +103,61 @@ export default function AdminOrders() {
       }
     }
 
-    // Fetch buyer and seller names for quick reference
-    const userIds = [...new Set(data.flatMap(o => [o.buyer_id, o.seller_id]))];
+    // Collect user IDs, excluding null values
+    let userIds = [...new Set(data.flatMap(o => [o.buyer_id, o.seller_id]))];
+    userIds = userIds.filter(id => id !== null);
+
     let userMap = {};
+
     if (userIds.length > 0) {
-      const { data: users } = await supabase
+      // Fetch from users table
+      const { data: usersData } = await supabase
         .from("users")
         .select("id, email, business_name")
         .in("id", userIds);
-      users?.forEach(u => {
-        userMap[u.id] = u.business_name || u.email.split('@')[0];
+
+      // Fetch from profiles table
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, full_name, username")
+        .in("id", userIds);
+
+      // Combine data
+      const combined = {};
+      usersData?.forEach(u => {
+        combined[u.id] = { ...combined[u.id], ...u };
       });
+      profilesData?.forEach(p => {
+        combined[p.id] = { ...combined[p.id], ...p };
+      });
+
+      // Resolve best name for each user
+      for (const [id, info] of Object.entries(combined)) {
+        let name = null;
+        if (info.business_name && info.business_name.trim()) {
+          name = info.business_name.trim();
+        } else if (info.full_name && info.full_name.trim()) {
+          name = info.full_name.trim();
+        } else if (info.username && info.username.trim()) {
+          name = info.username.trim();
+        } else if (info.email && info.email.trim()) {
+          name = info.email.split('@')[0].trim();
+        }
+        if (!name) name = "User";
+        userMap[id] = name;
+      }
+
+      // Identify missing IDs (those not in combined)
+      const missingIds = userIds.filter(id => !combined[id]);
+      if (missingIds.length > 0) {
+        console.warn("Missing user names for IDs:", missingIds);
+        missingIds.forEach(id => {
+          userMap[id] = `Unknown (${id.slice(0,8)})`;
+        });
+      }
     }
 
+    // Build final orders with product and user names
     const merged = data.map(o => {
       let productName;
       if (o.product_id) {
@@ -148,11 +168,12 @@ export default function AdminOrders() {
         else if (names.length === 1) productName = names[0];
         else productName = `${names[0]} + ${names.length - 1} more`;
       }
+
       return {
         ...o,
         product_name: productName,
-        buyer_name: userMap[o.buyer_id] || "Unknown",
-        seller_name: userMap[o.seller_id] || "Unknown",
+        buyer_name: o.buyer_id ? (userMap[o.buyer_id] || "Unknown") : "System",
+        seller_name: o.seller_id ? (userMap[o.seller_id] || "Unknown") : "System",
       };
     });
 
@@ -162,6 +183,7 @@ export default function AdminOrders() {
 
   const getStatusColor = (status) => {
     switch (status) {
+      case "PENDING":
       case "PENDING_PAYMENT":
         return "bg-gray-100 text-gray-700";
       case "PAID_ESCROW":
@@ -185,7 +207,7 @@ export default function AdminOrders() {
     }
   };
 
-  // Filter by search term
+  // Filter by search term (client-side)
   const filteredOrders = orders.filter(order => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -232,13 +254,14 @@ export default function AdminOrders() {
             <select
               value={statusFilter}
               onChange={async (e) => {
-                setStatusFilter(e.target.value);
-                await loadOrders();
+                const newFilter = e.target.value;
+                setStatusFilter(newFilter);
+                await loadOrders(newFilter);
               }}
               className="border border-gray-300 rounded-lg p-2 text-sm"
             >
               <option value="ALL">All Orders</option>
-              <option value="PENDING_PAYMENT">Pending Payment</option>
+              <option value="PENDING">Pending Payment</option>
               <option value="PAID_ESCROW">Paid Escrow</option>
               <option value="SHIPPED">Shipped</option>
               <option value="READY_FOR_PICKUP">Ready for Pickup</option>
@@ -276,18 +299,17 @@ export default function AdminOrders() {
                 </tr>
               ) : (
                 filteredOrders.map((o) => {
-                  // Determine which deadline to show (priority: dispute > pickup > ship)
                   let deadlineText = null;
                   let deadlineClass = '';
                   if (o.dispute_deadline && o.status === 'DELIVERED') {
-                    deadlineText = formatRemaining(o.dispute_deadline);
-                    deadlineClass = getUrgencyClass(o.dispute_deadline);
+                    deadlineText = formatRemaining(o.dispute_deadline, now);
+                    deadlineClass = getUrgencyClass(o.dispute_deadline, now);
                   } else if (o.auto_cancel_at && o.status === 'READY_FOR_PICKUP') {
-                    deadlineText = formatRemaining(o.auto_cancel_at);
-                    deadlineClass = getUrgencyClass(o.auto_cancel_at);
+                    deadlineText = formatRemaining(o.auto_cancel_at, now);
+                    deadlineClass = getUrgencyClass(o.auto_cancel_at, now);
                   } else if (o.ship_deadline && o.status === 'PAID_ESCROW') {
-                    deadlineText = formatRemaining(o.ship_deadline);
-                    deadlineClass = getUrgencyClass(o.ship_deadline);
+                    deadlineText = formatRemaining(o.ship_deadline, now);
+                    deadlineClass = getUrgencyClass(o.ship_deadline, now);
                   }
 
                   return (

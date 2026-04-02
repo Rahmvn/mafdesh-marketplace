@@ -1,5 +1,7 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle } from 'lucide-react';
+import noBgLogo from '../../mafdesh-img/noBackground-logo.png'; // moved to top
 
 export default function EmailVerified() {
   return (
@@ -13,7 +15,6 @@ export default function EmailVerified() {
             style={{ height: '120px' }}
           />
         </div>
-        import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
 
         <div className="bg-white border border-green-200 rounded-2xl shadow-xl p-10">
           <div className="flex justify-center mb-6">

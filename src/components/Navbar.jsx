@@ -1,22 +1,45 @@
 import React, { useState, useEffect } from "react";
-import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
-import { Link, useNavigate } from "react-router-dom";
-import { Search, Menu, X, Home, HelpCircle, LogOut, User, BarChart3, ShoppingCart, Package, Settings, Users, CheckCircle, Bell, Wallet, AlertCircle, BookOpen, CreditCard } from "lucide-react";
-import { supabase } from '../supabaseClient';
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import {
+  Search,
+  Menu,
+  X,
+  Home,
+  HelpCircle,
+  LogOut,
+  User,
+  BarChart3,
+  ShoppingCart,
+  Package,
+  Settings,
+  Users,
+  CheckCircle,
+  Bell,
+  Wallet,
+  AlertCircle,
+  BookOpen,
+  CreditCard,
+  ChevronDown,
+  Store,
+  LayoutDashboard,
+} from "lucide-react";
+import { supabase } from "../supabaseClient";
+import landscapeLogo from "../../mafdesh-img/landscape-logo-removebg-preview.png";
 
 export default function Navbar({ onLogout }) {
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [search, setSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [userRole, setUserRole] = useState(null);
   const [isVerified, setIsVerified] = useState(false);
   const [cartCount, setCartCount] = useState(0);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [actionRequiredCount, setActionRequiredCount] = useState(0); // For orders needing action
+  const [actionRequiredCount, setActionRequiredCount] = useState(0);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
+  // Load user data from localStorage and set up listeners
   useEffect(() => {
-    const storedUser = localStorage.getItem('mafdesh_user');
-
+    const storedUser = localStorage.getItem("mafdesh_user");
     if (storedUser) {
       const userData = JSON.parse(storedUser);
       setUserRole(userData.role);
@@ -30,15 +53,9 @@ export default function Navbar({ onLogout }) {
       }
     }
 
-    const handleCartUpdate = () => {
-      loadCartCount();
-    };
-
+    const handleCartUpdate = () => loadCartCount();
     window.addEventListener("cartUpdated", handleCartUpdate);
-
-    return () => {
-      window.removeEventListener("cartUpdated", handleCartUpdate);
-    };
+    return () => window.removeEventListener("cartUpdated", handleCartUpdate);
   }, []);
 
   const loadCartCount = async () => {
@@ -72,7 +89,6 @@ export default function Navbar({ onLogout }) {
 
   const loadBuyerActionCount = async (userId) => {
     try {
-      // Count orders that need buyer action: SHIPPED or READY_FOR_PICKUP
       const { count, error } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
@@ -86,7 +102,6 @@ export default function Navbar({ onLogout }) {
 
   const loadSellerActionCount = async (userId) => {
     try {
-      // Count orders needing seller action: PAID_ESCROW
       const { count, error } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
@@ -99,81 +114,69 @@ export default function Navbar({ onLogout }) {
   };
 
   const getHomePath = () => {
-    if (userRole === 'seller') return '/seller/dashboard';
-    if (userRole === 'admin') return '/admin/dashboard';
-    return '/marketplace';
+    if (userRole === "seller") return "/seller/dashboard";
+    if (userRole === "admin") return "/admin/dashboard";
+    return "/marketplace";
   };
 
-  const handleSearch = (e) => {
+  const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (!search.trim()) return;
-    navigate(`/marketplace?search=${encodeURIComponent(search)}`);
+    if (!searchQuery.trim()) return;
+    navigate(`/marketplace?search=${encodeURIComponent(searchQuery)}`);
+    setMobileMenu(false);
   };
 
   const homePath = getHomePath();
-  const showAnalytics = userRole === 'seller' && isVerified;
+  const showAnalytics = userRole === "seller" && isVerified;
+
+  // Helper to close menus on navigation
+  const closeMenus = () => {
+    setMobileMenu(false);
+    setShowUserMenu(false);
+  };
 
   return (
-    <nav className="bg-white shadow-lg border-b-2 border-blue-100">
-      <div className="max-w-full mx-auto px-6 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <Link to={homePath} className="flex items-center gap-2 group flex-shrink-0">
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          {/* Logo */}
+          <Link
+            to={homePath}
+            className="flex-shrink-0 flex items-center"
+            onClick={closeMenus}
+          >
             <img
               src={landscapeLogo}
               alt="Mafdesh"
-              className="w-auto object-contain transition-all duration-200 group-hover:scale-105"
-              style={{ height: "40px" }}
+              className="h-8 w-auto object-contain"
             />
           </Link>
 
-          {userRole === 'buyer' && (
-            <div className="hidden md:flex items-center flex-1 max-w-2xl mx-6">
-              <div className="relative w-full">
-                <input
-                  type="text"
-                  placeholder="Search for products, brands, and categories..."
-                  className="w-full px-5 py-3 pl-12 pr-4 rounded-lg border-2 border-orange-300 focus:outline-none focus:border-orange-500 transition-all bg-white text-gray-900 placeholder-gray-500 text-sm shadow-sm"
-                  value={search}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSearch(value);
-                    navigate(`/marketplace?search=${encodeURIComponent(value)}`);
-                  }}
-                />
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500" size={20} />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
-                >
-                  Search
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="hidden md:flex items-center gap-1">
-            {userRole === 'buyer' && (
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center space-x-1">
+            {/* Role-specific quick links */}
+            {userRole === "buyer" && (
               <>
                 <Link
                   to="/orders"
-                  className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
+                  className="relative flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Package size={22} className="group-hover:scale-110 transition-transform" />
-                  <span className="text-sm">Orders</span>
+                  <Package className="h-4 w-4 mr-1.5" />
+                  Orders
                   {actionRequiredCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md animate-pulse">
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                       {actionRequiredCount}
                     </span>
                   )}
                 </Link>
                 <Link
                   to="/cart"
-                  className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 group"
+                  className="relative flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <ShoppingCart size={22} className="group-hover:scale-110 transition-transform" />
-                  <span className="text-sm">Cart</span>
+                  <ShoppingCart className="h-4 w-4 mr-1.5" />
+                  Cart
                   {cartCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
+                    <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                       {cartCount}
                     </span>
                   )}
@@ -181,152 +184,186 @@ export default function Navbar({ onLogout }) {
               </>
             )}
 
-            {userRole === 'seller' && (
+            {userRole === "seller" && (
               <>
                 <Link
-                  to="/seller/products"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  to="/seller/dashboard"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Package size={18} />
-                  <span>Products</span>
+                  <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                  Dashboard
+                </Link>
+                <Link
+                  to="/seller/products"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
+                >
+                  <Package className="h-4 w-4 mr-1.5" />
+                  Products
                 </Link>
                 <Link
                   to="/seller/orders"
-                  className="relative flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="relative flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <ShoppingCart size={18} />
-                  <span>Orders</span>
+                  <ShoppingCart className="h-4 w-4 mr-1.5" />
+                  Orders
                   {actionRequiredCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md animate-pulse">
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                       {actionRequiredCount}
                     </span>
                   )}
                 </Link>
                 <Link
                   to="/seller/payments"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Wallet size={18} />
-                  <span>Payments</span>
+                  <Wallet className="h-4 w-4 mr-1.5" />
+                  Payments
                 </Link>
                 {showAnalytics && (
                   <Link
                     to="/seller/analytics"
-                    className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
+                    className="flex items-center px-3 py-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                   >
-                    <BarChart3 size={18} />
-                    <span>Analytics</span>
+                    <BarChart3 className="h-4 w-4 mr-1.5" />
+                    Analytics
                   </Link>
                 )}
               </>
             )}
 
-            {userRole === 'admin' && (
+            {userRole === "admin" && (
               <>
                 <Link
                   to="/admin/dashboard"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Settings size={18} />
-                  <span>Dashboard</span>
+                  <Settings className="h-4 w-4 mr-1.5" />
+                  Dashboard
                 </Link>
                 <Link
                   to="/admin/orders"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <ShoppingCart size={18} />
-                  <span>Orders</span>
+                  <ShoppingCart className="h-4 w-4 mr-1.5" />
+                  Orders
                 </Link>
                 <Link
                   to="/admin/disputes"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <AlertCircle size={18} />
-                  <span>Disputes</span>
+                  <AlertCircle className="h-4 w-4 mr-1.5" />
+                  Disputes
                 </Link>
                 <Link
                   to="/admin/products"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Package size={18} />
-                  <span>Products</span>
+                  <Package className="h-4 w-4 mr-1.5" />
+                  Products
                 </Link>
                 <Link
                   to="/admin/users"
-                  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <Users size={18} />
-                  <span>Users</span>
+                  <Users className="h-4 w-4 mr-1.5" />
+                  Users
                 </Link>
                 <Link
                   to="/admin/constitution"
-                  className="flex items-center gap-2 text-orange-600 hover:text-orange-700 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-orange-50 text-sm"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
                 >
-                  <BookOpen size={18} />
-                  <span>Admin Constitution</span>
+                  <BookOpen className="h-4 w-4 mr-1.5" />
+                  Constitution
+                </Link>
+                <Link
+                  to="/admin/bank-approvals"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
+                >
+                  <CreditCard className="h-4 w-4 mr-1.5" />
+                  Bank Approvals
                 </Link>
               </>
             )}
-            <Link
-  to="/admin/bank-approvals"
-  className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
->
-  <CreditCard size={18} />
-  <span>Bank Approvals</span>
-</Link>
 
+            {/* Common links */}
             <Link
               to="/support"
-              className="flex items-center gap-2 text-blue-700 hover:text-blue-900 transition-colors font-semibold px-3 py-2 rounded-lg hover:bg-blue-50 text-sm"
+              className="flex items-center px-3 py-2 text-gray-700 hover:text-orange-600 hover:bg-orange-50 rounded-md text-sm font-medium transition-colors"
             >
-              <HelpCircle size={18} />
-              <span>Help</span>
+              <HelpCircle className="h-4 w-4 mr-1.5" />
+              Help
             </Link>
+          </div>
 
+          {/* Right side: Search + User Menu */}
+          <div className="hidden md:flex items-center space-x-4">
+            {/* Search form */}
+            {userRole === "buyer" && (
+              <form onSubmit={handleSearchSubmit} className="relative">
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-64 px-4 py-2 pl-10 pr-12 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <button
+                  type="submit"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-orange-600 hover:text-orange-700 text-xs font-medium"
+                >
+                  Go
+                </button>
+              </form>
+            )}
+
+            {/* User dropdown */}
             <div className="relative">
               <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center gap-2 text-white bg-blue-700 hover:bg-blue-800 transition-colors font-semibold px-4 py-2 rounded-lg text-sm shadow-md"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center space-x-2 text-gray-700 hover:text-orange-600 focus:outline-none"
               >
-                <User size={18} />
-                <span>Account</span>
+                <div className="bg-orange-100 rounded-full p-1.5">
+                  <User className="h-5 w-5 text-orange-600" />
+                </div>
+                <ChevronDown className="h-4 w-4" />
               </button>
 
-              {showProfileMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-blue-100 py-2 z-50">
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                   <Link
                     to="/profile"
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-                    onClick={() => setShowProfileMenu(false)}
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600"
+                    onClick={closeMenus}
                   >
-                    <User size={18} className="text-blue-600" />
-                    <span>My Profile</span>
+                    <User className="inline h-4 w-4 mr-2" />
+                    My Profile
                   </Link>
 
-                  {userRole === 'buyer' && (
+                  {userRole === "buyer" && (
                     <>
                       <Link
                         to="/orders"
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-                        onClick={() => setShowProfileMenu(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600"
+                        onClick={closeMenus}
                       >
-                        <Package size={18} className="text-blue-600" />
-                        <span>My Orders</span>
+                        <Package className="inline h-4 w-4 mr-2" />
+                        My Orders
                         {actionRequiredCount > 0 && (
-                          <span className="ml-auto bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                          <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
                             {actionRequiredCount}
                           </span>
                         )}
                       </Link>
                       <Link
                         to="/cart"
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-                        onClick={() => setShowProfileMenu(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600"
+                        onClick={closeMenus}
                       >
-                        <ShoppingCart size={18} className="text-blue-600" />
-                        <span>My Cart</span>
+                        <ShoppingCart className="inline h-4 w-4 mr-2" />
+                        My Cart
                         {cartCount > 0 && (
-                          <span className="ml-auto bg-orange-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
+                          <span className="ml-2 bg-orange-500 text-white text-xs rounded-full px-2 py-0.5">
                             {cartCount}
                           </span>
                         )}
@@ -334,33 +371,43 @@ export default function Navbar({ onLogout }) {
                     </>
                   )}
 
-                  {userRole === 'seller' && (
-                    <Link
-                      to="/seller/orders"
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-blue-900 font-medium"
-                      onClick={() => setShowProfileMenu(false)}
-                    >
-                      <ShoppingCart size={18} className="text-blue-600" />
-                      <span>My Orders</span>
-                      {actionRequiredCount > 0 && (
-                        <span className="ml-auto bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                          {actionRequiredCount}
-                        </span>
-                      )}
-                    </Link>
+                  {userRole === "seller" && (
+                    <>
+                      <Link
+                        to="/seller/orders"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600"
+                        onClick={closeMenus}
+                      >
+                        <ShoppingCart className="inline h-4 w-4 mr-2" />
+                        Orders
+                        {actionRequiredCount > 0 && (
+                          <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                            {actionRequiredCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link
+                        to="/seller/dashboard"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-600"
+                        onClick={closeMenus}
+                      >
+                        <LayoutDashboard className="inline h-4 w-4 mr-2" />
+                        Seller Dashboard
+                      </Link>
+                    </>
                   )}
 
-                  <div className="border-t border-blue-100 my-2"></div>
+                  <div className="border-t border-gray-100 my-1"></div>
                   {onLogout && (
                     <button
                       onClick={() => {
-                        setShowProfileMenu(false);
+                        closeMenus();
                         onLogout();
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-orange-50 transition-colors text-orange-600 font-semibold"
+                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                     >
-                      <LogOut size={18} />
-                      <span>Logout</span>
+                      <LogOut className="inline h-4 w-4 mr-2" />
+                      Logout
                     </button>
                   )}
                 </div>
@@ -368,200 +415,223 @@ export default function Navbar({ onLogout }) {
             </div>
           </div>
 
+          {/* Mobile menu button */}
           <button
-            className="md:hidden text-blue-700 hover:text-blue-900 transition-all p-2 hover:bg-blue-50 rounded-lg"
             onClick={() => setMobileMenu(!mobileMenu)}
+            className="md:hidden p-2 rounded-md text-gray-600 hover:text-orange-600 hover:bg-orange-50 focus:outline-none"
           >
-            {mobileMenu ? <X size={26} /> : <Menu size={26} />}
+            {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
+      </div>
 
-        {mobileMenu && (
-          <div className="md:hidden mt-4 pb-4 border-t-2 border-blue-100 pt-4">
-            {userRole === 'buyer' && (
-              <div className="mb-4">
+      {/* Mobile menu panel */}
+      {mobileMenu && (
+        <div className="md:hidden bg-white border-t border-gray-200 py-4 px-4">
+          {/* Search for mobile */}
+          {userRole === "buyer" && (
+            <form onSubmit={handleSearchSubmit} className="mb-4">
+              <div className="relative">
                 <input
                   type="text"
                   placeholder="Search products..."
-                  className="w-full px-4 py-3 rounded-lg border border-orange-300 focus:outline-none focus:border-orange-500 text-sm"
-                  value={search}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSearch(value);
-                    navigate(`/marketplace?search=${encodeURIComponent(value)}`);
-                  }}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-2 pl-10 pr-12 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              {userRole === 'buyer' && (
-                <>
-                  <Link
-                    to="/orders"
-                    className="flex items-center justify-between text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Package size={20} />
-                      <span>Orders</span>
-                    </div>
-                    {actionRequiredCount > 0 && (
-                      <span className="bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                        {actionRequiredCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link
-                    to="/cart"
-                    className="flex items-center justify-between text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <ShoppingCart size={20} />
-                      <span>Cart</span>
-                    </div>
-                    {cartCount > 0 && (
-                      <span className="bg-orange-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                        {cartCount}
-                      </span>
-                    )}
-                  </Link>
-                </>
-              )}
-
-              {userRole === 'seller' && (
-                <>
-                  <Link
-                    to="/seller/orders"
-                    className="flex items-center justify-between text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <ShoppingCart size={20} />
-                      <span>Orders</span>
-                    </div>
-                    {actionRequiredCount > 0 && (
-                      <span className="bg-red-600 text-white text-xs font-bold rounded-full px-2 py-0.5">
-                        {actionRequiredCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link
-                    to="/seller/products"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <Package size={20} />
-                    <span>Products</span>
-                  </Link>
-                  <Link
-                    to="/seller/payments"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <Wallet size={20} />
-                    <span>Payments</span>
-                  </Link>
-                  {showAnalytics && (
-                    <Link
-                      to="/seller/analytics"
-                      className="flex items-center gap-3 text-orange-600 hover:text-orange-700 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-orange-50"
-                      onClick={() => setMobileMenu(false)}
-                    >
-                      <BarChart3 size={20} />
-                      <span>Analytics</span>
-                    </Link>
-                  )}
-                </>
-              )}
-
-              {userRole === 'admin' && (
-                <>
-                  <Link
-                    to="/admin/dashboard"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <Settings size={20} />
-                    <span>Dashboard</span>
-                  </Link>
-                  <Link
-                    to="/admin/orders"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <ShoppingCart size={20} />
-                    <span>Orders</span>
-                  </Link>
-                  <Link
-                    to="/admin/disputes"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <AlertCircle size={20} />
-                    <span>Disputes</span>
-                  </Link>
-                  <Link
-                    to="/admin/products"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <Package size={20} />
-                    <span>Products</span>
-                  </Link>
-                  <Link
-                    to="/admin/users"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <Users size={20} />
-                    <span>Users</span>
-                  </Link>
-                  <Link
-                    to="/admin/constitution"
-                    className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}
-                  >
-                    <BookOpen size={20} />
-                    <span>Admin Constitution</span>
-                  </Link>
-                </>
-              )}
-              <Link to="/admin/bank-approvals"  className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                    onClick={() => setMobileMenu(false)}>    <CreditCard size={18} />   <span>Bank Change Requests</span></Link>
-
-              <Link
-                to="/profile"
-                className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                onClick={() => setMobileMenu(false)}
-              >
-                <User size={20} />
-                <span>Profile</span>
-              </Link>
-              <Link
-                to="/support"
-                className="flex items-center gap-3 text-blue-700 hover:text-blue-900 transition-all font-semibold px-4 py-3 rounded-lg hover:bg-blue-50"
-                onClick={() => setMobileMenu(false)}
-              >
-                <HelpCircle size={20} />
-                <span>Help</span>
-              </Link>
-              {onLogout && (
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <button
-                  onClick={() => {
-                    setMobileMenu(false);
-                    onLogout();
-                  }}
-                  className="flex items-center gap-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-3 rounded-xl hover:from-orange-600 hover:to-orange-700 transition-all font-semibold w-full shadow-lg"
+                  type="submit"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-orange-600 text-xs font-medium"
                 >
-                  <LogOut size={20} />
-                  <span>Logout</span>
+                  Go
                 </button>
-              )}
-            </div>
+              </div>
+            </form>
+          )}
+
+          <div className="flex flex-col space-y-2">
+            {userRole === "buyer" && (
+              <>
+                <Link
+                  to="/orders"
+                  className="flex justify-between items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <span className="flex items-center">
+                    <Package className="h-5 w-5 mr-2" />
+                    Orders
+                  </span>
+                  {actionRequiredCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {actionRequiredCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  to="/cart"
+                  className="flex justify-between items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <span className="flex items-center">
+                    <ShoppingCart className="h-5 w-5 mr-2" />
+                    Cart
+                  </span>
+                  {cartCount > 0 && (
+                    <span className="bg-orange-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {cartCount}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
+
+            {userRole === "seller" && (
+              <>
+                <Link
+                  to="/seller/dashboard"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <LayoutDashboard className="h-5 w-5 mr-2" />
+                  Dashboard
+                </Link>
+                <Link
+                  to="/seller/products"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <Package className="h-5 w-5 mr-2" />
+                  Products
+                </Link>
+                <Link
+                  to="/seller/orders"
+                  className="flex justify-between items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <span className="flex items-center">
+                    <ShoppingCart className="h-5 w-5 mr-2" />
+                    Orders
+                  </span>
+                  {actionRequiredCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                      {actionRequiredCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  to="/seller/payments"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <Wallet className="h-5 w-5 mr-2" />
+                  Payments
+                </Link>
+                {showAnalytics && (
+                  <Link
+                    to="/seller/analytics"
+                    className="flex items-center px-3 py-2 text-orange-600 hover:bg-orange-50 rounded-md"
+                    onClick={closeMenus}
+                  >
+                    <BarChart3 className="h-5 w-5 mr-2" />
+                    Analytics
+                  </Link>
+                )}
+              </>
+            )}
+
+            {userRole === "admin" && (
+              <>
+                <Link
+                  to="/admin/dashboard"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <Settings className="h-5 w-5 mr-2" />
+                  Dashboard
+                </Link>
+                <Link
+                  to="/admin/orders"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <ShoppingCart className="h-5 w-5 mr-2" />
+                  Orders
+                </Link>
+                <Link
+                  to="/admin/disputes"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <AlertCircle className="h-5 w-5 mr-2" />
+                  Disputes
+                </Link>
+                <Link
+                  to="/admin/products"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <Package className="h-5 w-5 mr-2" />
+                  Products
+                </Link>
+                <Link
+                  to="/admin/users"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <Users className="h-5 w-5 mr-2" />
+                  Users
+                </Link>
+                <Link
+                  to="/admin/constitution"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <BookOpen className="h-5 w-5 mr-2" />
+                  Constitution
+                </Link>
+                <Link
+                  to="/admin/bank-approvals"
+                  className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+                  onClick={closeMenus}
+                >
+                  <CreditCard className="h-5 w-5 mr-2" />
+                  Bank Approvals
+                </Link>
+              </>
+            )}
+
+            <Link
+              to="/profile"
+              className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+              onClick={closeMenus}
+            >
+              <User className="h-5 w-5 mr-2" />
+              Profile
+            </Link>
+            <Link
+              to="/support"
+              className="flex items-center px-3 py-2 text-gray-700 hover:bg-orange-50 rounded-md"
+              onClick={closeMenus}
+            >
+              <HelpCircle className="h-5 w-5 mr-2" />
+              Help
+            </Link>
+            {onLogout && (
+              <button
+                onClick={() => {
+                  closeMenus();
+                  onLogout();
+                }}
+                className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-md w-full text-left"
+              >
+                <LogOut className="h-5 w-5 mr-2" />
+                Logout
+              </button>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </nav>
   );
 }

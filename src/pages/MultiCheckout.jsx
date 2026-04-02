@@ -24,10 +24,39 @@ export default function MultiCheckout() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.products.price * item.quantity, 0);
-  const deliveryFee = deliveryType === 'delivery' ? (deliveryState === 'Lagos' ? 2000 : deliveryState === 'Abuja' ? 2500 : 3000) : 0;
-  const platformFee = Math.round(subtotal * 0.05);
-  const total = subtotal + deliveryFee; // Buyer pays subtotal + delivery only
+  // Group items by seller
+  const sellerGroups = cartItems.reduce((groups, item) => {
+    const sellerId = item.products.seller_id;
+    if (!groups[sellerId]) {
+      groups[sellerId] = {
+        sellerId,
+        items: [],
+        subtotal: 0,
+      };
+    }
+    groups[sellerId].items.push(item);
+    groups[sellerId].subtotal += item.products.price * item.quantity;
+    return groups;
+  }, {});
+
+  const totalSubtotal = Object.values(sellerGroups).reduce((sum, g) => sum + g.subtotal, 0);
+  const totalDeliveryFee = deliveryType === 'delivery'
+    ? (deliveryState === 'Lagos' ? 2000 : deliveryState === 'Abuja' ? 2500 : 3000)
+    : 0;
+
+  // Distribute delivery fee proportionally
+  const groupsWithDelivery = Object.values(sellerGroups).map(group => {
+    const deliveryFee = deliveryType === 'delivery'
+      ? Math.round((group.subtotal / totalSubtotal) * totalDeliveryFee)
+      : 0;
+    return {
+      ...group,
+      deliveryFee,
+      platformFee: Math.round(group.subtotal * 0.05),
+    };
+  });
+
+  const total = totalSubtotal + totalDeliveryFee;
 
   const handleConfirm = async () => {
     if (deliveryType === 'delivery') {
@@ -44,59 +73,77 @@ export default function MultiCheckout() {
       return;
     }
     const buyerId = sessionData.session.user.id;
+    const token = sessionData.session.access_token;
 
-    const orderNumber = generateOrderNumber();
+    const createdOrders = [];
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        buyer_id: buyerId,
-        seller_id: cartItems[0].products.seller_id,
-        product_id: null,
-        quantity: null,
-        product_price: null,
-        delivery_fee: deliveryFee,
-        platform_fee: platformFee,
-        total_amount: total,
-        delivery_state: deliveryType === 'delivery' ? deliveryState : null,
-        delivery_address: deliveryType === 'delivery' ? deliveryAddress : null,
-        delivery_type: deliveryType,
-        order_number: orderNumber,
-        status: 'PENDING'
-      })
-      .select()
-      .single();
+    for (const group of groupsWithDelivery) {
+      const orderNumber = generateOrderNumber();
+      const totalAmount = group.subtotal + group.deliveryFee;
 
-    if (orderError) {
-      console.error(orderError);
-      alert('Failed to create order');
-      setIsSubmitting(false);
-      return;
+      // Insert order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          buyer_id: buyerId,
+          seller_id: group.sellerId,
+          product_id: null,
+          quantity: null,
+          product_price: null,
+          delivery_fee: group.deliveryFee,
+          platform_fee: group.platformFee,
+          total_amount: totalAmount,
+          delivery_state: deliveryType === 'delivery' ? deliveryState : null,
+          delivery_address: deliveryType === 'delivery' ? deliveryAddress : null,
+          delivery_type: deliveryType,
+          order_number: orderNumber,
+          status: 'PENDING'
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error(orderError);
+        // Rollback already created orders
+        for (const ord of createdOrders) {
+          await supabase.from('orders').delete().eq('id', ord.id);
+        }
+        alert('Failed to create order. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Insert order_items
+      const orderItems = group.items.map(item => ({
+        order_id: order.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price_at_time: item.products.price
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) {
+        console.error(itemsError);
+        // Rollback
+        await supabase.from('orders').delete().eq('id', order.id);
+        for (const ord of createdOrders) {
+          await supabase.from('orders').delete().eq('id', ord.id);
+        }
+        alert('Failed to create order items.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      createdOrders.push(order);
     }
 
-    const orderItems = cartItems.map(item => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-      price_at_time: item.products.price
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems);
-
-    if (itemsError) {
-      console.error(itemsError);
-      alert('Failed to create order items');
-      await supabase.from('orders').delete().eq('id', order.id);
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const token = sessionData.session.access_token;
+    // Confirm each order
+    for (const order of createdOrders) {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order-multi`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
         {
           method: 'POST',
           headers: {
@@ -107,34 +154,31 @@ export default function MultiCheckout() {
         }
       );
 
-      const result = await response.json();
-
       if (!response.ok) {
+        const result = await response.json();
         if (response.status === 409) {
-          alert('Sorry, some items are no longer available. Your order has been cancelled.');
-          await supabase.from('orders').delete().eq('id', order.id);
+          alert(`Order ${order.order_number} failed: some items are out of stock.`);
         } else {
-          alert('Payment confirmation failed. Please contact support.');
+          alert(`Order ${order.order_number} confirmation failed.`);
+        }
+        // Rollback all orders
+        for (const ord of createdOrders) {
+          await supabase.from('orders').delete().eq('id', ord.id);
         }
         setIsSubmitting(false);
         return;
       }
-
-      const cartId = cartItems[0].cart_id;
-      for (const item of cartItems) {
-        await supabase
-          .from('cart_items')
-          .delete()
-          .eq('cart_id', cartId)
-          .eq('product_id', item.product_id);
-      }
-      window.dispatchEvent(new Event('cartUpdated'));
-      navigate(`/order-success/${order.id}`);
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred. Please try again.');
-      setIsSubmitting(false);
     }
+
+    // Clear cart
+    const cartId = cartItems[0]?.cart_id;
+    if (cartId) {
+      await supabase.from('cart_items').delete().eq('cart_id', cartId);
+      window.dispatchEvent(new Event('cartUpdated'));
+    }
+
+    // Navigate to first order's success page (or show a combined success)
+    navigate(`/order-success/${createdOrders[0].id}`);
   };
 
   return (
@@ -144,25 +188,27 @@ export default function MultiCheckout() {
         <h1 className="text-2xl font-bold text-blue-900 mb-6">Checkout</h1>
 
         <div className="grid md:grid-cols-3 gap-6">
-          {/* Left – Items */}
+          {/* Left – Items grouped by seller */}
           <div className="md:col-span-2 space-y-4">
-            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
-              <h2 className="font-semibold text-blue-900 mb-4">Items</h2>
-              {cartItems.map(item => (
-                <div key={item.id} className="flex gap-4 border-b pb-4 mb-4 last:border-0 last:mb-0">
-                  <img
-                    src={item.products?.images?.[0] || '/placeholder.png'}
-                    alt={item.products?.name}
-                    className="w-16 h-16 object-contain border rounded"
-                  />
-                  <div className="flex-1">
-                    <p className="font-semibold text-blue-900">{item.products?.name}</p>
-                    <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                    <p className="text-orange-600 font-bold">₦{Number(item.products?.price).toLocaleString()}</p>
+            {Object.values(sellerGroups).map((group, idx) => (
+              <div key={idx} className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
+                <h2 className="font-semibold text-blue-900 mb-2">Seller {group.sellerId.slice(0,8)}</h2>
+                {group.items.map(item => (
+                  <div key={item.id} className="flex gap-4 border-b pb-4 mb-4 last:border-0 last:mb-0">
+                    <img
+                      src={item.products?.images?.[0] || '/placeholder.png'}
+                      alt={item.products?.name}
+                      className="w-16 h-16 object-contain border rounded"
+                    />
+                    <div className="flex-1">
+                      <p className="font-semibold text-blue-900">{item.products?.name}</p>
+                      <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                      <p className="text-orange-600 font-bold">₦{Number(item.products?.price).toLocaleString()}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ))}
 
             {/* Delivery Method */}
             <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
@@ -225,11 +271,11 @@ export default function MultiCheckout() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>₦{subtotal.toLocaleString()}</span>
+                <span>₦{totalSubtotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span>Delivery</span>
-                <span>₦{deliveryFee.toLocaleString()}</span>
+                <span>₦{totalDeliveryFee.toLocaleString()}</span>
               </div>
               <div className="border-t pt-2 flex justify-between font-bold">
                 <span>Total</span>
