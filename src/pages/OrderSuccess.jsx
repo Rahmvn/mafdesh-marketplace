@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Navbar from '../components/Navbar';
@@ -10,22 +10,24 @@ export default function OrderSuccess() {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState(null);
 
-  useEffect(() => {
-    loadOrder();
+  const loadOrder = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*, products!orders_product_id_fkey(name)')
+      .eq('id', id)
+      .single();
+
+    if (!error) setOrder(data);
+    setLoading(false);
   }, [id]);
 
-const loadOrder = async () => {
-  console.log('OrderSuccess: id =', id);
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, products!orders_product_id_fkey(name)')
-    .eq('id', id)
-    .single();
-  console.log('OrderSuccess: data =', data);
-  console.log('OrderSuccess: error =', error);
-  if (!error) setOrder(data);
-  setLoading(false);
-};
+  useEffect(() => {
+    const loadInitialOrder = async () => {
+      await loadOrder();
+    };
+
+    loadInitialOrder();
+  }, [loadOrder]);
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 

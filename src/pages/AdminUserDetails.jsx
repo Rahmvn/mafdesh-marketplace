@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
@@ -12,11 +12,7 @@ export default function AdminUserDetails() {
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
-  }, [id]);
-
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch user data
@@ -87,7 +83,11 @@ export default function AdminUserDetails() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading user...</div>;

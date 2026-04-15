@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { supabase } from '../supabaseClient';
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
@@ -24,6 +25,8 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
         .single();
 
       if (error || !userData) {
+        console.error("No user role found, logging out");
+        await supabase.auth.signOut();
         setStatus('unauthenticated');
         return;
       }
@@ -38,15 +41,11 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
     };
 
     checkAuth();
-  }, []);
+  }, [allowedRoles]);
 
-  // if (status === 'loading') {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center">
-  //       <p className="text-blue-600 font-semibold">Checking access...</p>
-  //     </div>
-  //   );
-  // }
+  if (status === 'loading') {
+    return <MarketplaceRouteLoader />;
+  }
 
   if (status === 'unauthenticated') {
     return <Navigate to="/login" replace />;

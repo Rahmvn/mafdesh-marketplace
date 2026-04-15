@@ -68,7 +68,7 @@ serve(async (req) => {
     // Check if order exists and is PENDING
     const { data: orderCheck, error: checkError } = await supabaseAdmin
       .from('orders')
-      .select('status')
+      .select('buyer_id, status')
       .eq('id', orderId)
       .single();
 
@@ -84,6 +84,13 @@ serve(async (req) => {
       console.log('Order status not PENDING:', orderCheck.status);
       return new Response(JSON.stringify({ error: 'Order already processed' }), {
         status: 409,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    if (orderCheck.buyer_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
         headers: { 'Access-Control-Allow-Origin': '*' },
       })
     }

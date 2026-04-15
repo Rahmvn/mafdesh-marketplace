@@ -15,16 +15,11 @@ export default function BuyerOrders() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [now, setNow] = useState(new Date());
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  async function loadOrders(showLoading = true) {
+    if (showLoading) {
+      setLoading(true);
+    }
 
-  useEffect(() => {
-    loadOrders();
-  }, []);
-
-  const loadOrders = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
@@ -89,7 +84,7 @@ export default function BuyerOrders() {
                 order_id: order.id,
                 quantity: order.quantity,
                 price_at_time: order.product_price,
-                product: product
+                product
               }];
             }
           });
@@ -100,7 +95,20 @@ export default function BuyerOrders() {
     setOrderItemsMap(itemsMap);
     setOrders(ordersData);
     setLoading(false);
-  };
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const loadInitialOrders = async () => {
+      await loadOrders(false);
+    };
+
+    loadInitialOrders();
+  }, []);
 
   const handleConfirmDelivery = async (orderId) => {
     const confirmAction = window.confirm(
@@ -175,14 +183,15 @@ export default function BuyerOrders() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
-        <div className="mb-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 sm:py-8">
+        <div className="mb-5 sm:mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">My Orders</h1>
           <p className="text-gray-600">Track and manage your purchases</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-wrap gap-4 items-center">
-          <div className="flex-1 min-w-[200px] relative">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex-1 min-w-0 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
@@ -192,12 +201,12 @@ export default function BuyerOrders() {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full sm:w-auto items-center gap-2">
             <Filter size={18} className="text-gray-500" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg p-2 text-sm"
+              className="w-full sm:w-auto border border-gray-300 rounded-lg p-2 text-sm"
             >
               <option value="ALL">All Orders</option>
               <option value="PAID_ESCROW">Payment Secured</option>
@@ -207,6 +216,7 @@ export default function BuyerOrders() {
               <option value="DISPUTED">Disputed</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
+          </div>
           </div>
         </div>
 
@@ -237,10 +247,10 @@ export default function BuyerOrders() {
 
               return (
                 <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="p-5 flex flex-col md:flex-row gap-4">
+                  <div className="p-4 sm:p-5 flex flex-col sm:flex-row gap-4">
                     <img src={mainImage} alt={mainName} className="w-24 h-24 object-contain border rounded-lg" />
                     <div className="flex-1">
-                      <div className="flex flex-wrap justify-between items-start gap-2">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:items-start">
                         <div>
                           <p className="font-semibold text-gray-900 text-lg">{mainName}</p>
                           <p className="text-sm text-gray-500 mt-1">
@@ -250,7 +260,7 @@ export default function BuyerOrders() {
                             <p className="text-xs text-gray-500 mt-1">{itemCount} items</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
                             {order.status.replaceAll('_', ' ')}
                           </span>
@@ -263,7 +273,7 @@ export default function BuyerOrders() {
                         </div>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                      <div className="mt-3 flex flex-col gap-1 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                         <span className="text-gray-600">Total: <span className="font-bold text-gray-900">₦{Number(order.total_amount).toLocaleString()}</span></span>
                         <span className="text-gray-600">Placed: {new Date(order.created_at).toLocaleDateString()}</span>
                       </div>
@@ -276,33 +286,33 @@ export default function BuyerOrders() {
                       )}
 
                       {order.status === 'SHIPPED' && (
-                        <div className="mt-4 flex gap-3">
-                          <button onClick={() => handleConfirmDelivery(order.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                          <button onClick={() => handleConfirmDelivery(order.id)} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             Confirm Delivery
                           </button>
-                          <button onClick={() => handleReportIssue(order.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                          <button onClick={() => handleReportIssue(order.id)} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             Report Issue
                           </button>
                         </div>
                       )}
 
                       {order.status === 'READY_FOR_PICKUP' && (
-                        <div className="mt-4 flex gap-3">
-                          <button onClick={() => navigate(`/buyer/orders/${order.id}`)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                          <button onClick={() => navigate(`/buyer/orders/${order.id}`)} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             View Pickup Details
                           </button>
-                          <button onClick={() => handleReportIssue(order.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                          <button onClick={() => handleReportIssue(order.id)} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             Report Issue
                           </button>
                         </div>
                       )}
 
                       {order.status === 'DELIVERED' && (
-                        <div className="mt-4 flex gap-3">
-                          <button onClick={() => handleConfirmDelivery(order.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                          <button onClick={() => handleConfirmDelivery(order.id)} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             Confirm Delivery
                           </button>
-                          <button onClick={() => handleReportIssue(order.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                          <button onClick={() => handleReportIssue(order.id)} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
                             Report Issue
                           </button>
                         </div>

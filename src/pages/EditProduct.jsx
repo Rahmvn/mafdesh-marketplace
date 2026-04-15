@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, X } from 'lucide-react';
 import Navbar from '../components/Navbar';
@@ -31,27 +31,7 @@ export default function EditProduct() {
 
   const [newLocation, setNewLocation] = useState('');
 
-  useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
-      if (!storedUser) {
-        alert('Please log in to access this page.');
-        navigate('/login');
-        return;
-      }
-      const userData = JSON.parse(storedUser);
-      if (userData.role !== 'seller') {
-        alert('Access denied. Only sellers can edit products.');
-        navigate('/login');
-        return;
-      }
-      setCurrentUser(userData);
-      loadProduct();
-    };
-    checkAuth();
-  }, [navigate, id]);
-
-  const loadProduct = async () => {
+  const loadProduct = useCallback(async () => {
     try {
       const data = await productService.getProductById(id);
       const parts = data.description?.split("Key Features:") || [];
@@ -79,7 +59,27 @@ export default function EditProduct() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id, navigate]);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const storedUser = localStorage.getItem('mafdesh_user');
+      if (!storedUser) {
+        alert('Please log in to access this page.');
+        navigate('/login');
+        return;
+      }
+      const userData = JSON.parse(storedUser);
+      if (userData.role !== 'seller') {
+        alert('Access denied. Only sellers can edit products.');
+        navigate('/login');
+        return;
+      }
+      setCurrentUser(userData);
+      loadProduct();
+    };
+    checkAuth();
+  }, [loadProduct, navigate]);
 
   const handleImageChange = (index, file) => {
     if (!file) return;

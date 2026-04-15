@@ -5,7 +5,7 @@ const getAuthToken = () => {
   return user.access_token || null;
 };
 
-const apiRequest = async (endpoint, options = {}) => {
+export const apiRequest = async (endpoint, options = {}) => {
   const token = getAuthToken();
 
   const headers = {
@@ -37,7 +37,7 @@ const apiRequest = async (endpoint, options = {}) => {
   let data;
   try {
     data = await response.json();
-  } catch (jsonErr) {
+  } catch {
     const text = await response.text().catch(() => '');
     const message = text ? `Non-JSON response received: ${text}` : 'Non-JSON response received';
     const error = new Error(message);

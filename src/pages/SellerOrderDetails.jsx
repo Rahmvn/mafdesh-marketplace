@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { Package, Truck, CheckCircle, Clock, MapPin, Phone, AlertCircle, XCircle } from "lucide-react";
 import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
+import { getSellerOrderPayout } from "../utils/sellerPayouts";
 
 export default function SellerOrderDetails() {
   const { id } = useParams();
@@ -20,11 +22,7 @@ export default function SellerOrderDetails() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    loadOrder();
-  }, [id]);
-
-  const loadOrder = async () => {
+  const loadOrder = useCallback(async () => {
     setLoading(true);
 
     const { data: orderData, error } = await supabase
@@ -93,7 +91,11 @@ export default function SellerOrderDetails() {
       phone: user?.phone_number,
     });
     setLoading(false);
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
 
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
@@ -140,7 +142,7 @@ export default function SellerOrderDetails() {
     loadOrder();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return <MarketplaceDetailSkeleton />;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
   const isDelivery = order.delivery_type === "delivery";
@@ -152,29 +154,7 @@ export default function SellerOrderDetails() {
   const pickupDeadlineExpired = order.auto_cancel_at && new Date(order.auto_cancel_at) <= now;
   const disputeDeadlineExpired = order.dispute_deadline && new Date(order.dispute_deadline) <= now;
 
-  // --- Compute net earnings (what the seller actually receives) ---
-  let baseEarnings = isSingleItem
-    ? order.product_price + order.delivery_fee - order.platform_fee
-    : subtotal + order.delivery_fee - order.platform_fee;
-
-  let netEarnings = baseEarnings;
-  let refundInfo = null;
-
-  if (order.status === "REFUNDED") {
-    if (order.resolution_type === "full_refund") {
-      netEarnings = 0;
-      refundInfo = { type: "full_refund" };
-    } else if (order.resolution_type === "partial_refund" && order.resolution_amount) {
-      netEarnings = baseEarnings - order.resolution_amount;
-      refundInfo = { type: "partial_refund", amount: order.resolution_amount };
-    } else {
-      netEarnings = 0; // fallback
-      refundInfo = { type: "full_refund" };
-    }
-  } else if (order.status === "CANCELLED") {
-    netEarnings = 0;
-    refundInfo = { type: "cancelled" };
-  }
+  const { baseEarnings, netEarnings, refundInfo } = getSellerOrderPayout(order, items);
 
   const steps = [
     { label: "Order Placed", active: true, icon: Package, desc: "Buyer has placed this order." },
@@ -407,11 +387,11 @@ export default function SellerOrderDetails() {
                   <p>You receive: <span className="font-bold text-red-600">₦0</span></p>
                 </>
               )}
-              {order.resolution_type === "partial_refund" && order.resolution_amount && (
+              {order.resolution_type === "partial_refund" && order.resolution_amount != null && (
                 <>
                   <p><strong>Partial refund</strong> of <span className="font-bold">₦{Number(order.resolution_amount).toLocaleString()}</span> was issued to the buyer.</p>
                   <p>You receive: <span className="font-bold text-green-700">₦{netEarnings.toLocaleString()}</span></p>
-                  <p className="text-xs text-gray-500">Original payout ₦{baseEarnings.toLocaleString()} – refund ₦{order.resolution_amount.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">Original payout ₦{baseEarnings.toLocaleString()} – refund ₦{Number(order.resolution_amount).toLocaleString()}</p>
                 </>
               )}
               {order.resolution_type === "cancelled" && (

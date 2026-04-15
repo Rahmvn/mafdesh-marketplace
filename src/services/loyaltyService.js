@@ -1,11 +1,4 @@
-const API_URL = '/api';
-
-const getAuthToken = () => {
-  const user = JSON.parse(localStorage.getItem('mafdesh_user') || '{}');
-  return user.access_token || null;
-};
-
-
+import { apiRequest } from './api';
 
 export const loyaltyService = {
   async getLoyaltyAccount() {

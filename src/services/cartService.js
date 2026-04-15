@@ -1,70 +1,170 @@
+import { supabase } from '../supabaseClient';
+
+async function getAuthenticatedUserId() {
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  const userId = data.session?.user?.id;
+
+  if (!userId) {
+    throw new Error('AUTH_REQUIRED');
+  }
+
+  return userId;
+}
+
+async function ensureCart(userId) {
+  const { data: existingCarts, error: cartError } = await supabase
+    .from('carts')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1);
+
+  if (cartError) {
+    throw cartError;
+  }
+
+  if (existingCarts?.length) {
+    return existingCarts[0];
+  }
+
+  const { data: newCart, error: insertError } = await supabase
+    .from('carts')
+    .insert({ user_id: userId })
+    .select('id')
+    .single();
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  return newCart;
+}
+
+function validateRequestedQuantity(product, requestedQuantity, existingQuantity = 0) {
+  const stockQuantity = Number(product?.stock_quantity ?? 0);
+
+  if (stockQuantity <= 0) {
+    throw new Error('OUT_OF_STOCK');
+  }
+
+  if (existingQuantity + requestedQuantity > stockQuantity) {
+    throw new Error('INSUFFICIENT_STOCK');
+  }
+}
 
 export const cartService = {
-  getCart() {
-    const user = JSON.parse(localStorage.getItem('mafdesh_user'));
-    if (!user) return { cart: [], total: 0 };
+  async getCart() {
+    const userId = await getAuthenticatedUserId();
+    const cart = await ensureCart(userId);
 
-    const carts = JSON.parse(localStorage.getItem('mafdesh_carts') || '{}');
-    const userCart = carts[user.id] || [];
+    const { data, error } = await supabase
+      .from('cart_items')
+      .select(`
+        *,
+        products (
+          id,
+          name,
+          price,
+          images,
+          stock_quantity,
+          seller_id
+        )
+      `)
+      .eq('cart_id', cart.id);
 
-    const total = userCart.reduce((sum, item) => sum + item.subtotal, 0);
+    if (error) {
+      throw error;
+    }
 
-    return { cart: userCart, total };
+    return data || [];
   },
 
-  addToCart(product, quantity = 1) {
-    const user = JSON.parse(localStorage.getItem('mafdesh_user'));
-    if (!user) throw new Error('Not logged in');
+  async addToCart(product, quantity = 1) {
+    if (!product?.id) {
+      throw new Error('INVALID_PRODUCT');
+    }
 
-    const carts = JSON.parse(localStorage.getItem('mafdesh_carts') || '{}');
-    
+    const requestedQuantity = Number(quantity);
 
-    const userCart = carts[user.id] || [];
+    if (!Number.isFinite(requestedQuantity) || requestedQuantity < 1) {
+      throw new Error('INVALID_QUANTITY');
+    }
 
-    const existing = userCart.find(i => String(i.product_id) === String(product.id));
+    const userId = await getAuthenticatedUserId();
+    const cart = await ensureCart(userId);
 
-    if (existing) {
-      existing.quantity += quantity;
-      existing.subtotal = existing.quantity * product.price;
+    const { data: existingItem, error: existingItemError } = await supabase
+      .from('cart_items')
+      .select('id, quantity')
+      .eq('cart_id', cart.id)
+      .eq('product_id', product.id)
+      .maybeSingle();
+
+    if (existingItemError) {
+      throw existingItemError;
+    }
+
+    validateRequestedQuantity(product, requestedQuantity, existingItem?.quantity ?? 0);
+
+    if (existingItem) {
+      const { error: updateError } = await supabase
+        .from('cart_items')
+        .update({ quantity: existingItem.quantity + requestedQuantity })
+        .eq('id', existingItem.id);
+
+      if (updateError) {
+        throw updateError;
+      }
     } else {
-      userCart.push({
-  id: Date.now(),
-  product_id: product.id,
-  quantity,
-  product_name: product.name,
-  product_image: product.images?.[0] || null,
-  price: product.price,
-  seller_name: product.seller_name || 'Unknown Seller',
-  stock_available: product.stock_quantity || 0,
-  subtotal: quantity * product.price
-});
+      const { error: insertError } = await supabase
+        .from('cart_items')
+        .insert({
+          cart_id: cart.id,
+          product_id: product.id,
+          quantity: requestedQuantity,
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
     }
 
-    carts[user.id] = userCart;
-    localStorage.setItem('mafdesh_carts', JSON.stringify(carts));
+    window.dispatchEvent(new Event('cartUpdated'));
   },
 
-  updateCartItem(itemId, qty) {
-    const user = JSON.parse(localStorage.getItem('mafdesh_user'));
-    const carts = JSON.parse(localStorage.getItem('mafdesh_carts') || '{}');
+  async updateCartItem(itemId, quantity) {
+    const nextQuantity = Number(quantity);
 
-    const cart = carts[user.id] || [];
-    const item = cart.find(i => i.id == itemId);
-
-    if (item) {
-      item.quantity = qty;
-      item.subtotal = item.price * qty;
+    if (!Number.isFinite(nextQuantity) || nextQuantity < 1) {
+      throw new Error('INVALID_QUANTITY');
     }
 
-    carts[user.id] = cart;
-    localStorage.setItem('mafdesh_carts', JSON.stringify(carts));
+    const { error } = await supabase
+      .from('cart_items')
+      .update({ quantity: nextQuantity })
+      .eq('id', itemId);
+
+    if (error) {
+      throw error;
+    }
+
+    window.dispatchEvent(new Event('cartUpdated'));
   },
 
-  removeFromCart(itemId) {
-    const user = JSON.parse(localStorage.getItem('mafdesh_user'));
-    const carts = JSON.parse(localStorage.getItem('mafdesh_carts') || '{}');
+  async removeFromCart(itemId) {
+    const { error } = await supabase
+      .from('cart_items')
+      .delete()
+      .eq('id', itemId);
 
-    carts[user.id] = (carts[user.id] || []).filter(i => i.id != itemId);
-    localStorage.setItem('mafdesh_carts', JSON.stringify(carts));
-  }
+    if (error) {
+      throw error;
+    }
+
+    window.dispatchEvent(new Event('cartUpdated'));
+  },
 };

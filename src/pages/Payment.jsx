@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
@@ -9,11 +9,7 @@ export default function Payment() {
   const [order, setOrder] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    loadOrder();
-  }, []);
-
-  const loadOrder = async () => {
+  const loadOrder = useCallback(async () => {
     const { data, error } = await supabase
       .from("orders")
       .select("*")
@@ -21,58 +17,59 @@ export default function Payment() {
       .single();
 
     if (!error) setOrder(data);
-  };
+  }, [id]);
 
-const handlePayment = async () => {
-  setProcessing(true);
+  useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
 
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
+  const handlePayment = async () => {
+    setProcessing(true);
 
-    const response = await fetch(
-      'https://[project-ref].supabase.co/functions/v1/confirm-order',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ orderId: id }),
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        navigate("/login");
+        return;
       }
-    );
 
-    const result = await response.json();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ orderId: id }),
+        }
+      );
 
-    if (!response.ok) {
-      if (response.status === 409) {
-        alert('Sorry, this item is no longer available. Your order could not be completed.');
-        await supabase.from('orders').delete().eq('id', id);
-        navigate('/marketplace');
-      } else {
-        alert('Payment confirmation failed. Please contact support.');
-        navigate('/marketplace');
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          alert("Sorry, this item is no longer available. Your order could not be completed.");
+          await supabase.from("orders").delete().eq("id", id);
+        } else if (response.status === 403) {
+          alert("You are not allowed to confirm this order.");
+        } else {
+          alert(result.error || "Payment confirmation failed. Please contact support.");
+        }
+        navigate("/marketplace");
+        return;
       }
-      return;
+
+      navigate(`/order-success/${id}`);
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred. Please try again.");
+    } finally {
+      setProcessing(false);
     }
-
-    // Success
-    navigate(`/order-success/${id}`);
-    
-  } catch (err) {
-    console.error(err);
-    alert('An error occurred. Please try again.');
-  } finally {
-    setProcessing(false);
-  }
-
-const { error: deadlineError } = await supabase
-  .from('orders')
-  .update({
-    ship_deadline: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString()
-  })
-  .eq('id', order.id);
-};
+  };
 
 
   if (!order) {

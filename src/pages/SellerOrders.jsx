@@ -1,56 +1,107 @@
-import React, { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import { useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Search,
-  Filter,
-  Clock,
-  Package,
-  Truck,
-  CheckCircle,
-  AlertCircle,
-  DollarSign,
   Calendar,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Filter,
+  Package,
+  Search,
+  Truck,
   XCircle,
-} from "lucide-react";
+} from 'lucide-react';
+import { supabase } from '../supabaseClient';
+import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
+import { getSellerOrderPayout } from '../utils/sellerPayouts';
+import {
+  formatSellerCurrency,
+  getSellerThemeClasses,
+  SellerEmptyState,
+  SellerSection,
+  SellerShell,
+  useSellerTheme,
+} from '../components/seller/SellerShell';
+import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
+
+function getStatusStyle(status, darkMode) {
+  switch (status) {
+    case 'PAID_ESCROW':
+      return darkMode ? 'bg-orange-500/15 text-orange-200' : 'bg-orange-100 text-orange-700';
+    case 'SHIPPED':
+    case 'READY_FOR_PICKUP':
+    case 'DELIVERED':
+      return darkMode ? 'bg-sky-500/15 text-sky-200' : 'bg-sky-100 text-sky-700';
+    case 'COMPLETED':
+      return darkMode ? 'bg-emerald-500/15 text-emerald-200' : 'bg-emerald-100 text-emerald-700';
+    case 'DISPUTED':
+      return darkMode ? 'bg-red-500/15 text-red-200' : 'bg-red-100 text-red-700';
+    case 'REFUNDED':
+    case 'CANCELLED':
+      return darkMode ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-600';
+    default:
+      return darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600';
+  }
+}
+
+function getGroupAccent(groupKey, darkMode) {
+  const lightMap = {
+    action: 'text-orange-600',
+    transit: 'text-sky-600',
+    done: 'text-emerald-600',
+    dispute: 'text-red-600',
+    closed: 'text-slate-500',
+  };
+
+  const darkMap = {
+    action: 'text-orange-300',
+    transit: 'text-sky-300',
+    done: 'text-emerald-300',
+    dispute: 'text-red-300',
+    closed: 'text-slate-300',
+  };
+
+  return darkMode ? darkMap[groupKey] : lightMap[groupKey];
+}
 
 export default function SellerOrders() {
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [orderItemsMap, setOrderItemsMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [now, setNow] = useState(new Date());
-  const navigate = useNavigate();
+  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const theme = getSellerThemeClasses(themeState.darkMode);
 
-  // Update current time every second for live timers
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    loadOrders();
-  }, []);
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      await supabase.auth.signOut();
+      localStorage.clear();
+      window.location.href = '/login';
+    }
+  };
 
-  const loadOrders = async () => {
-    const storedUser = JSON.parse(localStorage.getItem("mafdesh_user"));
-    if (!storedUser) {
-      setLoading(false);
-      return;
+  const loadOrders = useCallback(async (sellerId, showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
     }
 
-    // Fetch all orders except PENDING (unpaid)
     const { data: ordersData, error: ordersError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("seller_id", storedUser.id)
-      .neq("status", "PENDING")
-      .order("created_at", { ascending: false });
+      .from('orders')
+      .select('*')
+      .eq('seller_id', sellerId)
+      .neq('status', 'PENDING')
+      .order('created_at', { ascending: false });
 
     if (ordersError) {
       console.error(ordersError);
@@ -58,345 +109,284 @@ export default function SellerOrders() {
       return;
     }
 
-    const orderIds = ordersData.map((o) => o.id);
-    const itemsMap = {};
-
-    if (orderIds.length > 0) {
-      // Fetch order_items for multi‑item orders
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("order_items")
-        .select(
-          `
-          order_id,
-          quantity,
-          price_at_time,
-          product:products (id, name, images)
-        `
-        )
-        .in("order_id", orderIds);
-
-      if (itemsError) {
-        console.error("Order items error:", itemsError);
-      } else {
-        itemsData.forEach((item) => {
-          if (!itemsMap[item.order_id]) {
-            itemsMap[item.order_id] = [];
-          }
-          itemsMap[item.order_id].push(item);
-        });
-      }
-
-      // Handle legacy single‑item orders without order_items
-      const legacyOrders = ordersData.filter(
-        (o) => o.product_id && !itemsMap[o.id]
-      );
-      if (legacyOrders.length > 0) {
-        const legacyProductIds = legacyOrders.map((o) => o.product_id);
-        const { data: products, error: productsError } = await supabase
-          .from("products")
-          .select("id, name, images")
-          .in("id", legacyProductIds);
-
-        if (productsError) {
-          console.error("Products error:", productsError);
-        } else {
-          const productMap = {};
-          products.forEach((p) => {
-            productMap[p.id] = p;
-          });
-
-          legacyOrders.forEach((order) => {
-            const product = productMap[order.product_id];
-            if (product) {
-              itemsMap[order.id] = [
-                {
-                  order_id: order.id,
-                  quantity: order.quantity,
-                  price_at_time: order.product_price,
-                  product: product,
-                },
-              ];
-            }
-          });
-        }
-      }
+    let itemsMap = {};
+    try {
+      itemsMap = await getOrderItemsMap(ordersData || []);
+    } catch (itemsError) {
+      console.error('Order items error:', itemsError);
     }
 
     setOrderItemsMap(itemsMap);
-    setOrders(ordersData);
+    setOrders(ordersData || []);
     setLoading(false);
-  };
+  }, []);
 
-  // Helper to format remaining time (days/hours/minutes)
+  const init = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      navigate('/login');
+      return;
+    }
+
+    const userId = data.session.user.id;
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !userData || userData.role !== 'seller') {
+      navigate('/login');
+      return;
+    }
+
+    setCurrentUser(userData);
+    localStorage.setItem('mafdesh_user', JSON.stringify(userData));
+    await loadOrders(userId);
+  }, [loadOrders, navigate]);
+
+  useEffect(() => {
+    init();
+  }, [init]);
+
   const formatRemaining = (deadline) => {
     if (!deadline) return null;
     const diff = new Date(deadline) - now;
-    if (diff <= 0) return "Expired";
+    if (diff <= 0) return 'Expired';
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor(
       (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
     );
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
     if (days > 0) return `${days}d ${hours}h`;
     if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
   };
 
   const getUrgencyClass = (deadline) => {
-    if (!deadline) return "";
+    if (!deadline) return '';
     const diff = new Date(deadline) - now;
-    if (diff <= 0) return "text-red-600 font-bold";
+    if (diff <= 0) return 'text-red-500 font-bold';
     const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) return "text-red-600 font-bold animate-pulse";
-    if (hours < 24) return "text-orange-600 font-semibold";
-    return "text-gray-600";
+    if (hours < 6) return 'text-red-500 font-bold';
+    if (hours < 24) return 'text-orange-500 font-semibold';
+    return theme.mutedText;
   };
 
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case "PAID_ESCROW":
-        return "bg-orange-100 text-orange-700";
-      case "SHIPPED":
-        return "bg-blue-100 text-blue-700";
-      case "READY_FOR_PICKUP":
-        return "bg-purple-100 text-purple-700";
-      case "DELIVERED":
-        return "bg-indigo-100 text-indigo-700";
-      case "COMPLETED":
-        return "bg-green-100 text-green-700";
-      case "DISPUTED":
-        return "bg-red-100 text-red-700";
-      case "REFUNDED":
-        return "bg-red-100 text-red-700";
-      case "CANCELLED":
-        return "bg-gray-100 text-gray-700";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  };
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      if (statusFilter !== 'ALL' && order.status !== statusFilter) return false;
 
-  // Filter orders
-  const filteredOrders = orders.filter((order) => {
-    // Status filter
-    if (statusFilter !== "ALL" && order.status !== statusFilter) return false;
-    // Date filter
-    const orderDate = new Date(order.created_at);
-    if (dateFrom && orderDate < new Date(dateFrom)) return false;
-    if (dateTo && orderDate > new Date(dateTo)) return false;
-    // Search term
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const items = orderItemsMap[order.id] || [];
-      const firstItemName = items[0]?.product?.name?.toLowerCase() || "";
-      const orderNumber = (order.order_number || order.id).toLowerCase();
-      return firstItemName.includes(term) || orderNumber.includes(term);
-    }
-    return true;
-  });
+      const orderDate = new Date(order.created_at);
+      if (dateFrom && orderDate < new Date(dateFrom)) return false;
+      if (dateTo && orderDate > new Date(dateTo)) return false;
 
-  // Group orders by status (custom order)
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const items = orderItemsMap[order.id] || [];
+        const itemNames = items
+          .map((item) => item.product?.name?.toLowerCase() || '')
+          .join(' ');
+        const orderNumber = (order.order_number || order.id).toLowerCase();
+
+        return itemNames.includes(term) || orderNumber.includes(term);
+      }
+
+      return true;
+    });
+  }, [dateFrom, dateTo, orderItemsMap, orders, searchTerm, statusFilter]);
+
+  const summary = useMemo(() => {
+    const countByStatuses = (statuses) =>
+      filteredOrders.filter((order) => statuses.includes(order.status)).length;
+
+    return {
+      action: countByStatuses(['PAID_ESCROW']),
+      transit: countByStatuses(['SHIPPED', 'READY_FOR_PICKUP', 'DELIVERED']),
+      completed: countByStatuses(['COMPLETED']),
+      issues: countByStatuses(['DISPUTED', 'REFUNDED', 'CANCELLED']),
+    };
+  }, [filteredOrders]);
+
+  const hasFilters = Boolean(searchTerm || dateFrom || dateTo || statusFilter !== 'ALL');
+
   const statusGroups = [
     {
-      label: "Need Action",
-      statuses: ["PAID_ESCROW"],
+      label: 'Need Action',
+      statuses: ['PAID_ESCROW'],
       icon: Clock,
-      color: "orange",
+      key: 'action',
     },
     {
-      label: "In Transit",
-      statuses: ["SHIPPED", "READY_FOR_PICKUP"],
+      label: 'In Transit',
+      statuses: ['SHIPPED', 'READY_FOR_PICKUP', 'DELIVERED'],
       icon: Truck,
-      color: "blue",
+      key: 'transit',
     },
     {
-      label: "Awaiting Confirmation",
-      statuses: ["DELIVERED"],
+      label: 'Completed',
+      statuses: ['COMPLETED'],
       icon: CheckCircle,
-      color: "indigo",
+      key: 'done',
     },
     {
-      label: "Completed",
-      statuses: ["COMPLETED"],
-      icon: CheckCircle,
-      color: "green",
-    },
-    {
-      label: "Disputed",
-      statuses: ["DISPUTED"],
-      icon: AlertCircle,
-      color: "red",
-    },
-    {
-      label: "Refunded / Cancelled",
-      statuses: ["REFUNDED", "CANCELLED"],
+      label: 'Disputed',
+      statuses: ['DISPUTED'],
       icon: XCircle,
-      color: "gray",
+      key: 'dispute',
+    },
+    {
+      label: 'Refunded / Cancelled',
+      statuses: ['REFUNDED', 'CANCELLED'],
+      icon: XCircle,
+      key: 'closed',
     },
   ];
 
   const renderOrderCard = (order) => {
     const items = orderItemsMap[order.id] || [];
-    const firstItem = items[0]?.product;
-    const mainImage = firstItem?.images?.[0] || "/placeholder.png";
-    const mainName = firstItem?.name || "Product";
-    const itemCount = items.length;
+    const { displayName, image, itemCount, itemNames } = getOrderDisplayDetails(items);
+    const { netEarnings, refundInfo } = getSellerOrderPayout(order, items);
 
-    const subtotal = items.reduce(
-      (sum, i) => sum + i.price_at_time * i.quantity,
-      0
-    );
-    const earnings =
-      order.product_price !== null
-        ? order.product_price + order.delivery_fee - order.platform_fee
-        : subtotal + order.delivery_fee - order.platform_fee;
-
-    // Format order date
-    const orderDate = new Date(order.created_at);
-    const formattedDate = orderDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-
-    // Determine relevant deadline and timer
     let deadlineText = null;
-    let deadlineClass = "";
-    if (order.status === "PAID_ESCROW" && order.ship_deadline) {
-      deadlineText = formatRemaining(order.ship_deadline);
-      deadlineClass = getUrgencyClass(order.ship_deadline);
-    } else if (order.status === "READY_FOR_PICKUP" && order.auto_cancel_at) {
-      deadlineText = formatRemaining(order.auto_cancel_at);
-      deadlineClass = getUrgencyClass(order.auto_cancel_at);
-    } else if (order.status === "DELIVERED" && order.dispute_deadline) {
-      deadlineText = formatRemaining(order.dispute_deadline);
-      deadlineClass = getUrgencyClass(order.dispute_deadline);
+    if (order.status === 'PAID_ESCROW' && order.ship_deadline) {
+      deadlineText = `Time to ship: ${formatRemaining(order.ship_deadline)}`;
+    } else if (order.status === 'READY_FOR_PICKUP' && order.auto_cancel_at) {
+      deadlineText = `Pickup deadline: ${formatRemaining(order.auto_cancel_at)}`;
+    } else if (order.status === 'DELIVERED' && order.dispute_deadline) {
+      deadlineText = `Dispute window: ${formatRemaining(order.dispute_deadline)}`;
     }
 
+    const deadlineSource =
+      order.status === 'PAID_ESCROW'
+        ? order.ship_deadline
+        : order.status === 'READY_FOR_PICKUP'
+          ? order.auto_cancel_at
+          : order.dispute_deadline;
+
     return (
-      <div
+      <article
         key={order.id}
-        className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+        className={`rounded-lg p-5 transition ${theme.panelMuted} ${theme.rowHover}`}
       >
-        <div className="p-5 flex flex-col md:flex-row gap-4">
-          <img
-            src={mainImage}
-            alt={mainName}
-            className="w-24 h-24 object-contain border rounded-lg"
-          />
-          <div className="flex-1">
-            <div className="flex flex-wrap justify-between items-start gap-2">
-              <div>
-                <p className="font-semibold text-gray-900 text-lg">
-                  {mainName}
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Order #{order.order_number || order.id.slice(0, 8)}
-                </p>
-                {itemCount > 1 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {itemCount} items
-                  </p>
-                )}
-                {/* Display order date */}
-                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                  <Calendar size={12} /> {formattedDate}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 gap-4">
+            <img
+              src={image}
+              alt={displayName}
+              className="h-20 w-20 rounded-md object-cover"
+            />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-lg font-semibold">{displayName}</p>
                 <span
-                  className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusStyle(
-                    order.status
-                  )}`}
+                  className={`rounded-md px-3 py-1 text-xs font-semibold ${getStatusStyle(order.status, themeState.darkMode)}`}
                 >
-                  {order.status.replaceAll("_", " ")}
+                  {order.status.replaceAll('_', ' ')}
                 </span>
-                <button
-                  onClick={() => navigate(`/seller/orders/${order.id}`)}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                >
-                  View Details →
-                </button>
               </div>
+              <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                Order #{order.order_number || order.id.slice(0, 8)}
+              </p>
+              {itemCount > 1 && (
+                <p className={`mt-1 text-xs ${theme.softText}`}>
+                  {itemCount} items. Includes {itemNames.slice(0, 3).join(', ')}
+                  {itemNames.length > 3 ? '...' : ''}
+                </p>
+              )}
+              <p className={`mt-2 inline-flex items-center gap-2 text-xs ${theme.softText}`}>
+                <Calendar className="h-3.5 w-3.5" />
+                {new Date(order.created_at).toLocaleDateString()}
+              </p>
             </div>
+          </div>
 
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-              <div className="flex items-center gap-2">
-                <DollarSign size={16} className="text-gray-500" />
-                <span className="text-gray-600">
-                  Total: ₦{Number(order.total_amount).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Package size={16} className="text-gray-500" />
-                <span className="text-gray-600">
-                  Delivery: {order.delivery_type}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle size={16} className="text-gray-500" />
-                <span className="text-gray-600">
-                  You receive: ₦{earnings.toLocaleString()}
-                </span>
-              </div>
-            </div>
+          <button
+            type="button"
+            onClick={() => navigate(`/seller/orders/${order.id}`)}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${theme.action}`}
+          >
+            View details
+          </button>
+        </div>
 
-            {deadlineText && (
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                <Clock size={16} className={deadlineClass} />
-                <span className={deadlineClass}>
-                  {order.status === "PAID_ESCROW" && "Time to ship:"}
-                  {order.status === "READY_FOR_PICKUP" && "Pickup deadline:"}
-                  {order.status === "DELIVERED" && "Dispute window:"}{" "}
-                  {deadlineText}
-                </span>
-              </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className={`rounded-lg p-4 ${theme.panelSoft}`}>
+            <p className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
+              <DollarSign className="h-4 w-4" />
+              Total
+            </p>
+            <p className="mt-2 font-semibold">{formatSellerCurrency(order.total_amount)}</p>
+          </div>
+          <div className={`rounded-lg p-4 ${theme.panelSoft}`}>
+            <p className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
+              <Package className="h-4 w-4" />
+              Delivery
+            </p>
+            <p className="mt-2 font-semibold capitalize">{order.delivery_type || 'Not set'}</p>
+          </div>
+          <div className={`rounded-lg p-4 ${theme.panelSoft}`}>
+            <p className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
+              <CheckCircle className="h-4 w-4" />
+              You receive
+            </p>
+            <p className="mt-2 font-semibold">{formatSellerCurrency(netEarnings)}</p>
+            {refundInfo && (
+              <p className={`mt-1 text-xs ${theme.softText}`}>
+                {refundInfo.type === 'partial_refund'
+                  ? `Partial refund applied: ${formatSellerCurrency(refundInfo.amount)}`
+                  : 'No payout released for this order'}
+              </p>
             )}
           </div>
         </div>
-      </div>
+
+        {deadlineText && (
+          <div className="mt-4 flex items-center gap-2 text-sm">
+            <Clock className={`h-4 w-4 ${getUrgencyClass(deadlineSource)}`} />
+            <span className={getUrgencyClass(deadlineSource)}>{deadlineText}</span>
+          </div>
+        )}
+      </article>
     );
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading...
-      </div>
-    );
+    return <SellerWorkspaceSkeleton darkMode={themeState.darkMode} mode="orders" />;
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar />
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Seller Orders
-          </h1>
-          <p className="text-gray-600">Manage and fulfill your orders</p>
-        </div>
-
-        {/* Search, Filter, Date Range */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-wrap gap-4 items-center">
-          <div className="flex-1 min-w-[200px] relative">
-            <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={18}
-            />
+    <SellerShell
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      themeState={themeState}
+   
+    >
+      <SellerSection
+        theme={theme}
+        eyebrow="Order controls"
+        title="Scan the queue fast"
+        description="Use filters when you need them, but keep the default order view simple enough for daily work."
+      >
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto_auto]">
+          <div className="relative">
+            <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${theme.softText}`} />
             <input
               type="text"
               placeholder="Search by order number or product name..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className={`w-full rounded-full py-3 pl-10 pr-4 text-sm ${theme.input}`}
             />
           </div>
           <div className="flex items-center gap-2">
-            <Filter size={18} className="text-gray-500" />
+            <Filter className={`h-4 w-4 ${theme.softText}`} />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg p-2 text-sm"
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className={`rounded-full px-4 py-3 text-sm ${theme.input}`}
             >
               <option value="ALL">All Orders</option>
               <option value="PAID_ESCROW">Need Action</option>
@@ -409,60 +399,63 @@ export default function SellerOrders() {
               <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
-          <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-gray-500" />
+          <div className="grid grid-cols-2 gap-3">
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="border border-gray-300 rounded-lg p-2 text-sm"
-              placeholder="From"
+              onChange={(event) => setDateFrom(event.target.value)}
+              className={`rounded-full px-4 py-3 text-sm ${theme.input}`}
             />
-            <span className="text-gray-400">to</span>
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="border border-gray-300 rounded-lg p-2 text-sm"
-              placeholder="To"
+              onChange={(event) => setDateTo(event.target.value)}
+              className={`rounded-full px-4 py-3 text-sm ${theme.input}`}
             />
           </div>
         </div>
+      </SellerSection>
 
-        {filteredOrders.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">No orders found</p>
-            <p className="text-gray-400 text-sm mt-1">
-              Try adjusting your search or filters
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-10">
-            {statusGroups.map((group) => {
-              const groupOrders = filteredOrders.filter((o) =>
-                group.statuses.includes(o.status)
-              );
-              if (groupOrders.length === 0) return null;
-              const Icon = group.icon;
-              return (
-                <div key={group.label}>
-                  <h2
-                    className={`text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2`}
-                  >
-                    <Icon size={20} className={`text-${group.color}-600`} />
+      {filteredOrders.length === 0 ? (
+        <SellerEmptyState
+          theme={theme}
+          icon={Package}
+          title="No orders found"
+          body="Try adjusting your search or filters. New seller orders will appear here as buyers place them."
+        />
+      ) : (
+        <div className="space-y-8">
+          {statusGroups.map((group) => {
+            const groupOrders = filteredOrders.filter((order) =>
+              group.statuses.includes(order.status)
+            );
+
+            if (groupOrders.length === 0) {
+              return null;
+            }
+
+            const Icon = group.icon;
+
+            return (
+              <SellerSection
+                key={group.label}
+                theme={theme}
+                eyebrow="Order stage"
+                title={group.label}
+                description={`${groupOrders.length} order${groupOrders.length === 1 ? '' : 's'} in this part of the workflow.`}
+              >
+                <div className="mb-5 flex items-center gap-2">
+                  <Icon className={`h-5 w-5 ${getGroupAccent(group.key, themeState.darkMode)}`} />
+                  <span className={`text-sm font-semibold ${getGroupAccent(group.key, themeState.darkMode)}`}>
                     {group.label}
-                  </h2>
-                  <div className="space-y-4">
-                    {groupOrders.map(renderOrderCard)}
-                  </div>
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
-      <Footer />
-    </div>
+                <div className="space-y-4">{groupOrders.map(renderOrderCard)}</div>
+              </SellerSection>
+            );
+          })}
+        </div>
+      )}
+    </SellerShell>
   );
 }

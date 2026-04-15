@@ -1,11 +1,23 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  AlertCircle,
+  Clock,
+  DollarSign,
+  Package,
+  User,
+} from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { AlertCircle, Clock, User, Package, DollarSign } from "lucide-react";
+import AdminActionModal from "../components/AdminActionModal";
+import {
+  ADMIN_ACTION_TYPES,
+  ADMIN_TARGET_TYPES,
+  getCurrentAdminUser,
+  performAdminAction,
+} from "../services/adminActionService";
 
-// Constitution sections (based on your Admin Constitution)
 const CONSTITUTION_SECTIONS = [
   { value: "4.1", label: "4.1 - Item Never Arrived" },
   { value: "4.2", label: "4.2 - Item Arrived Damaged" },
@@ -23,10 +35,51 @@ const CONSTITUTION_SECTIONS = [
   { value: "5.2", label: "5.2 - Service Issue" },
 ];
 
+const RESOLUTION_OPTIONS = [
+  { value: "full_refund", label: "Full Refund (buyer returns item)" },
+  { value: "partial_refund", label: "Partial Refund (buyer keeps item)" },
+  { value: "release", label: "Release Escrow to Seller" },
+  { value: "cancelled", label: "Cancel Order" },
+];
+
+function formatCurrency(value) {
+  return `N${Number(value || 0).toLocaleString()}`;
+}
+
+function getResolutionLabel(resolutionType) {
+  return (
+    RESOLUTION_OPTIONS.find((option) => option.value === resolutionType)?.label ||
+    resolutionType
+  );
+}
+
+function buildOrderSnapshot(currentOrder, extras = {}) {
+  if (!currentOrder) {
+    return null;
+  }
+
+  return {
+    id: currentOrder.id,
+    order_number: currentOrder.order_number,
+    status: currentOrder.status,
+    dispute_status: currentOrder.dispute_status,
+    resolution_type: currentOrder.resolution_type,
+    resolution_amount: currentOrder.resolution_amount,
+    constitution_section: currentOrder.constitution_section,
+    resolved_at: currentOrder.resolved_at,
+    resolved_by: currentOrder.resolved_by,
+    total_amount: currentOrder.total_amount,
+    buyer_id: currentOrder.buyer_id,
+    seller_id: currentOrder.seller_id,
+    dispute_reason: currentOrder.dispute_reason,
+    ...extras,
+  };
+}
+
 export default function AdminOrderDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const admin = JSON.parse(localStorage.getItem("mafdesh_user"));
+  const admin = useMemo(() => getCurrentAdminUser(), []);
 
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
@@ -35,58 +88,56 @@ export default function AdminOrderDetails() {
   const [evidence, setEvidence] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
-
-  // Update current time every second
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Dispute history
   const [buyerHistory, setBuyerHistory] = useState(null);
   const [sellerHistory, setSellerHistory] = useState(null);
-
-  // Resolution form
   const [resolutionType, setResolutionType] = useState("");
   const [partialAmount, setPartialAmount] = useState("");
   const [constitutionSection, setConstitutionSection] = useState("");
   const [notes, setNotes] = useState("");
   const [resolving, setResolving] = useState(false);
+  const [resolutionModalOpen, setResolutionModalOpen] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-    loadOrder();
-  }, [id]);
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const checkAuth = () => {
-    const storedUser = localStorage.getItem("mafdesh_user");
-    if (!storedUser) {
-      navigate("/login");
-      return;
-    }
-    const user = JSON.parse(storedUser);
-    if (user.role !== "admin") {
-      navigate("/login");
-    }
-  };
-
-  const loadOrder = async () => {
-    setLoading(true);
+  const loadUserHistory = useCallback(async (userId, role) => {
     try {
-      // 1. Fetch order
-      const { data: orderData, error } = await supabase
+      const { data, error } = await supabase
+        .from("user_dispute_history")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      if (role === "buyer") {
+        setBuyerHistory(data || null);
+      } else {
+        setSellerHistory(data || null);
+      }
+    } catch (error) {
+      console.error(`Error loading ${role} history:`, error);
+    }
+  }, []);
+
+  const loadOrder = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .select("*")
         .eq("id", id)
         .single();
 
-      if (error || !orderData) {
-        console.error(error);
-        setLoading(false);
-        return;
+      if (orderError || !orderData) {
+        throw orderError || new Error("Order not found.");
       }
 
-      // 2. Fetch order_items (multi‑item orders)
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
         .select(`
@@ -101,197 +152,244 @@ export default function AdminOrderDetails() {
         .eq("order_id", id);
 
       let finalItems = [];
-      if (!itemsError && itemsData && itemsData.length > 0) {
+
+      if (!itemsError && itemsData?.length) {
         finalItems = itemsData;
       } else if (orderData.product_id) {
-        // Legacy single‑item order (no order_items)
-        const { data: product, error: prodError } = await supabase
+        const { data: productData } = await supabase
           .from("products")
           .select("id, name, images")
           .eq("id", orderData.product_id)
-          .single();
-        if (!prodError && product) {
-          finalItems = [{
+          .maybeSingle();
+
+        finalItems = [
+          {
             quantity: orderData.quantity,
             price_at_time: orderData.product_price,
-            product: product
-          }];
-        } else {
-          console.error("Fallback product fetch error:", prodError);
-          finalItems = [{
-            quantity: orderData.quantity,
-            price_at_time: orderData.product_price,
-            product: { id: orderData.product_id, name: "Product not found", images: [] }
-          }];
-        }
+            product: productData || {
+              id: orderData.product_id,
+              name: "Product not found",
+              images: [],
+            },
+          },
+        ];
       }
-      setItems(finalItems);
 
-      // 3. Fetch buyer
-      const { data: buyerUser } = await supabase
-        .from("users")
-        .select("id,email,phone_number")
-        .eq("id", orderData.buyer_id)
-        .maybeSingle();
+      const [{ data: buyerUser }, { data: buyerProfile }, { data: sellerUser }, { data: sellerProfile }] =
+        await Promise.all([
+          supabase
+            .from("users")
+            .select("id, email, phone_number")
+            .eq("id", orderData.buyer_id)
+            .maybeSingle(),
+          supabase
+            .from("profiles")
+            .select("full_name, username, location")
+            .eq("id", orderData.buyer_id)
+            .maybeSingle(),
+          supabase
+            .from("users")
+            .select("id, email, phone_number")
+            .eq("id", orderData.seller_id)
+            .maybeSingle(),
+          supabase
+            .from("profiles")
+            .select("full_name, username, location")
+            .eq("id", orderData.seller_id)
+            .maybeSingle(),
+        ]);
 
-      const { data: buyerProfile } = await supabase
-        .from("profiles")
-        .select("full_name,username,location")
-        .eq("id", orderData.buyer_id)
-        .maybeSingle();
+      let evidenceUrls = [];
+      if (orderData.dispute_images?.length) {
+        const signedUrls = await Promise.all(
+          orderData.dispute_images.map(async (path) => {
+            const { data } = await supabase.storage
+              .from("dispute-evidence")
+              .createSignedUrl(path, 3600);
+            return data?.signedUrl || null;
+          })
+        );
 
-      // 4. Fetch seller
-      const { data: sellerUser } = await supabase
-        .from("users")
-        .select("id,email,phone_number")
-        .eq("id", orderData.seller_id)
-        .maybeSingle();
-
-      const { data: sellerProfile } = await supabase
-        .from("profiles")
-        .select("full_name,username,location")
-        .eq("id", orderData.seller_id)
-        .maybeSingle();
+        evidenceUrls = signedUrls.filter(Boolean);
+      }
 
       setOrder(orderData);
+      setItems(finalItems);
       setBuyer({ ...buyerUser, ...buyerProfile });
       setSeller({ ...sellerUser, ...sellerProfile });
+      setEvidence(evidenceUrls);
 
-      // 5. Load dispute images (if any)
-      if (orderData.dispute_images?.length) {
-        const urls = [];
-        for (const path of orderData.dispute_images) {
-          const { data } = await supabase.storage
-            .from("dispute-evidence")
-            .createSignedUrl(path, 3600);
-          if (data?.signedUrl) {
-            urls.push(data.signedUrl);
-          }
-        }
-        setEvidence(urls);
-      }
-
-      // 6. Load user dispute history
       await Promise.all([
         loadUserHistory(orderData.buyer_id, "buyer"),
         loadUserHistory(orderData.seller_id, "seller"),
       ]);
-    } catch (err) {
-      console.error("Error loading order:", err);
+    } catch (error) {
+      console.error("Error loading order:", error);
+      setOrder(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, loadUserHistory]);
 
-  const loadUserHistory = async (userId, role) => {
-    try {
-      const { data, error } = await supabase
-        .from("user_dispute_history")
-        .select("*")
-        .eq("user_id", userId)
-        .single();
-
-      if (error && error.code !== "PGRST116") throw error;
-      if (role === "buyer") setBuyerHistory(data || null);
-      else setSellerHistory(data || null);
-    } catch (err) {
-      console.error(`Error loading ${role} history:`, err);
-    }
-  };
+  useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
 
   const formatRemaining = (deadline) => {
-    if (!deadline) return null;
+    if (!deadline) {
+      return null;
+    }
+
     const diff = new Date(deadline) - now;
-    if (diff <= 0) return "Expired";
+    if (diff <= 0) {
+      return "Expired";
+    }
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
-    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
+
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
     return `${seconds}s`;
   };
 
   const getUrgencyClass = (deadline) => {
-    if (!deadline) return '';
+    if (!deadline) {
+      return "";
+    }
+
     const diff = new Date(deadline) - now;
-    if (diff <= 0) return 'text-red-600 font-bold';
+    if (diff <= 0) {
+      return "text-red-600 font-bold";
+    }
+
     const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) return 'text-red-600 font-bold animate-pulse';
-    if (hours < 24) return 'text-orange-600 font-semibold';
-    return 'text-gray-600';
+    if (hours < 6) {
+      return "text-red-600 font-bold animate-pulse";
+    }
+    if (hours < 24) {
+      return "text-orange-600 font-semibold";
+    }
+    return "text-gray-600";
   };
 
-  const handleResolve = async (e) => {
-    e.preventDefault();
-
+  const validateResolution = () => {
     if (!resolutionType || !constitutionSection) {
-      alert("Please select resolution type and constitution section.");
+      alert("Please select a resolution type and constitution section.");
+      return false;
+    }
+
+    if (resolutionType === "partial_refund") {
+      const amount = Number(partialAmount);
+      if (!partialAmount || Number.isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid partial refund amount.");
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const openResolutionModal = (event) => {
+    event.preventDefault();
+
+    if (!validateResolution()) {
       return;
     }
-    if (resolutionType === "partial_refund" && !partialAmount) {
-      alert("Please enter partial refund amount.");
+
+    setResolutionModalOpen(true);
+  };
+
+  const closeResolutionModal = () => {
+    if (!resolving) {
+      setResolutionModalOpen(false);
+    }
+  };
+
+  const handleResolveDispute = async ({ reason }) => {
+    if (!order) {
       return;
+    }
+
+    const resolvedAt = new Date().toISOString();
+    const resolutionAmount =
+      resolutionType === "partial_refund" ? Number.parseFloat(partialAmount) : null;
+
+    const updateData = {
+      dispute_status: "resolved",
+      resolved_by: admin.id,
+      resolution_type: resolutionType,
+      constitution_section: constitutionSection,
+      resolution_notes: notes.trim() || null,
+      resolved_at: resolvedAt,
+      ship_deadline: null,
+      auto_cancel_at: null,
+      auto_complete_at: null,
+      dispute_deadline: null,
+    };
+
+    if (resolutionType === "full_refund" || resolutionType === "partial_refund") {
+      updateData.status = "REFUNDED";
+    } else if (resolutionType === "release") {
+      updateData.status = "COMPLETED";
+    } else if (resolutionType === "cancelled") {
+      updateData.status = "CANCELLED";
+    }
+
+    if (resolutionType === "partial_refund") {
+      updateData.resolution_amount = resolutionAmount;
+    } else {
+      updateData.resolution_amount = null;
     }
 
     setResolving(true);
 
     try {
-      // Insert into admin_actions (immutable log)
-      const { error: actionError } = await supabase
-        .from("admin_actions")
-        .insert({
-          admin_id: admin.id,
-          order_id: order.id,
-          action_type: resolutionType,
-          amount: resolutionType === "partial_refund" ? parseFloat(partialAmount) : null,
-          reason: notes,
+      await performAdminAction({
+        adminId: admin.id,
+        actionType: ADMIN_ACTION_TYPES.RESOLVE_DISPUTE,
+        targetType: ADMIN_TARGET_TYPES.ORDER,
+        targetId: order.id,
+        reason,
+        metadata: {
+          order_number: order.order_number,
+          buyer_id: order.buyer_id,
+          seller_id: order.seller_id,
+          dispute_reason: order.dispute_reason,
+          resolution_type: resolutionType,
           constitution_section: constitutionSection,
-          metadata: { dispute_reason: order.dispute_reason },
-        });
+          partial_amount: resolutionAmount,
+          notes: notes.trim() || null,
+        },
+        fetchPreviousState: async () => buildOrderSnapshot(order),
+        performMutation: async () => {
+          const { error } = await supabase
+            .from("orders")
+            .update(updateData)
+            .eq("id", order.id);
 
-      if (actionError) throw actionError;
+          if (error) {
+            throw error;
+          }
+        },
+        fetchNewState: async () => buildOrderSnapshot(order, updateData),
+      });
 
-      // Update order – final status and clear deadlines
-      const updateData = {
-        dispute_status: "resolved",
-        resolved_by: admin.id,
-        resolution_type: resolutionType,
-        constitution_section: constitutionSection,
-        resolution_notes: notes,
-        resolved_at: new Date().toISOString(),
-        // Clear all deadlines
-        ship_deadline: null,
-        auto_cancel_at: null,
-        auto_complete_at: null,
-        dispute_deadline: null,
-      };
-
-      if (resolutionType === "full_refund" || resolutionType === "partial_refund") {
-        updateData.status = "REFUNDED";
-      } else if (resolutionType === "release") {
-        updateData.status = "COMPLETED";
-      } else if (resolutionType === "cancelled") {
-        updateData.status = "CANCELLED";
-      }
-
-      if (resolutionType === "partial_refund") {
-        updateData.resolution_amount = parseFloat(partialAmount);
-      }
-
-      const { error: orderError } = await supabase
-        .from("orders")
-        .update(updateData)
-        .eq("id", order.id);
-
-      if (orderError) throw orderError;
-
-      alert("Dispute resolved successfully!");
+      setResolutionModalOpen(false);
+      alert("Dispute resolved successfully.");
       navigate("/admin/disputes");
-    } catch (err) {
-      console.error("Error resolving dispute:", err);
-      alert("Failed to resolve dispute. Check console.");
+    } catch (error) {
+      console.error("Error resolving dispute:", error);
+      alert("Failed to resolve dispute.");
     } finally {
       setResolving(false);
     }
@@ -299,7 +397,7 @@ export default function AdminOrderDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
         Loading order...
       </div>
     );
@@ -307,94 +405,127 @@ export default function AdminOrderDetails() {
 
   if (!order) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Order not found
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
+        Order not found.
       </div>
     );
   }
 
-  const isSingleItem = order.product_price !== null;
-  const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
-
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
+
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <h1 className="text-3xl font-bold text-blue-900">Admin Order Details</h1>
           <button
             onClick={() => navigate("/admin/disputes")}
             className="text-blue-600 hover:underline"
           >
-            ← Back to Disputes
+            Back to Disputes
           </button>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* ORDER INFO */}
-          <div className="bg-white p-6 rounded-lg border">
+          <section className="bg-white p-6 rounded-lg border">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <DollarSign size={20} className="text-orange-600" />
               Order Info
             </h2>
-            <p><strong>Order Number:</strong> {order.order_number || order.id.slice(0,8)}</p>
-            <p><strong>Order ID:</strong> {order.id}</p>
-            <p><strong>Status:</strong> {order.status}</p>
-            <p><strong>Amount:</strong> ₦{Number(order.total_amount).toLocaleString()}</p>
-            <p><strong>Platform Fee:</strong> ₦{Number(order.platform_fee).toLocaleString()}</p>
-            <p><strong>Delivery Type:</strong> {order.delivery_type}</p>
-            <p><strong>Date:</strong> {new Date(order.created_at).toLocaleDateString()}</p>
-          </div>
+            <p>
+              <strong>Order Number:</strong> {order.order_number || order.id.slice(0, 8)}
+            </p>
+            <p>
+              <strong>Order ID:</strong> {order.id}
+            </p>
+            <p>
+              <strong>Status:</strong> {order.status}
+            </p>
+            <p>
+              <strong>Amount:</strong> {formatCurrency(order.total_amount)}
+            </p>
+            <p>
+              <strong>Platform Fee:</strong> {formatCurrency(order.platform_fee)}
+            </p>
+            <p>
+              <strong>Delivery Type:</strong> {order.delivery_type || "N/A"}
+            </p>
+            <p>
+              <strong>Date:</strong> {new Date(order.created_at).toLocaleDateString()}
+            </p>
+          </section>
 
-          {/* BUYER */}
-          <div className="bg-white p-6 rounded-lg border">
+          <section className="bg-white p-6 rounded-lg border">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <User size={20} className="text-orange-600" />
               Buyer
             </h2>
-            <p><strong>Name:</strong> {buyer?.full_name || buyer?.username || "Unknown"}</p>
-            <p><strong>Email:</strong> {buyer?.email ?? "Unknown"}</p>
-            <p><strong>Phone:</strong> {buyer?.phone_number ?? "Unknown"}</p>
-            <p><strong>ID:</strong> {buyer?.id ?? "Unknown"}</p>
-          </div>
+            <p>
+              <strong>Name:</strong> {buyer?.full_name || buyer?.username || "Unknown"}
+            </p>
+            <p>
+              <strong>Email:</strong> {buyer?.email || "Unknown"}
+            </p>
+            <p>
+              <strong>Phone:</strong> {buyer?.phone_number || "Unknown"}
+            </p>
+            <p>
+              <strong>ID:</strong> {buyer?.id || "Unknown"}
+            </p>
+          </section>
 
-          {/* SELLER */}
-          <div className="bg-white p-6 rounded-lg border">
+          <section className="bg-white p-6 rounded-lg border">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <User size={20} className="text-orange-600" />
               Seller
             </h2>
-            <p><strong>Name:</strong> {seller?.full_name ?? "Unknown"}</p>
-            <p><strong>Email:</strong> {seller?.email ?? "Unknown"}</p>
-            <p><strong>Phone:</strong> {seller?.phone_number ?? "Unknown"}</p>
-            <p><strong>ID:</strong> {seller?.id ?? "Unknown"}</p>
-          </div>
+            <p>
+              <strong>Name:</strong> {seller?.full_name || seller?.username || "Unknown"}
+            </p>
+            <p>
+              <strong>Email:</strong> {seller?.email || "Unknown"}
+            </p>
+            <p>
+              <strong>Phone:</strong> {seller?.phone_number || "Unknown"}
+            </p>
+            <p>
+              <strong>ID:</strong> {seller?.id || "Unknown"}
+            </p>
+          </section>
 
-          {/* ITEMS (multi‑item support + legacy single‑item) */}
-          <div className="bg-white p-6 rounded-lg border md:col-span-2">
+          <section className="bg-white p-6 rounded-lg border md:col-span-2">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <Package size={20} className="text-orange-600" />
               Items
             </h2>
+
             {items.length === 0 ? (
               <p className="text-gray-500">No items found for this order.</p>
             ) : (
               <div className="space-y-4">
-                {items.map((item, idx) => {
-                  const imageUrl = item.product?.images?.[0] || '/placeholder.png';
+                {items.map((item, index) => {
+                  const imageUrl = item.product?.images?.[0] || "/placeholder.png";
+
                   return (
-                    <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
+                    <div
+                      key={`${item.product?.id || "item"}-${index}`}
+                      className="flex gap-4 items-start border-b pb-4 last:border-b-0 last:pb-0"
+                    >
                       <img
                         src={imageUrl}
-                        alt={item.product?.name}
+                        alt={item.product?.name || "Product"}
                         className="w-16 h-16 object-contain border rounded"
                       />
                       <div>
-                        <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
-                        <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
+                        <h3 className="font-semibold text-gray-900">
+                          {item.product?.name || "Unnamed Product"}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Product ID: {item.product?.id || "Unknown"}
+                        </p>
                         <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
                         <p className="text-orange-600 font-medium">
-                          ₦{Number(item.price_at_time).toLocaleString()} each
+                          {formatCurrency(item.price_at_time)} each
                         </p>
                       </div>
                     </div>
@@ -402,37 +533,50 @@ export default function AdminOrderDetails() {
                 })}
               </div>
             )}
-          </div>
+          </section>
 
-          {/* DELIVERY INFO */}
           {order.delivery_type === "delivery" && (
-            <div className="bg-white p-6 rounded-lg border md:col-span-2">
+            <section className="bg-white p-6 rounded-lg border md:col-span-2">
               <h2 className="font-semibold mb-4 text-blue-900">Delivery Info</h2>
-              <p><strong>State:</strong> {order.delivery_state}</p>
-              <p><strong>Address:</strong> {order.delivery_address}</p>
-            </div>
+              <p>
+                <strong>State:</strong> {order.delivery_state || "N/A"}
+              </p>
+              <p>
+                <strong>Address:</strong> {order.delivery_address || "N/A"}
+              </p>
+            </section>
           )}
 
-          {/* DISPUTE SECTION */}
           {order.status === "DISPUTED" && (
-            <div className="bg-white p-6 rounded-lg border md:col-span-2">
+            <section className="bg-white p-6 rounded-lg border md:col-span-2">
               <h2 className="font-semibold mb-4 text-red-600 flex items-center gap-2">
                 <AlertCircle size={20} />
                 Dispute Details
               </h2>
-              <p className="mb-4"><strong>Reason:</strong> {order.dispute_reason}</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {evidence.map((img, i) => (
-                  <img key={i} src={img} alt="evidence" className="rounded border" />
-                ))}
-              </div>
-            </div>
+              <p className="mb-4">
+                <strong>Reason:</strong> {order.dispute_reason || "No reason recorded"}
+              </p>
+
+              {evidence.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {evidence.map((imageUrl, index) => (
+                    <img
+                      key={imageUrl || index}
+                      src={imageUrl}
+                      alt={`dispute evidence ${index + 1}`}
+                      className="rounded border"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No dispute evidence uploaded.</p>
+              )}
+            </section>
           )}
         </div>
 
-        {/* USER DISPUTE HISTORY */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-          <div className="bg-white rounded-lg border p-6">
+          <section className="bg-white rounded-lg border p-6">
             <h2 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <Clock size={20} className="text-orange-600" />
               Buyer Dispute History
@@ -440,13 +584,17 @@ export default function AdminOrderDetails() {
             {buyerHistory ? (
               <div>
                 <p className="text-sm">
-                  <strong>Total disputes as buyer:</strong> {buyerHistory.total_disputes_as_buyer}
+                  <strong>Total disputes as buyer:</strong>{" "}
+                  {buyerHistory.total_disputes_as_buyer}
                 </p>
                 {buyerHistory.buyer_disputes?.length > 0 ? (
                   <div className="mt-2 max-h-40 overflow-y-auto text-xs">
-                    {buyerHistory.buyer_disputes.map((d, i) => (
-                      <div key={i} className="border-b py-1">
-                        <span className="font-medium">Order {d.order_id?.slice(0,8)}:</span> {d.resolution_type} ({d.constitution_section})
+                    {buyerHistory.buyer_disputes.map((dispute, index) => (
+                      <div key={index} className="border-b py-1">
+                        <span className="font-medium">
+                          Order {dispute.order_id?.slice(0, 8)}:
+                        </span>{" "}
+                        {dispute.resolution_type} ({dispute.constitution_section})
                       </div>
                     ))}
                   </div>
@@ -457,9 +605,9 @@ export default function AdminOrderDetails() {
             ) : (
               <p className="text-gray-500 text-sm">No dispute history found.</p>
             )}
-          </div>
+          </section>
 
-          <div className="bg-white rounded-lg border p-6">
+          <section className="bg-white rounded-lg border p-6">
             <h2 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <Clock size={20} className="text-orange-600" />
               Seller Dispute History
@@ -467,13 +615,17 @@ export default function AdminOrderDetails() {
             {sellerHistory ? (
               <div>
                 <p className="text-sm">
-                  <strong>Total disputes as seller:</strong> {sellerHistory.total_disputes_as_seller}
+                  <strong>Total disputes as seller:</strong>{" "}
+                  {sellerHistory.total_disputes_as_seller}
                 </p>
                 {sellerHistory.seller_disputes?.length > 0 ? (
                   <div className="mt-2 max-h-40 overflow-y-auto text-xs">
-                    {sellerHistory.seller_disputes.map((d, i) => (
-                      <div key={i} className="border-b py-1">
-                        <span className="font-medium">Order {d.order_id?.slice(0,8)}:</span> {d.resolution_type} ({d.constitution_section})
+                    {sellerHistory.seller_disputes.map((dispute, index) => (
+                      <div key={index} className="border-b py-1">
+                        <span className="font-medium">
+                          Order {dispute.order_id?.slice(0, 8)}:
+                        </span>{" "}
+                        {dispute.resolution_type} ({dispute.constitution_section})
                       </div>
                     ))}
                   </div>
@@ -484,11 +636,10 @@ export default function AdminOrderDetails() {
             ) : (
               <p className="text-gray-500 text-sm">No dispute history found.</p>
             )}
-          </div>
+          </section>
         </div>
 
-        {/* Deadlines with live countdown */}
-        <div className="bg-white p-6 rounded-lg border mt-6">
+        <section className="bg-white p-6 rounded-lg border mt-6">
           <h2 className="font-semibold mb-4">Timers</h2>
           {order.ship_deadline && (
             <p className={`text-sm ${getUrgencyClass(order.ship_deadline)}`}>
@@ -497,44 +648,46 @@ export default function AdminOrderDetails() {
           )}
           {order.auto_complete_at && (
             <p className={`text-sm ${getUrgencyClass(order.auto_complete_at)}`}>
-              Auto‑complete: {formatRemaining(order.auto_complete_at)}
+              Auto-complete: {formatRemaining(order.auto_complete_at)}
             </p>
           )}
           {order.auto_cancel_at && (
             <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at)}`}>
-              Auto‑cancel: {formatRemaining(order.auto_cancel_at)}
+              Auto-cancel: {formatRemaining(order.auto_cancel_at)}
             </p>
           )}
-        </div>
+        </section>
 
-        {/* RESOLUTION FORM (only for disputed orders) */}
         {order.status === "DISPUTED" && (
-          <div className="bg-white rounded-lg border p-6 mt-6">
+          <section className="bg-white rounded-lg border p-6 mt-6">
             <h2 className="text-xl font-semibold mb-4">Resolve Dispute</h2>
-            <form onSubmit={handleResolve} className="space-y-4">
+            <form onSubmit={openResolutionModal} className="space-y-4">
               <div>
                 <label className="block font-medium mb-1">Resolution Type</label>
                 <select
                   value={resolutionType}
-                  onChange={(e) => setResolutionType(e.target.value)}
+                  onChange={(event) => setResolutionType(event.target.value)}
                   className="w-full p-2 border rounded"
                   required
                 >
                   <option value="">Select type</option>
-                  <option value="full_refund">Full Refund (buyer returns item)</option>
-                  <option value="partial_refund">Partial Refund (buyer keeps item)</option>
-                  <option value="release">Release Escrow to Seller</option>
-                  <option value="cancelled">Cancel Order</option>
+                  {RESOLUTION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               {resolutionType === "partial_refund" && (
                 <div>
-                  <label className="block font-medium mb-1">Partial Refund Amount (₦)</label>
+                  <label className="block font-medium mb-1">
+                    Partial Refund Amount (N)
+                  </label>
                   <input
                     type="number"
                     value={partialAmount}
-                    onChange={(e) => setPartialAmount(e.target.value)}
+                    onChange={(event) => setPartialAmount(event.target.value)}
                     className="w-full p-2 border rounded"
                     min="1"
                     step="0.01"
@@ -547,27 +700,29 @@ export default function AdminOrderDetails() {
                 <label className="block font-medium mb-1">Constitution Section</label>
                 <select
                   value={constitutionSection}
-                  onChange={(e) => setConstitutionSection(e.target.value)}
+                  onChange={(event) => setConstitutionSection(event.target.value)}
                   className="w-full p-2 border rounded"
                   required
                 >
                   <option value="">Select applicable section</option>
-                  {CONSTITUTION_SECTIONS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  {CONSTITUTION_SECTIONS.map((section) => (
+                    <option key={section.value} value={section.value}>
+                      {section.label}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-medium mb-1">Notes (optional)</label>
+                <label className="block font-medium mb-1">
+                  Additional Notes (optional)
+                </label>
                 <textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(event) => setNotes(event.target.value)}
                   rows="3"
                   className="w-full p-2 border rounded"
-                  placeholder="Add any reasoning or context..."
+                  placeholder="Add context that should stay on the order record."
                 />
               </div>
 
@@ -576,12 +731,45 @@ export default function AdminOrderDetails() {
                 disabled={resolving}
                 className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50"
               >
-                {resolving ? "Processing..." : "Resolve Dispute & Log"}
+                {resolving ? "Processing..." : "Review Resolution"}
               </button>
             </form>
-          </div>
+          </section>
         )}
       </main>
+
+      <AdminActionModal
+        isOpen={resolutionModalOpen}
+        title="Confirm Dispute Resolution"
+        description="This decision will update the order and create an immutable admin audit entry."
+        actionLabel="Resolve Dispute"
+        reasonLabel="Required accountability reason"
+        reasonPlaceholder="Explain why this resolution is justified."
+        confirmTone="warning"
+        loading={resolving}
+        onClose={closeResolutionModal}
+        onConfirm={handleResolveDispute}
+      >
+        <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 text-sm text-gray-700">
+          <p>
+            <strong>Resolution:</strong> {getResolutionLabel(resolutionType)}
+          </p>
+          <p>
+            <strong>Constitution Section:</strong> {constitutionSection}
+          </p>
+          {resolutionType === "partial_refund" && (
+            <p>
+              <strong>Partial Amount:</strong> {formatCurrency(partialAmount)}
+            </p>
+          )}
+          {notes.trim() && (
+            <p className="whitespace-pre-wrap">
+              <strong>Additional Notes:</strong> {notes.trim()}
+            </p>
+          )}
+        </div>
+      </AdminActionModal>
+
       <Footer />
     </div>
   );

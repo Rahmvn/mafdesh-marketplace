@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Mail, AtSign, Briefcase, Shield, Lock, ArrowLeft, Phone, CreditCard, CheckCircle, AlertCircle, Calendar, MapPin, FileText } from 'lucide-react';
 import Navbar from '../components/Navbar';
@@ -18,7 +18,6 @@ const NIGERIAN_BANKS = [
 
 export default function Profile() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
@@ -40,11 +39,7 @@ export default function Profile() {
   });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
-
-  const loadUserProfile = async () => {
+  const loadUserProfile = useCallback(async () => {
     try {
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
@@ -67,7 +62,7 @@ export default function Profile() {
       }
 
       // Fetch from profiles table
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -76,7 +71,6 @@ export default function Profile() {
       // Merge: profileData takes precedence for overlapping fields (full_name, username, location)
       const merged = { ...userData, ...profileData };
 
-      setUser(data.session.user);
       setProfile(merged);
 
       // Pre‑fill pending details for seller
@@ -96,7 +90,11 @@ export default function Profile() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   const cancelSubscription = async () => {
     if (!window.confirm('Are you sure you want to cancel your verification subscription? This will immediately remove your verified badge and you will not receive a refund for any unused time.')) return;

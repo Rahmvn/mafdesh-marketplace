@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
@@ -31,22 +31,7 @@ export default function BuyerOrderDetails() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    loadOrder();
-
-    const subscription = supabase
-      .channel(`order-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
-        () => loadOrder()
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(subscription);
-  }, [id]);
-
-  const loadOrder = async () => {
+  const loadOrder = useCallback(async () => {
     const { data: orderData, error } = await supabase
       .from("orders")
       .select("*")
@@ -124,7 +109,22 @@ export default function BuyerOrderDetails() {
       is_verified: user?.is_verified || false,
     });
     setLoading(false);
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadOrder();
+
+    const subscription = supabase
+      .channel(`order-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
+        () => loadOrder()
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(subscription);
+  }, [id, loadOrder]);
 
   const refreshOrder = async () => {
     setRefreshing(true);
@@ -173,7 +173,7 @@ export default function BuyerOrderDetails() {
     for (const file of files) {
       const fileExt = file.name.split('.').pop();
       const fileName = `dispute_${order.id}_${Date.now()}_${Math.random()}.${fileExt}`;
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('dispute-evidence')
         .upload(fileName, file);
       if (error) throw error;
@@ -344,14 +344,11 @@ export default function BuyerOrderDetails() {
     if (order.ship_deadline) {
       actionMessage += ` Seller has until ${new Date(order.ship_deadline).toLocaleString()} to prepare.`;
     }
-  } else if (order.status === "SHIPPED") {
-    actionMessage = "Your order has been shipped. Please confirm delivery once you've received all items.";
-    actionButton = (
-      <>
-        <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">I've Received All Items</button>
-        <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
-      </>
-    );
+  }  else if (order.status === "SHIPPED") {
+  actionMessage = "Your order has been shipped and is on its way. Once the seller marks it as delivered, you will be able to confirm receipt.";
+  // No action buttons for SHIPPED (buyer cannot confirm yet)
+  actionButton = null;
+
   } else if (order.status === "READY_FOR_PICKUP") {
     if (pickupDeadlineExpired) {
       actionMessage = "The pickup window has expired. This order will be cancelled.";
@@ -364,18 +361,19 @@ export default function BuyerOrderDetails() {
         </>
       );
     }
-  } else if (order.status === "DELIVERED") {
-    if (disputeDeadlineExpired) {
-      actionMessage = "The dispute window has passed. The order will auto‑complete.";
-    } else {
-      actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
-      actionButton = (
-        <>
-          <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Delivery</button>
-          <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
-        </>
-      );
-    }
+   } else if (order.status === "DELIVERED") {
+  if (disputeDeadlineExpired) {
+    actionMessage = "The dispute window has passed. The order will auto‑complete.";
+  } else {
+    actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
+    actionButton = (
+      <>
+        <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Delivery</button>
+        <button onClick={() => setDisputeModal(true)} className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold">Report a Problem</button>
+      </>
+    );
+  }
+
   } else if (order.status === "COMPLETED") {
     actionMessage = "Order completed! Thank you for shopping with us.";
   } else if (order.status === "DISPUTED") {
@@ -480,13 +478,13 @@ export default function BuyerOrderDetails() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 sm:py-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Order Details</h1>
           <button
             onClick={refreshOrder}
             disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+            className="flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
           >
             <svg className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -497,7 +495,7 @@ export default function BuyerOrderDetails() {
 
         {/* Order Summary */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <span className="text-sm text-gray-500">
               Order #{order.order_number || order.id.slice(0,8)}
             </span>
@@ -556,7 +554,7 @@ export default function BuyerOrderDetails() {
         {seller && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-gray-700">{seller.name}</p>
               {seller.is_verified && <VerificationBadge />}
             </div>
@@ -703,8 +701,8 @@ export default function BuyerOrderDetails() {
 
       {/* Dispute Modal */}
       {disputeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4 py-6">
+          <div className="bg-white rounded-xl p-5 sm:p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">Report an Issue</h3>
             <textarea
               value={disputeMessage}
@@ -729,7 +727,7 @@ export default function BuyerOrderDetails() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
               <button
                 onClick={() => setDisputeModal(false)}
                 className="px-4 py-2 border rounded"
@@ -751,8 +749,8 @@ export default function BuyerOrderDetails() {
 
       {/* Review Modal */}
       {reviewModal.open && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4 py-6">
+          <div className="bg-white rounded-xl p-5 sm:p-6 max-w-md w-full">
             <h3 className="text-xl font-bold mb-4">Review: {reviewModal.productName}</h3>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Rating (1-5 stars)</label>
@@ -778,7 +776,7 @@ export default function BuyerOrderDetails() {
                 placeholder="Share your experience with this product..."
               />
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
               <button
                 onClick={() => setReviewModal({ open: false, productId: null, productName: '' })}
                 className="px-4 py-2 border rounded"

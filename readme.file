@@ -1,0 +1,62 @@
+# Launch-Readiness Direction for Mafdesh
+
+## Summary
+The system is already a real MVP marketplace, not a starter app anymore. It has:
+- Role-based buyer, seller, and admin surfaces in React/Vite with Supabase auth and data.
+- Core commerce flows for catalog, cart, checkout, orders, disputes, and seller operations.
+- A premium verification layer tied to seller trust and premium analytics.
+- Admin governance features including moderation, audit logging, bank approvals, and support inbox.
+- Server-side automation via Supabase functions for order deadlines and verification expiry.
+
+What we have done well:
+- Built the product spine end-to-end.
+- Added operational controls instead of leaving admin/support as an afterthought.
+- Started test coverage; current local status is `10` unit tests passing and `4` Playwright smoke tests passing.
+
+Best direction for the chosen goal, `Launch Readiness`:
+- Treat the next phase as consolidation and hardening, not feature expansion.
+- Make the core marketplace flows fully trustworthy before adding more premium or growth features.
+- Use launch readiness to remove product contradictions and make every important flow system-backed.
+
+## Key Changes
+### 1. Establish one source of truth for auth and user state
+- Standardize all protected pages on Supabase session + database user record, not mixed `localStorage` assumptions.
+- Keep `localStorage` only as a cache/helper if needed, never as the authority for role or verification state.
+- Align route guards, navbar state, profile state, and seller/admin pages around the same user-loading pattern.
+
+### 2. Harden the payment and verification story
+- Replace the current simulated verification card flow with the same real payment direction the rest of the product claims to use.
+- Make verification activation depend on a server-confirmed payment result, not client-side success simulation.
+- Keep `verification_payments` as the canonical ledger and make seller verification state derive cleanly from it plus expiry logic.
+- Public interface impact: verification flow should expose a single confirmed payment state model such as `pending`, `successful`, `failed`, `expired`.
+
+### 3. Finish the core order-operating model
+- Audit the full order lifecycle so buyer, seller, admin, dispute, and cron automation all use the same allowed statuses and deadlines.
+- Ensure every status transition has one owner and one clear write path.
+- Keep dispute handling, refund/completion automation, and admin overrides consistent with audit logging.
+- Public interface impact: order status transitions become the canonical workflow contract across UI and Edge Functions.
+
+### 4. Tighten support and admin operations
+- Keep support tickets, dispute evidence, and admin actions connected to real operational IDs and actors.
+- Ensure admin tools only mutate through guarded/server-backed flows where trust matters.
+- Preserve `admin_actions` as immutable audit history and make new privileged actions log through the same path.
+- Public interface impact: admin moderation action payload remains the contract for privileged changes; support ticket statuses stay limited and consistent.
+
+### 5. Expand tests around business-critical flows
+- Add integration-style tests for route protection, role redirects, verification gating, and order/dispute status behavior.
+- Add happy-path and failure-path tests for support submission, admin action validation, and verification expiry.
+- Keep Playwright focused on smoke plus 2-3 critical journeys: buyer checkout shell, seller verification gating, admin support/audit access.
+
+## Test Plan
+- Unit test canonical user/session loading and role-based redirects.
+- Unit test verification state transitions: unpaid, successful, expired, unverified.
+- Unit test order deadline automation inputs and expected status changes.
+- Unit test admin action reason requirements and immutable audit logging assumptions.
+- Browser test unauthenticated redirects, seller verification gating to analytics, and admin access to support/audit pages.
+- Browser test support request submission UI with and without attachments when storage is unavailable.
+
+## Assumptions
+- Near-term goal is launch readiness, not new monetization features.
+- The current premium analytics page is sufficient for MVP and should be polished, not expanded first.
+- Paystack, or the existing real payment path already used elsewhere, is the intended verification payment provider.
+- The right next move is to stabilize core trust, payment, and ops flows before adding chat, richer analytics, or new marketplace features.

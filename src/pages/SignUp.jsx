@@ -47,22 +47,30 @@ export default function SignUp() {
   };
 
   const checkUsernameUnique = async (username) => {
-  if (!username) return true;
+    if (!username) return true;
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('username', username)
-    .maybeSingle();
+    const validationError = validateUsername(username);
+    if (validationError) {
+      setUsernameError(validationError);
+      return false;
+    }
 
-  if (data) {
-    setUsernameError("Username already taken");
-    return false;
-  }
+    setIsCheckingUsername(true);
+    const { data } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .maybeSingle();
+    setIsCheckingUsername(false);
 
-  setUsernameError("");
-  return true;
-};
+    if (data) {
+      setUsernameError("Username already taken");
+      return false;
+    }
+
+    setUsernameError("");
+    return true;
+  };
 const handleSignUp = async (formData) => {
   try {
     const { email, password } = formData;
@@ -264,6 +272,16 @@ const { error: profileError } = await supabase
 
                 if (formData.password.length < 6) {
                   alert('Password must be at least 6 characters');
+                  return;
+                }
+
+                if (formData.password !== formData.confirmPassword) {
+                  alert('Passwords do not match');
+                  return;
+                }
+
+                if (!agreedToTerms) {
+                  alert('Please agree to the Terms & Conditions and Privacy Policy');
                   return;
                 }
 

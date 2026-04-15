@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { AlertCircle, Upload } from 'lucide-react';
 
@@ -8,6 +8,22 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
   const [newImages, setNewImages] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const fetchMessages = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('dispute_messages')
+      .select(`
+        *,
+        sender:users!sender_id (
+          role,
+          profiles (full_name, username)
+        )
+      `)
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false });
+    if (!error) setMessages(data || []);
+    setLoading(false);
+  }, [orderId]);
 
   useEffect(() => {
     fetchMessages();
@@ -23,30 +39,14 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
       })
       .subscribe();
     return () => supabase.removeChannel(subscription);
-  }, [orderId]);
-
-  const fetchMessages = async () => {
-    const { data, error } = await supabase
-      .from('dispute_messages')
-      .select(`
-        *,
-        sender:users!sender_id (
-          role,
-          profiles (full_name, username)
-        )
-      `)
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: false });
-    if (!error) setMessages(data || []);
-    setLoading(false);
-  };
+  }, [orderId, fetchMessages]);
 
   const uploadImages = async (files) => {
     const urls = [];
     for (const file of files) {
       const fileExt = file.name.split('.').pop();
       const fileName = `dispute_${orderId}_${Date.now()}_${Math.random()}.${fileExt}`;
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('dispute-evidence')
         .upload(fileName, file);
       if (error) throw error;

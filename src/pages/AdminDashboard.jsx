@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { useNavigate } from "react-router-dom";
+import { Package, Users, ShoppingCart, DollarSign, Shield } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { useNavigate } from "react-router-dom";
-import { Package, Users, ShoppingCart, DollarSign, AlertCircle, Shield } from "lucide-react";
+import { supabase } from "../supabaseClient";
+import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-
   const [stats, setStats] = useState({
     totalOrders: 0,
     totalProducts: 0,
@@ -19,26 +19,12 @@ export default function AdminDashboard() {
     pendingPayouts: 0,
     disputes: 0,
   });
-
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkAuth();
     loadDashboard();
   }, []);
-
-  const checkAuth = async () => {
-    const storedUser = localStorage.getItem("mafdesh_user");
-    if (!storedUser) {
-      navigate("/login");
-      return;
-    }
-    const user = JSON.parse(storedUser);
-    if (user.role !== "admin") {
-      navigate("/login");
-    }
-  };
 
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to logout?")) {
@@ -50,7 +36,6 @@ export default function AdminDashboard() {
 
   const loadDashboard = async () => {
     try {
-      // Fetch all orders for stats
       const { data: orders, error } = await supabase
         .from("orders")
         .select("id,status,total_amount,platform_fee,created_at");
@@ -61,85 +46,72 @@ export default function AdminDashboard() {
       }
 
       const totalOrders = orders?.length || 0;
-
-      // Calculate sales, fees, escrow
       let totalSales = 0;
       let platformFees = 0;
       let escrowMoney = 0;
 
-      orders?.forEach((o) => {
-        totalSales += Number(o.total_amount || 0);
-        platformFees += Number(o.platform_fee || 0);
-        if (["PAID_ESCROW", "SHIPPED"].includes(o.status)) {
-          escrowMoney += Number(o.total_amount || 0);
+      orders?.forEach((order) => {
+        totalSales += Number(order.total_amount || 0);
+        platformFees += Number(order.platform_fee || 0);
+
+        if (["PAID_ESCROW", "SHIPPED"].includes(order.status)) {
+          escrowMoney += Number(order.total_amount || 0);
         }
       });
 
-      // Fetch products count
       const { count: productsCount } = await supabase
         .from("products")
         .select("*", { count: "exact", head: true });
 
-      // Fetch users count by role
       const { data: users } = await supabase.from("users").select("role");
-      let sellers = 0,
-        buyers = 0;
-      users?.forEach((u) => {
-        if (u.role === "seller") sellers++;
-        if (u.role === "buyer") buyers++;
+      let sellers = 0;
+      let buyers = 0;
+
+      users?.forEach((user) => {
+        if (user.role === "seller") sellers += 1;
+        if (user.role === "buyer") buyers += 1;
       });
 
-      // Fetch pending payouts
       const { data: payouts } = await supabase
         .from("seller_payouts")
         .select("amount,status");
       let pendingPayouts = 0;
-      payouts?.forEach((p) => {
-        if (p.status === "PENDING") {
-          pendingPayouts += Number(p.amount || 0);
+
+      payouts?.forEach((payout) => {
+        if (payout.status === "PENDING") {
+          pendingPayouts += Number(payout.amount || 0);
         }
       });
 
-      // Fetch disputes count
       const { count: disputeCount } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .eq("status", "DISPUTED");
 
-      // Fetch recent orders (last 5)
       const { data: recent } = await supabase
         .from("orders")
-        .select("id,status,total_amount,product_id,created_at")
+        .select(
+          "id,order_number,status,total_amount,product_id,quantity,product_price,created_at"
+        )
         .order("created_at", { ascending: false })
         .limit(5);
 
-      // Safely get product names
       let mergedOrders = [];
       if (recent && recent.length > 0) {
-        // Extract valid product IDs
-        const productIds = recent
-          .map((o) => o.product_id)
-          .filter((id) => id && typeof id === "string" && id.length > 0);
+        const orderItemsMap = await getOrderItemsMap(recent);
 
-        let productMap = {};
-        if (productIds.length > 0) {
-          const { data: products } = await supabase
-            .from("products")
-            .select("id,name")
-            .in("id", productIds);
+        mergedOrders = recent.map((order) => {
+          const { displayName, itemCount, itemNames } = getOrderDisplayDetails(
+            orderItemsMap[order.id] || []
+          );
 
-          if (products) {
-            productMap = products.reduce((acc, p) => {
-              acc[p.id] = p.name;
-              return acc;
-            }, {});
-          }
-        }
-
-        mergedOrders = recent.map((o) => ({
-          ...o,
-          product_name: productMap[o.product_id] || o.product_id || "Unknown Product",
-        }));
+          return {
+            ...order,
+            product_name: displayName,
+            item_count: itemCount,
+            item_names: itemNames,
+          };
+        });
       }
 
       setRecentOrders(mergedOrders);
@@ -173,18 +145,16 @@ export default function AdminDashboard() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar onLogout={handleLogout} />
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
-        <h1 className="text-3xl font-bold text-blue-900 mb-8">Admin Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-blue-900 mb-8">Admin Dashboard</h1>
 
-        {/* Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           <Card title="Orders" value={stats.totalOrders} icon={<ShoppingCart />} />
           <Card title="Products" value={stats.totalProducts} icon={<Package />} />
           <Card title="Sellers" value={stats.totalSellers} icon={<Users />} />
           <Card title="Buyers" value={stats.totalBuyers} icon={<Users />} />
         </div>
 
-        {/* Financial */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           <Card
             title="Total Sales"
             value={`₦${stats.totalSales.toLocaleString()}`}
@@ -207,7 +177,6 @@ export default function AdminDashboard() {
           />
         </div>
 
-        {/* Risk */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-500">Disputed Orders</p>
@@ -215,35 +184,143 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Recent Orders */}
-        <div className="bg-white rounded-lg border">
-          <div className="p-4 border-b font-semibold">Recent Orders</div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="p-3 text-left">Product</th>
-                <th className="p-3 text-left">Amount</th>
-                <th className="p-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.length === 0 ? (
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="p-4 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="font-semibold">Recent Orders</div>
+            <button
+              onClick={() => navigate("/admin/orders")}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium text-left"
+            >
+              View All
+            </button>
+          </div>
+
+          <div className="space-y-4 p-4 md:hidden">
+            {recentOrders.length === 0 ? (
+              <div className="text-center text-gray-500 py-6">No recent orders</div>
+            ) : (
+              recentOrders.map((order) => (
+                <article key={order.id} className="rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-gray-700">
+                        #{order.order_number || order.id.slice(0, 8)}
+                      </p>
+                      <p className="font-medium text-gray-900 mt-1 break-words">
+                        {order.product_name}
+                      </p>
+                    </div>
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 shrink-0">
+                      {order.status.replaceAll("_", " ")}
+                    </span>
+                  </div>
+
+                  {order.item_count > 1 && (
+                    <div className="mt-2">
+                      <div className="text-xs text-gray-500">{order.item_count} items</div>
+                      <div className="text-xs text-gray-400 break-words">
+                        Includes: {order.item_names.slice(0, 2).join(", ")}
+                        {order.item_names.length > 2 ? "..." : ""}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+                    <div>
+                      <div className="text-gray-500 text-xs">
+                        {new Date(order.created_at).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </div>
+                      <div className="font-medium mt-1">
+                        ₦{Number(order.total_amount).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/admin/order/${order.id}`)}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      View
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan="3" className="p-6 text-center text-gray-500">
-                    No recent orders
-                  </td>
+                  <th className="p-3 text-left">Order</th>
+                  <th className="p-3 text-left">Product</th>
+                  <th className="p-3 text-left">Amount</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left">Action</th>
                 </tr>
-              ) : (
-                recentOrders.map((o) => (
-                  <tr key={o.id} className="border-t">
-                    <td className="p-3">{o.product_name}</td>
-                    <td className="p-3">₦{Number(o.total_amount).toLocaleString()}</td>
-                    <td className="p-3">{o.status}</td>
+              </thead>
+              <tbody>
+                {recentOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="p-6 text-center text-gray-500">
+                      No recent orders
+                    </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  recentOrders.map((order) => (
+                    <tr key={order.id} className="border-t">
+                      <td className="p-3">
+                        <div className="font-mono text-xs text-gray-700">
+                          #{order.order_number || order.id.slice(0, 8)}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {new Date(order.created_at).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium text-gray-900">
+                          {order.product_name}
+                        </div>
+                        {order.item_count > 1 && (
+                          <>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {order.item_count} items
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              Includes: {order.item_names.slice(0, 2).join(", ")}
+                              {order.item_names.length > 2 ? "..." : ""}
+                            </div>
+                          </>
+                        )}
+                      </td>
+                      <td className="p-3 font-medium">
+                        ₦{Number(order.total_amount).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                          {order.status.replaceAll("_", " ")}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => navigate(`/admin/order/${order.id}`)}
+                          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
       <Footer />
@@ -253,12 +330,12 @@ export default function AdminDashboard() {
 
 function Card({ title, value, icon }) {
   return (
-    <div className="bg-white border rounded-lg p-4 flex items-center justify-between">
-      <div>
+    <div className="bg-white border rounded-lg p-4 flex items-center justify-between gap-4">
+      <div className="min-w-0">
         <p className="text-sm text-gray-500">{title}</p>
-        <p className="text-xl font-bold text-blue-900">{value}</p>
+        <p className="text-xl font-bold text-blue-900 break-words">{value}</p>
       </div>
-      <div className="text-blue-600">{icon}</div>
+      <div className="text-blue-600 shrink-0">{icon}</div>
     </div>
   );
 }

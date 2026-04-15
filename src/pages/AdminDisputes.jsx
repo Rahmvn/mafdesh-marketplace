@@ -9,25 +9,10 @@ export default function AdminDisputes() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    checkAuth();
-    loadDisputes();
-  }, []);
-
-  const checkAuth = () => {
-    const storedUser = localStorage.getItem("mafdesh_user");
-    if (!storedUser) {
-      navigate("/login");
-      return;
+  async function loadDisputes(showLoading = true) {
+    if (showLoading) {
+      setLoading(true);
     }
-    const user = JSON.parse(storedUser);
-    if (user.role !== "admin") {
-      navigate("/login");
-    }
-  };
-
-  const loadDisputes = async () => {
-    setLoading(true);
 
     // Fetch all disputed orders
     const { data: ordersData, error } = await supabase
@@ -141,7 +126,15 @@ export default function AdminDisputes() {
 
     setOrders(merged);
     setLoading(false);
-  };
+  }
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadDisputes(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   if (loading) {
     return (

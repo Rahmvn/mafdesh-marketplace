@@ -1,27 +1,27 @@
 import { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 
-export default function CountdownTimer({ endTime, onExpire }) {
-  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+function calculateTimeLeft(endTime) {
+  const difference = new Date(endTime) - new Date();
 
-  function calculateTimeLeft() {
-    const difference = new Date(endTime) - new Date();
-    
-    if (difference <= 0) {
-      return { expired: true };
-    }
-
-    return {
-      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((difference / 1000 / 60) % 60),
-      seconds: Math.floor((difference / 1000) % 60),
-      expired: false
-    };
+  if (difference <= 0) {
+    return { expired: true };
   }
+
+  return {
+    hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+    minutes: Math.floor((difference / 1000 / 60) % 60),
+    seconds: Math.floor((difference / 1000) % 60),
+    expired: false
+  };
+}
+
+export default function CountdownTimer({ endTime, onExpire }) {
+  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(endTime));
 
   useEffect(() => {
     const timer = setInterval(() => {
-      const newTimeLeft = calculateTimeLeft();
+      const newTimeLeft = calculateTimeLeft(endTime);
       setTimeLeft(newTimeLeft);
 
       if (newTimeLeft.expired && onExpire) {

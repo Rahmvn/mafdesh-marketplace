@@ -5,7 +5,6 @@ import { Search } from 'lucide-react';
 import Footer from '../components/Footer';
 import {supabase} from '../supabaseClient';
 import GuestNavbar from '../components/GuestNavbar';
-import { productService } from '../services/productService';
 export default function LandingPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,19 +17,25 @@ export default function LandingPage() {
     'Phones & Tablets', 'Books & Media'
   ];
 
+  async function loadProducts() {
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .gt('stock_quantity', 0)
+      .order('created_at', { ascending: false });
+
+    if (!error) setProducts(data || []);
+    setIsLoading(false);
+  }
+
   useEffect(() => {
-    loadProducts();
+    const loadInitialProducts = async () => {
+      await loadProducts();
+    };
+
+    loadInitialProducts();
   }, []);
-const loadProducts = async () => {
-  setIsLoading(true);
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .gt('stock_quantity', 0)  // 👈 only show in‑stock products
-    .order('created_at', { ascending: false });
-  if (!error) setProducts(data || []);
-  setIsLoading(false);
-};
  
 
   const handleSearch = (e) => {

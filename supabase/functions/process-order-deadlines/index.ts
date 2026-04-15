@@ -1,5 +1,34 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const SYSTEM_SOURCE = 'system_cron'
+
+async function logSystemOrderAction(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+  actionType: string,
+  reason: string,
+  metadata: Record<string, unknown>,
+  newState: Record<string, unknown>
+) {
+  const { error } = await supabase.from('admin_actions').insert({
+    admin_id: null,
+    target_type: 'order',
+    target_id: orderId,
+    action_type: actionType,
+    reason,
+    metadata,
+    previous_state: null,
+    new_state: newState,
+    source: SYSTEM_SOURCE,
+    automated: true,
+    requires_reason: false,
+  })
+
+  if (error) {
+    console.error(`Failed to log ${actionType} for order ${orderId}:`, error)
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     // Validate secret (if provided)
@@ -29,13 +58,14 @@ Deno.serve(async (req) => {
     if (refunded?.length) {
       results.push(`Refunded ${refunded.length} unpaid orders`)
       for (const order of refunded) {
-        await supabase.from('admin_actions').insert({
-          admin_id: null,
-          order_id: order.id,
-          action_type: 'AUTO_REFUND',
-          reason: 'Seller did not prepare order within 48 hours',
-          metadata: { cancelled_at: now },
-        })
+        await logSystemOrderAction(
+          supabase,
+          order.id,
+          'AUTO_REFUND',
+          'Seller did not prepare order within 48 hours',
+          { cancelled_at: now, trigger: 'ship_deadline_expired' },
+          { status: 'REFUNDED', cancelled_at: now }
+        )
       }
     }
 
@@ -51,13 +81,14 @@ Deno.serve(async (req) => {
     if (completed?.length) {
       results.push(`Completed ${completed.length} orders`)
       for (const order of completed) {
-        await supabase.from('admin_actions').insert({
-          admin_id: null,
-          order_id: order.id,
-          action_type: 'AUTO_COMPLETE',
-          reason: 'Buyer did not dispute within 72 hours of delivery',
-          metadata: { completed_at: now },
-        })
+        await logSystemOrderAction(
+          supabase,
+          order.id,
+          'AUTO_COMPLETE',
+          'Buyer did not dispute within 72 hours of delivery',
+          { completed_at: now, trigger: 'dispute_deadline_expired' },
+          { status: 'COMPLETED', completed_at: now }
+        )
       }
     }
 
@@ -74,13 +105,14 @@ Deno.serve(async (req) => {
     if (pickupRefunded?.length) {
       results.push(`Refunded ${pickupRefunded.length} unpicked orders`)
       for (const order of pickupRefunded) {
-        await supabase.from('admin_actions').insert({
-          admin_id: null,
-          order_id: order.id,
-          action_type: 'AUTO_REFUND',
-          reason: 'Buyer did not pick up within 48 hours',
-          metadata: { cancelled_at: now },
-        })
+        await logSystemOrderAction(
+          supabase,
+          order.id,
+          'AUTO_REFUND',
+          'Buyer did not pick up within 48 hours',
+          { cancelled_at: now, trigger: 'pickup_window_expired' },
+          { status: 'REFUNDED', cancelled_at: now }
+        )
       }
     }
 
@@ -96,13 +128,14 @@ Deno.serve(async (req) => {
     if (undelivered?.length) {
       results.push(`Refunded ${undelivered.length} undelivered orders`)
       for (const order of undelivered) {
-        await supabase.from('admin_actions').insert({
-          admin_id: null,
-          order_id: order.id,
-          action_type: 'AUTO_REFUND',
-          reason: 'Seller did not mark order as delivered within 7 days of shipping',
-          metadata: { cancelled_at: now },
-        })
+        await logSystemOrderAction(
+          supabase,
+          order.id,
+          'AUTO_REFUND',
+          'Seller did not mark order as delivered within 7 days of shipping',
+          { cancelled_at: now, trigger: 'delivery_deadline_expired' },
+          { status: 'REFUNDED', cancelled_at: now }
+        )
       }
     }
 

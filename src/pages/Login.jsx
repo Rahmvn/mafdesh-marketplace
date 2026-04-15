@@ -14,6 +14,7 @@ export default function Login() {
   const [verificationMessage, setVerificationMessage] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+  const signupMessage = location.state?.message;
 
   useEffect(() => {
    const checkExistingSession = async () => {
@@ -55,15 +56,15 @@ export default function Login() {
 };
 
     const handleSignupSuccess = () => {
-      if (location.state?.message) {
-        setVerificationMessage(location.state.message);
+      if (signupMessage) {
+        setVerificationMessage(signupMessage);
         window.history.replaceState({}, document.title, "/login");
       }
     };
 
     checkExistingSession();
     handleSignupSuccess();
-  }, [navigate]);
+  }, [navigate, signupMessage]);
 
   const handleSubmit = async (e) => {
   e.preventDefault();
@@ -88,7 +89,6 @@ export default function Login() {
     await supabase.auth.getSession(); // Ensure session is established before proceeding
 
     const user = data.user;
-    const session = data.session;
 
     if (!user) {
       throw new Error("Login failed");

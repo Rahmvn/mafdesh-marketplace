@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
@@ -14,11 +14,7 @@ const [reason,setReason] = useState("");
 const [images,setImages] = useState([]);
 const [loading,setLoading] = useState(true);
 
-useEffect(()=>{
-loadOrder();
-},[]);
-
-const loadOrder = async()=>{
+const loadOrder = useCallback(async () => {
 
 const {data,error} = await supabase
 .from("orders")
@@ -34,7 +30,15 @@ return;
 setOrder(data);
 setLoading(false);
 
+}, [id]);
+
+useEffect(()=>{
+const loadInitialOrder = async () => {
+await loadOrder();
 };
+
+loadInitialOrder();
+}, [loadOrder]);
 
 const handleImages = (e)=>{
 

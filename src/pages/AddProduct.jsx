@@ -200,13 +200,13 @@ ${formData.specs}
         category: formData.category,
         price: parseFloat(formData.price),
         stock_quantity: parseInt(formData.stock),
-        is_approved: true,
+        is_approved: false,
         images: uploadedUrls,
         pickup_locations: formData.pickupLocations,
       };
 
       await productService.createProduct(productData);
-      alert('Product uploaded successfully');
+      alert('Product submitted successfully. It is now pending admin approval.');
       navigate('/seller/products');
     } catch (err) {
       console.error(err);

@@ -48,6 +48,33 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
+    const { data: orderRecord, error: orderError } = await supabaseAdmin
+      .from('orders')
+      .select('id, buyer_id, status')
+      .eq('id', orderId)
+      .single()
+
+    if (orderError || !orderRecord) {
+      return new Response(JSON.stringify({ error: 'Order not found' }), {
+        status: 404,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    if (orderRecord.buyer_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    if (orderRecord.status !== 'PENDING') {
+      return new Response(JSON.stringify({ error: 'Order already processed' }), {
+        status: 409,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const { data: success, error } = await supabaseAdmin.rpc('deduct_stock', {
       order_id: orderId,
     })

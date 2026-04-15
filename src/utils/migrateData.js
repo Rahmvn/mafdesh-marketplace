@@ -19,7 +19,7 @@ export const migrateProductsToRepository = () => {
     image: product.image,
     stock: product.stock_quantity,
     description: product.description || `High-quality ${product.name.toLowerCase()} available now.`,
-    status: ProductStatus.ACTIVE,
+    status: 'active',
     createdAt: new Date(Date.now() - (oldProducts.length - index) * 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   }));

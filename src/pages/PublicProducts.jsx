@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Shield, ShoppingCart } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import VerificationBadge from '../components/VerificationBadge'; // import
+import { cartService } from '../services/cartService';
+
 export default function PublicProducts() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -12,6 +14,7 @@ export default function PublicProducts() {
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All Categories');
   const [sortBy, setSortBy] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
+  const [addingProductId, setAddingProductId] = useState(null);
 
   const categories = [
     'All Categories',
@@ -26,11 +29,7 @@ export default function PublicProducts() {
     'Computers & Laptops'
   ];
 
-  useEffect(() => {
-    loadProducts();
-  }, [selectedCategory, sortBy, searchTerm]);
-
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetch('/api/products/public');
@@ -68,19 +67,37 @@ export default function PublicProducts() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [searchTerm, selectedCategory, sortBy]);
 
-  const handleAddToCart = () => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem('mafdesh_user');
-    if (!storedUser) {
-      // Redirect to login with full return URL (pathname + search + hash)
-      const returnUrl = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
-      navigate(`/login?returnUrl=${returnUrl}`);
-    } else {
-      // User is logged in, proceed with add to cart
-      // This will be implemented later
-      alert('Add to cart functionality - user is logged in!');
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  const handleAddToCart = async (product) => {
+    try {
+      setAddingProductId(product.id);
+      await cartService.addToCart(product, 1);
+      alert('Added to cart');
+    } catch (error) {
+      console.error('Add to cart error:', error);
+
+      if (error.message === 'AUTH_REQUIRED') {
+        const returnUrl = encodeURIComponent(
+          window.location.pathname + window.location.search + window.location.hash
+        );
+        navigate(`/login?returnUrl=${returnUrl}`);
+        return;
+      }
+
+      if (error.message === 'INSUFFICIENT_STOCK') {
+        alert('You already have the maximum available quantity in your cart.');
+      } else if (error.message === 'OUT_OF_STOCK') {
+        alert('This product is out of stock.');
+      } else {
+        alert('Failed to add to cart');
+      }
+    } finally {
+      setAddingProductId(null);
     }
   };
 
@@ -190,11 +207,12 @@ export default function PublicProducts() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleAddToCart();
+                        handleAddToCart(product);
                       }}
+                      disabled={addingProductId === product.id}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors text-sm"
                     >
-                      Add to Cart
+                      {addingProductId === product.id ? 'Adding...' : 'Add to Cart'}
                     </button>
                   </div>
                 </div>

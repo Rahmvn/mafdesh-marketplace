@@ -2,7 +2,6 @@ import React from "react";
 
 export default function ProductForm({
   formData,
-  setFormData,
   errors,
   handleChange,
   handleImageChange,
