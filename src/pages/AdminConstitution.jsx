@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { 
   Shield, Scale, Clock, RefreshCw, AlertTriangle, Gavel, 
   Truck, Package, Users, FileText, Info, CreditCard, 

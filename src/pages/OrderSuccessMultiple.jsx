@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { CheckCircle } from 'lucide-react';
 
 export default function OrderSuccessMultiple() {
@@ -57,3 +57,4 @@ export default function OrderSuccessMultiple() {
     </div>
   );
 }
+

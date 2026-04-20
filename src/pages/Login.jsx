@@ -4,6 +4,8 @@ import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
 import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import useModal from '../hooks/useModal';
+import Footer from '../components/FooterSlim';
 
 export default function Login() {
   const [userType, setUserType] = useState("buyer");
@@ -15,6 +17,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const signupMessage = location.state?.message;
+  const { showError, showWarning, ModalComponent } = useModal();
 
   useEffect(() => {
    const checkExistingSession = async () => {
@@ -70,7 +73,7 @@ export default function Login() {
   e.preventDefault();
 
   if (!email || !password) {
-    alert('Please enter both email and password');
+    showWarning('Missing Details', 'Please enter both email and password.');
     return;
   }
 
@@ -110,7 +113,7 @@ export default function Login() {
     }
 
     if (role !== userType) {
-      alert(`This account is registered as ${role}. Please select the correct login type.`);
+      showError('Wrong Login Type', `This account is registered as ${role}. Please select the correct login type.`);
       setIsLoading(false);
       return;
     }
@@ -132,13 +135,14 @@ export default function Login() {
 
   } catch (error) {
     console.error('Login error:', error);
-    alert(error.message || 'Login failed. Please check your credentials.');
+    showError('Login Failed', error.message || 'Login failed. Please check your credentials.');
     setIsLoading(false);
   }
 };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
+    <div className="min-h-screen flex flex-col bg-white">
+      <main className="flex flex-1 items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
         {/* Logo Section */}
         <div className="text-center mb-10">
@@ -268,6 +272,9 @@ export default function Login() {
           </div>
         </div>
       </div>
+      </main>
+      <Footer />
+      <ModalComponent />
     </div>
   );
 }

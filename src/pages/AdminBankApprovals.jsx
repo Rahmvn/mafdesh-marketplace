@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import useModal from "../hooks/useModal";
 import AdminActionModal from "../components/AdminActionModal";
 import {
   ADMIN_ACTION_TYPES,
@@ -10,19 +11,46 @@ import {
   getCurrentAdminUser,
 } from "../services/adminActionService";
 
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
 export default function AdminBankApprovals() {
   useMemo(() => getCurrentAdminUser(), []);
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const { showSuccess, showError, showConfirm, ModalComponent } = useModal();
 
   const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to logout?")) {
+    showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = "/login";
-    }
+    });
   };
 
   async function loadPendingRequests(showLoading = true) {
@@ -40,7 +68,7 @@ export default function AdminBankApprovals() {
 
     if (error) {
       console.error("Failed to load bank requests:", error);
-      alert("Failed to load bank approval requests.");
+      showError("Load Failed", "Failed to load bank approval requests.");
       setPendingUsers([]);
     } else {
       setPendingUsers(data || []);
@@ -104,7 +132,7 @@ export default function AdminBankApprovals() {
           reason,
         });
 
-        alert("Bank details approved.");
+        showSuccess("Request Approved", "Bank details approved.");
       } else if (pendingAction.kind === "reject") {
         await executeGuardedAdminAction({
           actionType: ADMIN_ACTION_TYPES.REJECT_BANK_DETAILS,
@@ -112,21 +140,21 @@ export default function AdminBankApprovals() {
           reason,
         });
 
-        alert("Bank details request rejected.");
+        showSuccess("Request Rejected", "Bank details request rejected.");
       }
 
       setPendingAction(null);
       await loadPendingRequests(false);
     } catch (error) {
       console.error("Failed to process bank request:", error);
-      alert(error.message || "Failed to process bank request.");
+      showError("Request Failed", error.message || "Failed to process bank request.");
     } finally {
       setProcessing(false);
     }
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -216,6 +244,8 @@ export default function AdminBankApprovals() {
       />
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

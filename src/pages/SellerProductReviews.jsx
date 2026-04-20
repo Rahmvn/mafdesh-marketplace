@@ -2,8 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageSquare, Star } from "lucide-react";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
+import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
+import { showGlobalConfirm, showGlobalError } from "../hooks/modalService";
+import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
 
 function ReviewStars({ rating, size = 18 }) {
   return (
@@ -22,10 +25,13 @@ function ReviewStars({ rating, size = 18 }) {
 export default function SellerProductReviews() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("mafdesh_user") || "null"));
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("recent");
+  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const theme = getSellerThemeClasses(themeState.darkMode);
 
   const loadPage = useCallback(async () => {
     const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "null");
@@ -38,6 +44,17 @@ export default function SellerProductReviews() {
     setLoading(true);
 
     try {
+      const { data: sellerData } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", storedUser.id)
+        .single();
+
+      if (sellerData) {
+        setCurrentUser(sellerData);
+        localStorage.setItem("mafdesh_user", JSON.stringify(sellerData));
+      }
+
       const { data: productData, error: productError } = await supabase
         .from("products")
         .select("id, seller_id, name, price, images, stock_quantity, category, created_at")
@@ -67,7 +84,7 @@ export default function SellerProductReviews() {
       setReviews(reviewData || []);
     } catch (error) {
       console.error("Seller product reviews error:", error);
-      alert("Failed to load product reviews.");
+      showGlobalError("Load Failed", "Failed to load product reviews.");
       navigate("/seller/products");
     } finally {
       setLoading(false);
@@ -115,19 +132,15 @@ export default function SellerProductReviews() {
   }, [reviews, sortBy]);
 
   const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to logout?")) {
+    showGlobalConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = "/login";
-    }
+    });
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading reviews...
-      </div>
-    );
+    return <MarketplaceDetailSkeleton darkMode={themeState.darkMode} />;
   }
 
   if (!product) {
@@ -139,18 +152,29 @@ export default function SellerProductReviews() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-blue-50">
-      <Navbar onLogout={handleLogout} />
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+      <Navbar
+        onLogout={handleLogout}
+        theme={themeState.darkMode ? "dark" : "light"}
+        themeToggle={
+          themeState.canToggleTheme
+            ? {
+                darkMode: themeState.darkMode,
+                onToggle: themeState.toggleTheme,
+              }
+            : null
+        }
+      />
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
         <button
           onClick={() => navigate("/seller/products")}
-          className="mb-6 flex items-center gap-2 text-blue-700 hover:text-blue-900 font-medium"
+          className={`mb-6 flex items-center gap-2 font-medium ${theme.actionGhost}`}
         >
           <ArrowLeft size={18} /> Back to Products
         </button>
 
-        <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-4 sm:p-6 mb-8">
+        <div className={`rounded-xl p-4 sm:p-6 mb-8 ${theme.panel}`}>
           <div className="flex flex-col md:flex-row gap-5 md:items-start">
             <img
               src={product.images?.[0] || "https://placehold.co/600x600"}
@@ -159,14 +183,14 @@ export default function SellerProductReviews() {
             />
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-blue-600 mb-1">{product.category}</p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-blue-900 break-words">
+              <p className={`text-sm mb-1 ${theme.softText}`}>{product.category}</p>
+              <h1 className="text-2xl sm:text-3xl font-bold break-words">
                 {product.name}
               </h1>
               <p className="text-orange-600 text-2xl font-bold mt-2">
                 ₦{Number(product.price).toLocaleString()}
               </p>
-              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-gray-600">
+              <div className={`flex flex-wrap items-center gap-4 mt-3 text-sm ${theme.mutedText}`}>
                 <span>{product.stock_quantity} in stock</span>
                 <span>{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
                 <span>
@@ -178,7 +202,7 @@ export default function SellerProductReviews() {
                   })}
                 </span>
               </div>
-              <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+              <div className={`mt-4 rounded-lg px-4 py-3 text-sm ${theme.badge}`}>
                 Reviewer identities are hidden for privacy. Sellers can read ratings
                 and feedback, but cannot see buyer names or purchase as buyers from
                 this page.
@@ -188,24 +212,24 @@ export default function SellerProductReviews() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px,1fr] gap-6">
-          <aside className="bg-white rounded-xl border border-blue-100 shadow-sm p-4 sm:p-6 h-fit">
-            <h2 className="text-xl font-bold text-blue-900 mb-5">Rating Summary</h2>
+          <aside className={`rounded-xl p-4 sm:p-6 h-fit ${theme.panel}`}>
+            <h2 className="text-xl font-bold mb-5">Rating Summary</h2>
 
             {reviews.length === 0 ? (
               <div className="text-center py-10">
                 <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No reviews yet</p>
+                <p className={theme.mutedText}>No reviews yet</p>
               </div>
             ) : (
               <>
                 <div className="text-center mb-6">
-                  <div className="text-5xl font-bold text-blue-900">
+                  <div className="text-5xl font-bold">
                     {averageRating.toFixed(1)}
                   </div>
                   <div className="mt-2 flex justify-center">
                     <ReviewStars rating={Math.round(averageRating)} size={22} />
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <p className={`text-sm mt-2 ${theme.mutedText}`}>
                     Based on {reviews.length} review{reviews.length !== 1 ? "s" : ""}
                   </p>
                 </div>
@@ -232,11 +256,11 @@ export default function SellerProductReviews() {
             )}
           </aside>
 
-          <section className="bg-white rounded-xl border border-blue-100 shadow-sm p-4 sm:p-6">
+          <section className={`rounded-xl p-4 sm:p-6 ${theme.panel}`}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-xl font-bold text-blue-900">Customer Feedback</h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <h2 className="text-xl font-bold">Customer Feedback</h2>
+                <p className={`text-sm mt-1 ${theme.mutedText}`}>
                   Read what buyers are saying without exposing their identities.
                 </p>
               </div>
@@ -244,7 +268,7 @@ export default function SellerProductReviews() {
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value)}
-                className="border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-full sm:w-auto"
+                className={`rounded-lg px-3 py-2 text-sm w-full sm:w-auto ${theme.input}`}
               >
                 <option value="recent">Most Recent</option>
                 <option value="highest">Highest Rated</option>
@@ -255,8 +279,8 @@ export default function SellerProductReviews() {
             {sortedReviews.length === 0 ? (
               <div className="text-center py-16">
                 <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg">No reviews yet for this product</p>
-                <p className="text-gray-400 text-sm mt-1">
+                <p className={`text-lg ${theme.mutedText}`}>No reviews yet for this product</p>
+                <p className={`text-sm mt-1 ${theme.softText}`}>
                   Reviews will appear here after completed buyer orders are rated.
                 </p>
               </div>
@@ -265,17 +289,17 @@ export default function SellerProductReviews() {
                 {sortedReviews.map((review, index) => (
                   <article
                     key={`${review.created_at}-${index}`}
-                    className="border border-blue-100 rounded-xl p-4 sm:p-5"
+                    className={`rounded-xl p-4 sm:p-5 ${theme.panelSoft}`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-3">
                         <ReviewStars rating={review.rating} />
-                        <span className="text-sm font-medium text-gray-700">
+                        <span className={`text-sm font-medium ${theme.mutedText}`}>
                           Anonymous Buyer
                         </span>
                       </div>
 
-                      <span className="text-xs text-gray-400">
+                      <span className={`text-xs ${theme.softText}`}>
                         {new Date(review.created_at).toLocaleDateString("en-US", {
                           year: "numeric",
                           month: "short",
@@ -284,7 +308,7 @@ export default function SellerProductReviews() {
                       </span>
                     </div>
 
-                    <p className="mt-4 text-gray-700 leading-relaxed break-words">
+                    <p className={`mt-4 leading-relaxed break-words ${theme.mutedText}`}>
                       {review.comment?.trim() ||
                         "This buyer left a rating without a written comment."}
                     </p>
@@ -300,3 +324,4 @@ export default function SellerProductReviews() {
     </div>
   );
 }
+

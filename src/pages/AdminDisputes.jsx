@@ -1,8 +1,34 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { useNavigate } from "react-router-dom";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 export default function AdminDisputes() {
   const navigate = useNavigate();
@@ -137,11 +163,7 @@ export default function AdminDisputes() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading disputes...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -205,3 +227,4 @@ export default function AdminDisputes() {
     </div>
   );
 }
+

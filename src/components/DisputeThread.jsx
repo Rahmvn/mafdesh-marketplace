@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { AlertCircle, Upload } from 'lucide-react';
+import useModal from '../hooks/useModal';
 
 export default function DisputeThread({ orderId, currentUserId, currentUserRole, orderStatus }) {
   const [messages, setMessages] = useState([]);
@@ -8,6 +9,7 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
   const [newImages, setNewImages] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { showError, ModalComponent } = useModal();
 
   const fetchMessages = useCallback(async () => {
     const { data, error } = await supabase
@@ -80,13 +82,31 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
       setNewImages([]);
     } catch (err) {
       console.error(err);
-      alert('Failed to send message');
+      showError('Message Failed', 'Failed to send message.');
     } finally {
       setUploading(false);
     }
   };
 
-  if (loading) return <div>Loading messages...</div>;
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border p-4 mb-6 animate-pulse">
+        <div className="h-6 w-40 rounded bg-gray-200" />
+        <div className="mt-4 space-y-4">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="border-l-4 border-gray-100 pl-3">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-28 rounded bg-gray-200" />
+                <div className="h-3 w-24 rounded bg-gray-100" />
+              </div>
+              <div className="mt-2 h-4 w-full rounded bg-gray-100" />
+              <div className="mt-2 h-4 w-10/12 rounded bg-gray-50" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-lg border p-4 mb-6">
@@ -156,6 +176,7 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
           </button>
         </div>
       )}
+      <ModalComponent />
     </div>
   );
 }

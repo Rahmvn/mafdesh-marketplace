@@ -3,8 +3,35 @@ import { useNavigate } from "react-router-dom";
 import { Package, Users, ShoppingCart, DollarSign, Shield } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import useModal from "../hooks/useModal";
 import { supabase } from "../supabaseClient";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -21,17 +48,18 @@ export default function AdminDashboard() {
   });
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { showConfirm, ModalComponent } = useModal();
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
   const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to logout?")) {
+    showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = "/login";
-    }
+    });
   };
 
   const loadDashboard = async () => {
@@ -134,11 +162,7 @@ export default function AdminDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading admin dashboard...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -324,6 +348,7 @@ export default function AdminDashboard() {
         </div>
       </main>
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
@@ -339,3 +364,4 @@ function Card({ title, value, icon }) {
     </div>
   );
 }
+

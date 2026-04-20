@@ -3,18 +3,28 @@ import { useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { Package, Truck, CheckCircle, Clock, MapPin, Phone, AlertCircle, XCircle } from "lucide-react";
 import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
 import { getSellerOrderPayout } from "../utils/sellerPayouts";
+import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
+import {
+  showGlobalConfirm,
+  showGlobalError,
+  showGlobalWarning,
+} from "../hooks/modalService";
+import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
 
 export default function SellerOrderDetails() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [buyer, setBuyer] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("mafdesh_user") || "null"));
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const theme = getSellerThemeClasses(themeState.darkMode);
 
   // Update current time every second
   useEffect(() => {
@@ -24,6 +34,22 @@ export default function SellerOrderDetails() {
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sellerId = sessionData.session?.user?.id;
+
+    if (sellerId) {
+      const { data: sellerData } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", sellerId)
+        .single();
+
+      if (sellerData) {
+        setCurrentUser(sellerData);
+        localStorage.setItem("mafdesh_user", JSON.stringify(sellerData));
+      }
+    }
 
     const { data: orderData, error } = await supabase
       .from("orders")
@@ -43,29 +69,37 @@ export default function SellerOrderDetails() {
       .select(`
         quantity,
         price_at_time,
+        product_snapshot,
         product:products (
           id,
           name,
-          images
+          images,
+          category,
+          description,
+          seller_id
         )
       `)
       .eq("order_id", id);
 
     let finalItems = [];
     if (!itemsError && itemsData && itemsData.length > 0) {
-      finalItems = itemsData;
+      finalItems = itemsData.map((item) => ({
+        ...item,
+        product: snapshotToProduct(item.product_snapshot, item.product),
+      }));
     } else if (orderData.product_id) {
-      // Fallback for legacy single‑item orders without order_items
+      // Fallback for legacy single-item orders without order_items
       const { data: product, error: prodError } = await supabase
         .from("products")
-        .select("id, name, images")
+        .select("id, name, images, category, description, seller_id")
         .eq("id", orderData.product_id)
         .single();
-      if (!prodError && product) {
+      const normalizedProduct = snapshotToProduct(orderData.product_snapshot, !prodError ? product : null);
+      if (normalizedProduct) {
         finalItems = [{
           quantity: orderData.quantity,
           price_at_time: orderData.product_price,
-          product: product
+          product: normalizedProduct
         }];
       }
     }
@@ -100,32 +134,34 @@ export default function SellerOrderDetails() {
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
     if (order.ship_deadline && new Date(order.ship_deadline) <= now) {
-      alert("Cannot mark as shipped – deadline has passed.");
+      showGlobalWarning("Deadline Passed", "Cannot mark as shipped because the deadline has passed.");
       return;
     }
-    const confirm = window.confirm(order.delivery_type === "pickup" ? "Mark as ready for pickup?" : "Mark as shipped?");
-    if (!confirm) return;
+    showGlobalConfirm(
+      order.delivery_type === "pickup" ? "Mark Ready for Pickup" : "Mark as Shipped",
+      order.delivery_type === "pickup" ? "Mark this order as ready for pickup?" : "Mark this order as shipped?",
+      async () => {
+        try {
+          const updates = order.delivery_type === "pickup"
+            ? {
+                status: "READY_FOR_PICKUP",
+                ready_for_pickup_at: new Date().toISOString(),
+                auto_cancel_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+              }
+            : {
+                status: "SHIPPED",
+                shipped_at: new Date().toISOString(),
+              };
 
-    try {
-      const updates = order.delivery_type === "pickup"
-        ? {
-            status: "READY_FOR_PICKUP",
-            ready_for_pickup_at: new Date().toISOString(),
-            auto_cancel_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-          }
-        : {
-            status: "SHIPPED",
-            shipped_at: new Date().toISOString(),
-          };
-
-      const { data, error } = await supabase.from("orders").update(updates).eq("id", order.id).select();
-      if (error) throw error;
-      console.log('Update succeeded:', data);
-      loadOrder();
-    } catch (err) {
-      console.error('Update failed:', err);
-      alert("Failed to update order. Please try again.");
-    }
+          const { error } = await supabase.from("orders").update(updates).eq("id", order.id).select();
+          if (error) throw error;
+          loadOrder();
+        } catch (err) {
+          console.error('Update failed:', err);
+          showGlobalError("Update Failed", "Failed to update order. Please try again.");
+        }
+      }
+    );
   };
 
   const handleMarkDelivered = async () => {
@@ -142,11 +178,13 @@ export default function SellerOrderDetails() {
     loadOrder();
   };
 
-  if (loading) return <MarketplaceDetailSkeleton />;
+  if (loading) return <MarketplaceDetailSkeleton darkMode={themeState.darkMode} />;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
   const isDelivery = order.delivery_type === "delivery";
   const isPickup = order.delivery_type === "pickup";
+  const deliverySnapshot = order.delivery_zone_snapshot || null;
+  const pickupSnapshot = order.pickup_location_snapshot || null;
   const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
   const isSingleItem = order.product_price !== null;
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
@@ -190,7 +228,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Deadline Passed
           </h3>
           <p className="text-sm text-red-700">
-            You did not {isDelivery ? "ship" : "mark ready"} within the 48‑hour window. The order will be automatically cancelled and the buyer refunded.
+            You did not {isDelivery ? "ship" : "mark ready"} within the 48-hour window. The order will be automatically cancelled and the buyer refunded.
           </p>
         </div>
       );
@@ -240,7 +278,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Dispute Window Closed
           </h3>
           <p className="text-sm text-gray-700">
-            The buyer did not confirm or dispute within 72 hours. The order will auto‑complete and funds will be released to you.
+            The buyer did not confirm or dispute within 72 hours. The order will auto-complete and funds will be released to you.
           </p>
         </div>
       );
@@ -252,7 +290,7 @@ export default function SellerOrderDetails() {
           </h3>
           <p className="text-sm text-yellow-700">
             The buyer has <strong className={getUrgencyClass(order.dispute_deadline, now)}>{formatRemaining(order.dispute_deadline, now)}</strong> to confirm delivery or open a dispute.
-            After that, the order will auto‑complete and funds will be released to you.
+            After that, the order will auto-complete and funds will be released to you.
           </p>
         </div>
       );
@@ -260,13 +298,23 @@ export default function SellerOrderDetails() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar />
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+      <Navbar
+        theme={themeState.darkMode ? "dark" : "light"}
+        themeToggle={
+          themeState.canToggleTheme
+            ? {
+                darkMode: themeState.darkMode,
+                onToggle: themeState.toggleTheme,
+              }
+            : null
+        }
+      />
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Seller Order Details</h1>
+        <h1 className="text-3xl font-bold mb-6">Seller Order Details</h1>
 
         {/* Order Summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm text-gray-500">
               Order #{order.order_number || order.id.slice(0, 8)}
@@ -280,8 +328,7 @@ export default function SellerOrderDetails() {
               <p className="text-gray-500">No items found for this order.</p>
             ) : (
               items.map((item, idx) => {
-                const imageUrl = item.product?.images?.[0];
-                const safeImageUrl = imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/')) ? imageUrl : '/placeholder.png';
+                const safeImageUrl = getSafeProductImage(item.product);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
                     <img
@@ -306,24 +353,24 @@ export default function SellerOrderDetails() {
         </div>
 
         {/* Buyer Info */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Buyer</h2>
-          <p className="text-gray-700">{buyer?.full_name || "Customer"}</p>
-          <p className="text-sm text-gray-500">@{buyer?.username || "N/A"}</p>
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+          <h2 className="font-semibold mb-3">Buyer</h2>
+          <p>{buyer?.full_name || "Customer"}</p>
+          <p className={`text-sm ${theme.softText}`}>@{buyer?.username || "N/A"}</p>
           {buyer?.phone && (
-            <div className="flex items-center gap-2 mt-2 text-gray-700">
-              <Phone size={16} className="text-gray-500" />
+            <div className={`flex items-center gap-2 mt-2 ${theme.mutedText}`}>
+              <Phone size={16} className={theme.softText} />
               <span>{buyer.phone}</span>
             </div>
           )}
         </div>
 
         {/* Delivery / Pickup Info */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-3">
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+          <h2 className="font-semibold mb-3">
             {isDelivery ? "Delivery" : "Pickup"} Information
           </h2>
-          <div className="flex items-start gap-2 text-gray-600">
+          <div className={`flex items-start gap-2 ${theme.mutedText}`}>
             <MapPin size={18} className="mt-0.5" />
             <div>
               <p className="capitalize">{order.delivery_type}</p>
@@ -331,12 +378,22 @@ export default function SellerOrderDetails() {
                 <>
                   <p>{order.delivery_state}</p>
                   <p>{order.delivery_address}</p>
+                  {deliverySnapshot && (
+                    <p className="text-xs text-gray-500">
+                      Delivery fee snapshot: ₦{Number(deliverySnapshot.flat_fee || 0).toLocaleString()}
+                    </p>
+                  )}
                 </>
               )}
               {isPickup && (
                 <>
                   <p>Buyer selected:</p>
-                  <p className="font-medium">{order.selected_pickup_location || "Not specified"}</p>
+                  <p className="font-medium">
+                    {pickupSnapshot?.label || order.selected_pickup_location || "Not specified"}
+                  </p>
+                  {pickupSnapshot?.address_text && (
+                    <p className="text-xs text-gray-500">{pickupSnapshot.address_text}</p>
+                  )}
                 </>
               )}
             </div>
@@ -344,8 +401,8 @@ export default function SellerOrderDetails() {
         </div>
 
         {/* Payment Summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Payment</h2>
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+          <h2 className="font-semibold mb-3">Payment</h2>
           {isSingleItem ? (
             <>
               <p className="text-gray-600">Product: ₦{Number(order.product_price).toLocaleString()}</p>
@@ -391,7 +448,7 @@ export default function SellerOrderDetails() {
                 <>
                   <p><strong>Partial refund</strong> of <span className="font-bold">₦{Number(order.resolution_amount).toLocaleString()}</span> was issued to the buyer.</p>
                   <p>You receive: <span className="font-bold text-green-700">₦{netEarnings.toLocaleString()}</span></p>
-                  <p className="text-xs text-gray-500">Original payout ₦{baseEarnings.toLocaleString()} – refund ₦{Number(order.resolution_amount).toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">Original payout ₦{baseEarnings.toLocaleString()} - refund ₦{Number(order.resolution_amount).toLocaleString()}</p>
                 </>
               )}
               {order.resolution_type === "cancelled" && (
@@ -416,27 +473,27 @@ export default function SellerOrderDetails() {
               <XCircle size={18} />
               Order Cancelled
             </h2>
-            <p>The order was automatically cancelled (e.g., seller didn’t ship, buyer didn’t pick up).</p>
+            <p>The order was automatically cancelled (e.g., seller didn't ship, buyer didn't pick up).</p>
             <p>You receive: <span className="font-bold text-red-600">₦0</span></p>
           </div>
         )}
 
         {infoBox}
 
-        {/* Timers – only show if order is still active */}
+        {/* Timers - only show if order is still active */}
         {!isFinalState && (order.ship_deadline || order.auto_cancel_at || order.auto_complete_at || order.dispute_deadline) && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-3">Timers</h2>
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+          <h2 className="font-semibold mb-3">Timers</h2>
             {order.ship_deadline && <p className={`text-sm ${getUrgencyClass(order.ship_deadline, now)}`}>Ship by: {formatRemaining(order.ship_deadline, now)}</p>}
-            {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at, now)}`}>Auto‑cancel: {formatRemaining(order.auto_cancel_at, now)}</p>}
-            {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>Auto‑complete: {formatRemaining(order.auto_complete_at, now)}</p>}
+            {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at, now)}`}>Auto-cancel: {formatRemaining(order.auto_cancel_at, now)}</p>}
+            {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>Auto-complete: {formatRemaining(order.auto_complete_at, now)}</p>}
             {order.dispute_deadline && <p className={`text-sm ${getUrgencyClass(order.dispute_deadline, now)}`}>Dispute window: {formatRemaining(order.dispute_deadline, now)}</p>}
           </div>
         )}
 
         {/* Timeline */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Progress</h2>
+        <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+          <h2 className="font-semibold mb-4">Progress</h2>
           <div className="space-y-4">
             {steps.map((step, index) => {
               const Icon = step.icon;
@@ -471,7 +528,7 @@ export default function SellerOrderDetails() {
         </div>
 
         {/* Actions */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className={`rounded-xl p-6 ${theme.panel}`}>
           {order.status === "PAID_ESCROW" && (
             <div>
               <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
@@ -488,7 +545,7 @@ export default function SellerOrderDetails() {
               </div>
 
               {shipDeadlineExpired ? (
-                <p className="text-red-600 text-center font-semibold">Action unavailable – deadline passed.</p>
+                <p className="text-red-600 text-center font-semibold">Action unavailable - deadline passed.</p>
               ) : (
                 <button onClick={handleMarkShipped} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold">
                   {isDelivery ? "Mark as Shipped" : "Mark Ready for Pickup"}
@@ -509,7 +566,7 @@ export default function SellerOrderDetails() {
               </button>
               {order.auto_complete_at && !isFinalState && (
                 <p className="text-sm text-gray-500 mt-2 text-center">
-                  Auto‑completes on {new Date(order.auto_complete_at).toLocaleString()} if no dispute.
+                  Auto-completes on {new Date(order.auto_complete_at).toLocaleString()} if no dispute.
                 </p>
               )}
             </div>
@@ -538,3 +595,4 @@ export default function SellerOrderDetails() {
     </div>
   );
 }
+

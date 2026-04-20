@@ -16,6 +16,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { productService } from '../services/productService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
+import { showGlobalConfirm } from '../hooks/modalService';
 import {
   getSellerThemeClasses,
   SellerEmptyState,
@@ -25,6 +26,7 @@ import {
   useSellerTheme,
 } from '../components/seller/SellerShell';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
+import Footer from '../components/Footer';
 
 function statusTone(status, darkMode) {
   switch (status) {
@@ -157,11 +159,11 @@ export default function SellerDashboard() {
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = '/login';
-    }
+    });
   };
 
   const loadDashboardData = useCallback(async (sellerId) => {
@@ -345,7 +347,9 @@ export default function SellerDashboard() {
     <SellerShell
       currentUser={currentUser}
       onLogout={handleLogout}
+      footerComponent={Footer}
       themeState={themeState}
+      showHeader
       title="Seller Dashboard"
       subtitle="Check what needs attention, jump into orders, and keep your listings in shape."
       actions={

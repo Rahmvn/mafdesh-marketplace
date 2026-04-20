@@ -14,6 +14,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getSellerOrderPayout } from '../utils/sellerPayouts';
+import { showGlobalConfirm } from '../hooks/modalService';
 import {
   formatSellerCurrency,
   getSellerThemeClasses,
@@ -84,11 +85,11 @@ export default function SellerOrders() {
   }, []);
 
   const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = '/login';
-    }
+    });
   };
 
   const loadOrders = useCallback(async (sellerId, showLoading = true) => {

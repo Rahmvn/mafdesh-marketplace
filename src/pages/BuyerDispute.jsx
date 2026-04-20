@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import { showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
 
 export default function BuyerDispute(){
 
@@ -45,7 +47,7 @@ const handleImages = (e)=>{
 const files = Array.from(e.target.files);
 
 if(files.length > 5){
-alert("Maximum 5 images allowed");
+showGlobalWarning("Too Many Images", "You can upload a maximum of 5 images.");
 return;
 }
 
@@ -79,12 +81,12 @@ return paths;
 const submitDispute = async()=>{
 
 if(!reason.trim()){
-alert("Please explain the problem");
+showGlobalWarning("Description Required", "Please explain the problem.");
 return;
 }
 
 if(images.length === 0){
-alert("Please upload at least one image");
+showGlobalWarning("Evidence Required", "Please upload at least one image.");
 return;
 }
 
@@ -102,21 +104,17 @@ disputed_at:new Date()
 
 if(error){
 console.error(error);
-alert("Failed to submit dispute");
+showGlobalError("Submission Failed", "Failed to submit dispute. Please try again.");
 return;
 }
 
-alert("Dispute submitted successfully");
+showGlobalSuccess("Dispute Submitted", "Your dispute was submitted successfully.");
 
 navigate("/orders");
 
 };
 if(loading){
-return(
-<div className="min-h-screen flex items-center justify-center">
-Loading...
-</div>
-);
+return <MarketplaceDetailSkeleton />;
 }
 
 return(
@@ -174,3 +172,4 @@ Submit Dispute
 
 );
 }
+

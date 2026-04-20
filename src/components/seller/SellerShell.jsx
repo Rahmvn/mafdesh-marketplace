@@ -5,7 +5,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import Navbar from '../Navbar';
-import Footer from '../Footer';
+import Footer from '../FooterSlim';
 import VerificationBadge from '../VerificationBadge';
 
 export const VERIFIED_SELLER_THEME_KEY = 'verified_seller_theme';
@@ -127,6 +127,8 @@ export function SellerShell({
   subtitle,
   actions,
   themeState,
+  showHeader = false,
+  footerComponent: FooterComponent = Footer,
   children,
 }) {
   const theme = useMemo(
@@ -154,47 +156,49 @@ export function SellerShell({
       />
 
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <section className={`rounded-lg p-5 sm:p-6 ${theme.panel}`}>
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${theme.badge}`}>
-                  {isVerified ? <Sparkles className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
-                  {isVerified ? 'Verified seller workspace' : 'Seller workspace'}
-                </span>
-                {isVerified && <VerificationBadge className="!bg-white/10 !text-orange-200" />}
+        {showHeader && (
+          <section className={`rounded-lg p-5 sm:p-6 ${theme.panel}`}>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${theme.badge}`}>
+                    {isVerified ? <Sparkles className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+                    {isVerified ? 'Verified seller workspace' : 'Seller workspace'}
+                  </span>
+                  {isVerified && <VerificationBadge className="!bg-white/10 !text-orange-200" />}
+                </div>
+
+                <h1 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
+                <p className={`mt-3 max-w-2xl text-sm leading-7 sm:text-base ${theme.mutedText}`}>
+                  {subtitle}
+                </p>
+
+                {currentUser && (
+                  <div className="mt-5 inline-flex flex-wrap items-center gap-3 text-sm">
+                    <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 font-semibold ${theme.panelMuted}`}>
+                      <Shield className="h-4 w-4 text-orange-500" />
+                      {currentUser.business_name || currentUser.full_name || currentUser.email}
+                    </span>
+                    {isVerified && currentUser.verification_expiry && (
+                      <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${theme.panelMuted}`}>
+                        Verified until {new Date(currentUser.verification_expiry).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <h1 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
-              <p className={`mt-3 max-w-2xl text-sm leading-7 sm:text-base ${theme.mutedText}`}>
-                {subtitle}
-              </p>
-
-              {currentUser && (
-                <div className="mt-5 inline-flex flex-wrap items-center gap-3 text-sm">
-                  <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 font-semibold ${theme.panelMuted}`}>
-                    <Shield className="h-4 w-4 text-orange-500" />
-                    {currentUser.business_name || currentUser.full_name || currentUser.email}
-                  </span>
-                  {isVerified && currentUser.verification_expiry && (
-                    <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${theme.panelMuted}`}>
-                      Verified until {new Date(currentUser.verification_expiry).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-3">
+                {actions}
+              </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {actions}
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {children}
       </main>
 
-      <Footer />
+      <FooterComponent />
     </div>
   );
 }

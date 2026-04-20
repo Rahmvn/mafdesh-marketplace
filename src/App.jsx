@@ -1,7 +1,9 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { MarketplaceRouteLoader } from './components/MarketplaceLoading';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
+import GlobalModalHost from './components/ui/GlobalModalHost';
 
 const Home = lazy(() => import('./pages/Home'));
 const PublicProducts = lazy(() => import('./pages/PublicProducts'));
@@ -20,6 +22,7 @@ const SellerProducts = lazy(() => import('./pages/SellerProducts'));
 const SellerOrders = lazy(() => import('./pages/SellerOrders'));
 const SellerPayments = lazy(() => import('./pages/SellerPayments'));
 const SellerAnalytics = lazy(() => import('./pages/SellerAnalytics'));
+const SellerDeliverySettings = lazy(() => import('./pages/SellerDeliverySettings'));
 const AddProduct = lazy(() => import('./pages/AddProduct'));
 const EditProduct = lazy(() => import('./pages/EditProduct'));
 const SellerProductReviews = lazy(() => import('./pages/SellerProductReviews'));
@@ -48,11 +51,7 @@ const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const AdminAuditLog = lazy(() => import('./pages/AdminAuditLog'));
 
 function RouteFallback() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-blue-50 text-blue-900">
-      Loading...
-    </div>
-  );
+  return <MarketplaceRouteLoader />;
 }
 
 export default function App() {
@@ -132,6 +131,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['seller']}>
                 <SellerPayments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/seller/delivery"
+            element={
+              <ProtectedRoute allowedRoles={['seller']}>
+                <SellerDeliverySettings />
               </ProtectedRoute>
             }
           />
@@ -334,6 +341,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <GlobalModalHost />
     </Router>
   );
 }

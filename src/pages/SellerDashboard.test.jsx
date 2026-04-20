@@ -80,7 +80,7 @@ vi.mock('../components/Navbar', () => ({
   default: () => <div data-testid="navbar" />,
 }));
 
-vi.mock('../components/Footer', () => ({
+vi.mock('../components/FooterSlim', () => ({
   default: () => <div data-testid="footer" />,
 }));
 
@@ -166,3 +166,4 @@ describe('SellerDashboard', () => {
     expect(screen.queryByText(/premium seller workspace active/i)).not.toBeInTheDocument();
   });
 });
+

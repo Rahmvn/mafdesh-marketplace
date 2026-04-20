@@ -1,20 +1,64 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin, Shield, Lock, CreditCard, Facebook, Twitter, Instagram, Linkedin } from 'lucide-react';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 
 export default function Footer() {
+  const [storedUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('mafdesh_user') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterMessage, setNewsletterMessage] = useState('');
+  const isBuyer = storedUser?.role === 'buyer';
+
+  const handleNewsletterSubmit = (event) => {
+    event.preventDefault();
+    setNewsletterMessage('Thanks for subscribing. We will keep you updated.');
+    setNewsletterEmail('');
+  };
+
   return (
-    <footer className="bg-gradient-to-br from-blue-950 via-blue-900 to-blue-950 text-white mt-auto">
+    <footer
+      className={`mt-auto bg-gradient-to-br from-blue-950 via-blue-900 to-blue-950 text-white ${
+        isBuyer ? 'pb-20 xl:pb-0' : ''
+      }`}
+    >
       <div className="max-w-full mx-auto px-6 py-12">
+        <form
+          onSubmit={handleNewsletterSubmit}
+          className="mb-8 rounded-xl bg-blue-900/50 p-4"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <p className="text-sm font-semibold text-white">Stay updated</p>
+            <input
+              type="email"
+              value={newsletterEmail}
+              onChange={(event) => setNewsletterEmail(event.target.value)}
+              placeholder="Enter your email"
+              className="flex-1 rounded-full border border-blue-700 bg-blue-800 px-4 py-2 text-sm text-white placeholder:text-blue-400 focus:outline-none focus:border-orange-400"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-orange-600 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+            >
+              Subscribe
+            </button>
+          </div>
+          {newsletterMessage ? (
+            <p className="mt-3 text-sm text-green-300">{newsletterMessage}</p>
+          ) : null}
+        </form>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
           <div>
             <div className="mb-6">
               <img
                 src={landscapeLogo}
                 alt="Mafdesh"
-                className="w-auto object-contain brightness-0 invert"
-                style={{ height: '70px', backgroundColor: 'transparent' }}
+                className="h-[70px] w-auto object-contain brightness-0 invert"
               />
               <div className="mt-4">
                 <span className="text-[11px] font-bold text-orange-400 tracking-wider">HALAL-COMPLIANT PLATFORM</span>
@@ -43,7 +87,7 @@ export default function Footer() {
             <h3 className="font-bold mb-5 text-orange-400 text-base uppercase tracking-wide">Quick Links</h3>
             <ul className="space-y-3 text-sm">
               <li>
-                <Link to="/dashboard" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
+                <Link to="/marketplace" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
                   <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
                   Shop Now
                 </Link>
@@ -53,24 +97,6 @@ export default function Footer() {
                   <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
                   Help Center
                 </Link>
-              </li>
-              <li>
-                <a href="#" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
-                  <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
-                  Become a Seller
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
-                  <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
-                  Track Order
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
-                  <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
-                  FAQs
-                </a>
               </li>
             </ul>
           </div>
@@ -138,7 +164,7 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-center md:text-left">
               <p className="text-blue-300 text-sm font-medium">
-                &copy; 2025 Mafdesh. All rights reserved.
+                &copy; {new Date().getFullYear()} Mafdesh. All rights reserved.
               </p>
               <p className="text-blue-400 text-xs mt-1">
                 Built with ❤️ in Nigeria 🇳🇬

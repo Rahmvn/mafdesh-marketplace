@@ -5,14 +5,30 @@ import LandingPage from './LandingPage';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
+  const [storedUser] = useState(() =>
+    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
+  );
 
   useEffect(() => {
+    if (storedUser?.role === 'seller') {
+      navigate('/seller/dashboard', { replace: true });
+      return;
+    }
+
+    if (storedUser?.role === 'admin') {
+      navigate('/admin/dashboard', { replace: true });
+      return;
+    }
+
+    if (storedUser?.role === 'buyer') {
+      navigate('/marketplace', { replace: true });
+      return;
+    }
+
     const checkAuth = async () => {
       const { data } = await supabase.auth.getSession();
 
       if (!data.session) {
-        setChecking(false);
         return;
       }
 
@@ -25,7 +41,6 @@ export default function Home() {
         .single();
 
       if (!userData) {
-        setChecking(false);
         return;
       }
 
@@ -39,15 +54,7 @@ export default function Home() {
     };
 
     checkAuth();
-  }, [navigate]);
-
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-blue-600 font-semibold">Loading...</p>
-      </div>
-    );
-  }
+  }, [navigate, storedUser]);
 
   return <LandingPage />;
 }

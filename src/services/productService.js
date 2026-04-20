@@ -1,10 +1,16 @@
 import { supabase } from "../supabaseClient";
 
+const FINAL_ORDER_STATUSES = ["CANCELLED", "COMPLETED", "REFUNDED"];
+
 function isMissingDeletedAtColumn(error) {
   return (
     error?.code === "42703" &&
     String(error.message || "").includes("deleted_at")
   );
+}
+
+function inFilter(values) {
+  return `(${values.join(",")})`;
 }
 
 function mapProductList(data) {
@@ -78,13 +84,14 @@ export const productService = {
       .from("products")
       .select("*")
       .eq("seller_id", userId)
-      .is("deleted_at", null);
+      .order("created_at", { ascending: false });
 
     if (isMissingDeletedAtColumn(error)) {
       ({ data, error } = await supabase
         .from("products")
         .select("*")
-        .eq("seller_id", userId));
+        .eq("seller_id", userId)
+        .order("created_at", { ascending: false }));
     }
 
     if (error) throw error;
@@ -92,20 +99,11 @@ export const productService = {
   },
 
   async getProductById(id) {
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .select("*")
       .eq("id", id)
-      .is("deleted_at", null)
       .single();
-
-    if (isMissingDeletedAtColumn(error)) {
-      ({ data, error } = await supabase
-        .from("products")
-        .select("*")
-        .eq("id", id)
-        .single());
-    }
 
     if (error) throw error;
     return data;
@@ -203,42 +201,75 @@ export const productService = {
     return data;
   },
 
-  async deleteProduct(id, options = {}) {
-    let { error } = await supabase
-      .from("products")
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by_admin_id: options.adminId || null,
-        deletion_reason: options.reason || null,
-        is_approved: false,
-      })
-      .eq("id", id);
-
-    if (isMissingDeletedAtColumn(error)) {
-      throw new Error(
-        "Product archiving requires the latest Supabase migration. Please deploy the new database migration first."
-      );
-    }
-
+  async archiveProduct(id, reason = null) {
+    const { data, error } = await supabase.rpc("archive_product", {
+      p_product_id: id,
+      p_archived_reason: reason,
+    });
     if (error) throw error;
+    return data;
   },
 
-  async restoreProduct(id) {
-    let { error } = await supabase
-      .from("products")
-      .update({
-        deleted_at: null,
-        deleted_by_admin_id: null,
-        deletion_reason: null,
-      })
-      .eq("id", id);
+  async unarchiveProduct(id) {
+    const { data, error } = await supabase.rpc("unarchive_product", {
+      p_product_id: id,
+    });
+    if (error) throw error;
+    return data;
+  },
 
-    if (isMissingDeletedAtColumn(error)) {
-      throw new Error(
-        "Product restore requires the latest Supabase migration. Please deploy the new database migration first."
-      );
-    }
+  async updateFlashSale(id, updates) {
+    const { data, error } = await supabase.rpc("set_product_flash_sale", {
+      p_product_id: id,
+      p_is_flash_sale: Boolean(updates?.is_flash_sale),
+      p_sale_price: updates?.sale_price ?? null,
+      p_sale_start: updates?.sale_start ?? null,
+      p_sale_end: updates?.sale_end ?? null,
+      p_sale_quantity_limit: updates?.sale_quantity_limit ?? null,
+    });
 
     if (error) throw error;
+    return data;
+  },
+
+  async getProductActiveOrderSummary(productId) {
+    const statusFilter = inFilter(FINAL_ORDER_STATUSES);
+
+    const [{ count: directActiveCount, error: directError }, { data: orderItems, error: orderItemsError }] =
+      await Promise.all([
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("product_id", productId)
+          .not("status", "in", statusFilter),
+        supabase
+          .from("order_items")
+          .select("order_id")
+          .eq("product_id", productId),
+      ]);
+
+    if (directError) throw directError;
+    if (orderItemsError) throw orderItemsError;
+
+    const orderIds = [...new Set((orderItems || []).map((item) => item.order_id).filter(Boolean))];
+    let groupedActiveCount = 0;
+
+    if (orderIds.length > 0) {
+      const { count, error } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .in("id", orderIds)
+        .not("status", "in", statusFilter);
+
+      if (error) throw error;
+      groupedActiveCount = Number(count || 0);
+    }
+
+    const activeOrderCount = Number(directActiveCount || 0) + groupedActiveCount;
+
+    return {
+      activeOrderCount,
+      hasActiveOrders: activeOrderCount > 0,
+    };
   },
 };

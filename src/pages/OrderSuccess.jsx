@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
+import { MarketplaceDetailSkeleton } from '../components/MarketplaceLoading';
 import { CheckCircle } from 'lucide-react';
+import { snapshotToProduct } from '../utils/productSnapshots';
 
 export default function OrderSuccess() {
   const { id } = useParams();
@@ -28,8 +30,9 @@ export default function OrderSuccess() {
 
     loadInitialOrder();
   }, [loadOrder]);
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return <MarketplaceDetailSkeleton />;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
+  const orderProduct = snapshotToProduct(order.product_snapshot, order.products || null);
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -42,7 +45,7 @@ export default function OrderSuccess() {
 
           <div className="bg-blue-50 p-4 rounded-lg text-left mb-6">
             <p><strong>Order ID:</strong> {order.id}</p>
-            <p><strong>Product:</strong> {order.products?.name}</p>
+            <p><strong>Product:</strong> {orderProduct?.name || 'Product'}</p>
             <p><strong>Total:</strong> ₦{order.total_amount.toLocaleString()}</p>
             <p><strong>Status:</strong> {order.status}</p>
           </div>
@@ -61,3 +64,4 @@ export default function OrderSuccess() {
     </div>
   );
 }
+

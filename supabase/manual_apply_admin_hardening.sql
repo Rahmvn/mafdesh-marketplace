@@ -366,10 +366,10 @@ begin
     raise exception 'Authenticated session required.';
   end if;
 
-  select users.role
+  select u.role
   into actor_role
-  from public.users
-  where users.id = auth.uid();
+  from public.users u
+  where u.id = auth.uid();
 
   if actor_role = 'admin' then
     raise exception 'Admin client writes are disabled. Use the guarded admin moderation flow.';
@@ -810,10 +810,10 @@ begin
     raise exception 'Authenticated session required.';
   end if;
 
-  select users.role
+  select u.role
   into actor_role
-  from public.users
-  where users.id = auth.uid();
+  from public.users u
+  where u.id = auth.uid();
 
   if actor_role = 'admin' then
     raise exception 'Admin client writes are disabled. Use the guarded admin moderation flow.';
@@ -1237,10 +1237,10 @@ begin
     raise exception 'Authenticated session required.';
   end if;
 
-  select users.role
+  select u.role
   into actor_role
-  from public.users
-  where users.id = auth.uid();
+  from public.users u
+  where u.id = auth.uid();
 
   if actor_role = 'admin' then
     raise exception 'Admin client writes are disabled. Use the guarded admin moderation flow.';

@@ -1,4 +1,9 @@
 import { supabase } from '../supabaseClient';
+import {
+  clearCachedCart,
+  readCachedCartItems,
+  writeCachedCartItems,
+} from '../utils/cartStorage';
 
 async function getAuthenticatedUserId() {
   const { data, error } = await supabase.auth.getSession();
@@ -69,9 +74,17 @@ export const cartService = {
           id,
           name,
           price,
+          sale_price,
+          sale_start,
+          sale_end,
+          sale_quantity_limit,
+          sale_quantity_sold,
+          is_flash_sale,
           images,
           stock_quantity,
-          seller_id
+          seller_id,
+          category,
+          description
         )
       `)
       .eq('cart_id', cart.id);
@@ -80,7 +93,9 @@ export const cartService = {
       throw error;
     }
 
-    return data || [];
+    const items = data || [];
+    writeCachedCartItems(items);
+    return items;
   },
 
   async addToCart(product, quantity = 1) {
@@ -119,18 +134,82 @@ export const cartService = {
       if (updateError) {
         throw updateError;
       }
+
+      const cachedItems = readCachedCartItems();
+      const hasCachedItem = cachedItems.some((item) => item.id === existingItem.id);
+      const nextCachedItems = hasCachedItem
+        ? cachedItems.map((item) =>
+            item.id === existingItem.id
+              ? { ...item, quantity: existingItem.quantity + requestedQuantity }
+              : item
+          )
+        : [
+            ...cachedItems,
+            {
+              id: existingItem.id,
+              cart_id: cart.id,
+              product_id: product.id,
+              quantity: existingItem.quantity + requestedQuantity,
+              products: {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                sale_price: product.sale_price,
+                sale_start: product.sale_start,
+                sale_end: product.sale_end,
+                sale_quantity_limit: product.sale_quantity_limit,
+                sale_quantity_sold: product.sale_quantity_sold,
+                is_flash_sale: product.is_flash_sale,
+                images: product.images,
+                stock_quantity: product.stock_quantity,
+                seller_id: product.seller_id,
+                category: product.category,
+                description: product.description,
+              },
+            },
+          ];
+      writeCachedCartItems(nextCachedItems);
     } else {
-      const { error: insertError } = await supabase
+      const { data: insertedItem, error: insertError } = await supabase
         .from('cart_items')
         .insert({
           cart_id: cart.id,
           product_id: product.id,
           quantity: requestedQuantity,
-        });
+        })
+        .select('id')
+        .single();
 
       if (insertError) {
         throw insertError;
       }
+
+      const nextCachedItems = [
+        ...readCachedCartItems(),
+        {
+          id: insertedItem.id,
+          cart_id: cart.id,
+          product_id: product.id,
+          quantity: requestedQuantity,
+          products: {
+              id: product.id,
+              name: product.name,
+              price: product.price,
+              sale_price: product.sale_price,
+              sale_start: product.sale_start,
+              sale_end: product.sale_end,
+              sale_quantity_limit: product.sale_quantity_limit,
+              sale_quantity_sold: product.sale_quantity_sold,
+              is_flash_sale: product.is_flash_sale,
+              images: product.images,
+              stock_quantity: product.stock_quantity,
+              seller_id: product.seller_id,
+            category: product.category,
+            description: product.description,
+          },
+        },
+      ];
+      writeCachedCartItems(nextCachedItems);
     }
 
     window.dispatchEvent(new Event('cartUpdated'));
@@ -152,6 +231,10 @@ export const cartService = {
       throw error;
     }
 
+    const nextCachedItems = readCachedCartItems().map((item) =>
+      item.id === itemId ? { ...item, quantity: nextQuantity } : item
+    );
+    writeCachedCartItems(nextCachedItems);
     window.dispatchEvent(new Event('cartUpdated'));
   },
 
@@ -165,6 +248,12 @@ export const cartService = {
       throw error;
     }
 
+    const nextCachedItems = readCachedCartItems().filter((item) => item.id !== itemId);
+    if (nextCachedItems.length === 0) {
+      clearCachedCart();
+    } else {
+      writeCachedCartItems(nextCachedItems);
+    }
     window.dispatchEvent(new Event('cartUpdated'));
   },
 };

@@ -20,7 +20,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 
 const SUPPORT_EMAIL = 'support@mafdesh.com';
@@ -745,3 +745,4 @@ export default function Support() {
     </div>
   );
 }
+

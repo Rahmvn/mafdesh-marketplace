@@ -5,18 +5,26 @@ import Navbar from "./Navbar";
 import { supabase } from "../supabaseClient";
 
 export default function AuthNavbarWrapper() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() =>
+    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
+  );
 
   useEffect(() => {
     // Initial session
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data?.session?.user || null);
+      const nextUser = data?.session?.user || null;
+      if (!nextUser) {
+        setUser(JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
+        return;
+      }
+
+      setUser(nextUser);
     });
 
     // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user || null);
+        setUser(session?.user || JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
       }
     );
 

@@ -1,9 +1,23 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { ArrowLeft } from 'lucide-react';
+import {
+  DELIVERY_TYPE,
+  getProductFulfillmentOptions,
+  isDeliverySchemaMissingError,
+  quoteSellerDelivery,
+} from '../services/deliveryService';
+import { NIGERIAN_STATES } from '../utils/nigeriaStates';
+import { showGlobalError, showGlobalWarning } from '../hooks/modalService';
+import {
+  GenericContentSkeleton,
+  InlineLoadingSkeleton,
+} from '../components/PageFeedback';
+import { buildProductSnapshot } from '../utils/productSnapshots';
+import { getProductPricing } from '../utils/flashSale';
 
 const generateOrderNumber = () => {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -17,10 +31,13 @@ export default function Checkout() {
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [deliveryType, setDeliveryType] = useState('delivery');
+  const [deliveryType, setDeliveryType] = useState(DELIVERY_TYPE.DELIVERY);
   const [deliveryState, setDeliveryState] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [selectedPickup, setSelectedPickup] = useState('');
+  const [fulfillment, setFulfillment] = useState(null);
+  const [deliveryQuote, setDeliveryQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadProduct = useCallback(async (productId = id) => {
@@ -35,6 +52,12 @@ export default function Checkout() {
       navigate('/marketplace');
       return;
     }
+    try {
+      const fulfillmentOptions = await getProductFulfillmentOptions(data.id, data.seller_id);
+      setFulfillment(fulfillmentOptions);
+    } catch (fulfillmentError) {
+      console.error('Failed to load fulfillment options:', fulfillmentError);
+    }
     setProduct(data);
     setLoading(false);
   }, [id, navigate]);
@@ -47,63 +70,181 @@ export default function Checkout() {
     loadInitialProduct();
   }, [id, loadProduct]);
 
-  const calculateDelivery = () => {
-    if (deliveryType === 'pickup') return 0;
-    if (deliveryState === 'Lagos') return 2000;
-    if (deliveryState === 'Abuja') return 2500;
-    return 3000;
-  };
+  useEffect(() => {
+    const runQuote = async () => {
+      if (!product || !fulfillment) {
+        return;
+      }
+
+      if (deliveryType === DELIVERY_TYPE.PICKUP) {
+        setDeliveryQuote({
+          available: fulfillment.pickupLocations.length > 0,
+          fee: 0,
+          pickupLocations: fulfillment.pickupLocations,
+          deliveryZoneSnapshot: null,
+          deliveryType,
+          message:
+            fulfillment.pickupLocations.length > 0
+              ? null
+              : 'Pickup is not available for this product.',
+        });
+        return;
+      }
+
+      if (!deliveryState) {
+        setQuoteLoading(false);
+        setDeliveryQuote(null);
+        return;
+      }
+
+      setQuoteLoading(true);
+
+      try {
+        const quote = await quoteSellerDelivery({
+          sellerId: product.seller_id,
+          productIds: [product.id],
+          deliveryType,
+          destinationState: deliveryState,
+        });
+        setDeliveryQuote(quote);
+      } catch (error) {
+        console.error('Delivery quote failed:', error);
+        setDeliveryQuote({
+          available: false,
+          fee: 0,
+          pickupLocations: [],
+          deliveryZoneSnapshot: null,
+          deliveryType,
+          message: 'Unable to quote delivery right now. Please try again.',
+        });
+      } finally {
+        setQuoteLoading(false);
+      }
+    };
+
+    runQuote();
+  }, [deliveryState, deliveryType, fulfillment, product]);
+
+  useEffect(() => {
+    if (deliveryType === DELIVERY_TYPE.PICKUP && !fulfillment?.pickupLocations?.length) {
+      setDeliveryType(DELIVERY_TYPE.DELIVERY);
+      setSelectedPickup('');
+    }
+  }, [deliveryType, fulfillment]);
+
+  const pricing = useMemo(() => getProductPricing(product), [product]);
+  const productPrice = pricing.displayPrice;
 
   const handleConfirm = async () => {
     // Validation
-    if (deliveryType === 'delivery') {
-      if (!deliveryState) return alert('Please select delivery state');
-      if (!deliveryAddress.trim()) return alert('Please enter delivery address');
+    if (deliveryType === DELIVERY_TYPE.DELIVERY) {
+      if (!deliveryState) {
+        showGlobalWarning('Delivery State Required', 'Please select a delivery state.');
+        return;
+      }
+      if (!deliveryAddress.trim()) {
+        showGlobalWarning('Delivery Address Required', 'Please enter a delivery address.');
+        return;
+      }
+      if (!deliveryQuote?.available) {
+        showGlobalWarning(
+          'Delivery Unavailable',
+          deliveryQuote?.message || 'Delivery is not available for this destination.'
+        );
+        return;
+      }
     }
-    if (deliveryType === 'pickup' && product.pickup_locations?.length > 0 && !selectedPickup) {
-      return alert('Please select a pickup location');
+    if (deliveryType === DELIVERY_TYPE.PICKUP && !selectedPickup) {
+      showGlobalWarning('Pickup Location Required', 'Please select a pickup location.');
+      return;
     }
 
     setIsSubmitting(true);
 
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
-      alert('Please log in');
+      showGlobalWarning('Login Required', 'Please log in to continue.');
+      setIsSubmitting(false);
       navigate('/login');
       return;
     }
     const buyerId = sessionData.session.user.id;
 
-    const deliveryFee = calculateDelivery();
-    const platformFee = Math.round(product.price * 0.05);
-    const totalAmount = product.price + deliveryFee;
+    const pickupLocation = (fulfillment?.pickupLocations || []).find(
+      (location) => location.id === selectedPickup
+    );
+    const deliveryFee = deliveryType === DELIVERY_TYPE.PICKUP ? 0 : Number(deliveryQuote?.fee || 0);
+    const platformFee = Math.round(productPrice * 0.05);
+    const totalAmount = productPrice + deliveryFee;
     const orderNumber = generateOrderNumber();
 
     // Create order
-    const { data: order, error: orderError } = await supabase
+    const orderPayload = {
+      buyer_id: buyerId,
+      seller_id: product.seller_id,
+      product_id: product.id,
+      product_snapshot: buildProductSnapshot(product),
+      quantity: 1,
+      product_price: productPrice,
+      delivery_fee: deliveryFee,
+      platform_fee: platformFee,
+      total_amount: totalAmount,
+      delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
+      delivery_address: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryAddress : null,
+      delivery_type: deliveryType,
+      selected_pickup_location: deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
+      delivery_zone_snapshot:
+        deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryQuote?.deliveryZoneSnapshot || null : null,
+      pickup_location_snapshot:
+        deliveryType === DELIVERY_TYPE.PICKUP && pickupLocation
+          ? {
+              id: pickupLocation.id,
+              label: pickupLocation.label,
+              address_text: pickupLocation.address_text,
+              state_name: pickupLocation.state_name || null,
+            }
+          : null,
+      order_number: orderNumber,
+      status: 'PENDING',
+    };
+
+    let order;
+    let orderError;
+
+    ({ data: order, error: orderError } = await supabase
       .from('orders')
-      .insert({
-        buyer_id: buyerId,
-        seller_id: product.seller_id,
-        product_id: product.id,
-        quantity: 1,
-        product_price: product.price,
-        delivery_fee: deliveryFee,
-        platform_fee: platformFee,
-        total_amount: totalAmount,
-        delivery_state: deliveryType === 'delivery' ? deliveryState : null,
-        delivery_address: deliveryType === 'delivery' ? deliveryAddress : null,
-        delivery_type: deliveryType,
-        selected_pickup_location: deliveryType === 'pickup' ? selectedPickup : null,
-        order_number: orderNumber,
-        status: 'PENDING'
-      })
+      .insert(orderPayload)
       .select()
-      .single();
+      .single());
+
+    if (isDeliverySchemaMissingError(orderError)) {
+      ({ data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          buyer_id: buyerId,
+          seller_id: product.seller_id,
+          product_id: product.id,
+          product_snapshot: buildProductSnapshot(product),
+          quantity: 1,
+          product_price: productPrice,
+          delivery_fee: deliveryFee,
+          platform_fee: platformFee,
+          total_amount: totalAmount,
+          delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
+          delivery_address: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryAddress : null,
+          delivery_type: deliveryType,
+          selected_pickup_location:
+            deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
+          order_number: orderNumber,
+          status: 'PENDING',
+        })
+        .select()
+        .single());
+    }
 
     if (orderError) {
       console.error(orderError);
-      alert('Failed to create order. Please try again.');
+      showGlobalError('Order Creation Failed', 'Failed to create order. Please try again.');
       setIsSubmitting(false);
       return;
     }
@@ -127,10 +268,13 @@ export default function Checkout() {
 
       if (!response.ok) {
         if (response.status === 409) {
-          alert('Sorry, this item is no longer available. Order cancelled.');
+          showGlobalWarning('Item Unavailable', 'Sorry, this item is no longer available. Order cancelled.');
           await supabase.from('orders').delete().eq('id', order.id);
         } else {
-          alert(result.error || 'Payment confirmation failed. Please contact support.');
+          showGlobalError(
+            'Payment Confirmation Failed',
+            result.error || 'Payment confirmation failed. Please contact support.'
+          );
         }
         setIsSubmitting(false);
         return;
@@ -140,23 +284,30 @@ export default function Checkout() {
       navigate(`/order-success/${order.id}`);
     } catch (err) {
       console.error(err);
-      alert('Network error. Please try again.');
+      showGlobalError('Network Error', 'Network error. Please try again.');
       setIsSubmitting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <Navbar />
+        <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
+          <GenericContentSkeleton />
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (!product) return null;
 
-  const deliveryFee = calculateDelivery();
-  const total = product.price + deliveryFee;
+  const deliveryFee = deliveryType === DELIVERY_TYPE.PICKUP ? 0 : Number(deliveryQuote?.fee || 0);
+  const total = productPrice + deliveryFee;
+  const pickupOptions = fulfillment?.pickupLocations || [];
+  const pickupEnabled = pickupOptions.length > 0;
+  const hasAvailableMethod = true;
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -186,7 +337,7 @@ export default function Checkout() {
                 <div className="min-w-0">
                   <p className="font-semibold text-blue-900">{product.name}</p>
                   <p className="text-orange-600 font-bold mt-2">
-                    ₦{product.price.toLocaleString()}
+                    ₦{productPrice.toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -197,20 +348,20 @@ export default function Checkout() {
               <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                 <button
-                  onClick={() => setDeliveryType('delivery')}
+                  onClick={() => setDeliveryType(DELIVERY_TYPE.DELIVERY)}
                   className={`w-full sm:w-auto px-4 py-2 rounded-lg border transition ${
-                    deliveryType === 'delivery'
+                    deliveryType === DELIVERY_TYPE.DELIVERY
                       ? 'border-orange-500 bg-orange-50 text-orange-600'
                       : 'border-blue-200 text-blue-700 hover:bg-gray-50'
                   }`}
                 >
                   Delivery
                 </button>
-                {product.pickup_locations?.length > 0 && (
+                {pickupEnabled && (
                   <button
-                    onClick={() => setDeliveryType('pickup')}
+                    onClick={() => setDeliveryType(DELIVERY_TYPE.PICKUP)}
                     className={`w-full sm:w-auto px-4 py-2 rounded-lg border transition ${
-                      deliveryType === 'pickup'
+                      deliveryType === DELIVERY_TYPE.PICKUP
                         ? 'border-orange-500 bg-orange-50 text-orange-600'
                         : 'border-blue-200 text-blue-700 hover:bg-gray-50'
                     }`}
@@ -220,8 +371,14 @@ export default function Checkout() {
                 )}
               </div>
 
+              {!pickupEnabled && (
+                <p className="mt-3 text-sm text-blue-600">
+                  Delivery is always available. Pickup only appears when this seller has active pickup locations for the product.
+                </p>
+              )}
+
               {/* Pickup location dropdown */}
-              {deliveryType === 'pickup' && product.pickup_locations?.length > 0 && (
+              {deliveryType === DELIVERY_TYPE.PICKUP && pickupEnabled && (
                 <div className="mt-4">
                   <label className="block text-sm font-semibold text-blue-900 mb-2">
                     Select Pickup Location
@@ -233,8 +390,10 @@ export default function Checkout() {
                     required
                   >
                     <option value="">Choose a pickup point</option>
-                    {product.pickup_locations.map((loc, idx) => (
-                      <option key={idx} value={loc}>{loc}</option>
+                    {pickupOptions.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.label} - {loc.address_text}
+                      </option>
                     ))}
                   </select>
                   <p className="text-sm text-gray-500 mt-2">
@@ -245,7 +404,7 @@ export default function Checkout() {
             </div>
 
             {/* Delivery address form */}
-            {deliveryType === 'delivery' && (
+            {deliveryType === DELIVERY_TYPE.DELIVERY && (
               <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4">
                 <h2 className="font-semibold text-blue-900">Delivery Details</h2>
                 <select
@@ -254,9 +413,11 @@ export default function Checkout() {
                   className="w-full border border-blue-200 rounded-lg p-3"
                 >
                   <option value="">Select State</option>
-                  <option value="Lagos">Lagos</option>
-                  <option value="Abuja">Abuja</option>
-                  <option value="Other">Other</option>
+                  {NIGERIAN_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
                 </select>
                 <textarea
                   placeholder="Enter full delivery address (street, building, landmark)"
@@ -265,6 +426,20 @@ export default function Checkout() {
                   className="w-full border border-blue-200 rounded-lg p-3"
                   rows={3}
                 />
+                {quoteLoading ? <InlineLoadingSkeleton className="max-w-40" /> : null}
+                {!deliveryState && (
+                  <p className="text-sm text-blue-600">
+                    Select your delivery state and we will calculate the delivery fee automatically.
+                  </p>
+                )}
+                {deliveryQuote && (
+                  <p className={`text-sm ${deliveryQuote.available ? 'text-green-700' : 'text-red-600'}`}>
+                    {deliveryQuote.message ||
+                      (deliveryQuote.available
+                        ? 'Delivery fee calculated successfully.'
+                        : 'Delivery is not available for this destination.')}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -275,7 +450,7 @@ export default function Checkout() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Product</span>
-                <span>₦{product.price.toLocaleString()}</span>
+                <span>₦{productPrice.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span>Delivery</span>
@@ -289,7 +464,7 @@ export default function Checkout() {
 
             <button
               onClick={handleConfirm}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !hasAvailableMethod}
               className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             >
               {isSubmitting ? 'Processing...' : 'Confirm Order'}
@@ -304,3 +479,4 @@ export default function Checkout() {
     </div>
   );
 }
+

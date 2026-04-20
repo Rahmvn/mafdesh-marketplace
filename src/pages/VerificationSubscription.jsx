@@ -14,8 +14,10 @@ import {
   Zap,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
+import useModal from '../hooks/useModal';
+import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
 
 const PLANS = {
   monthly: {
@@ -146,12 +148,15 @@ export default function VerificationSubscription() {
     expiryDate: '',
     cvv: '',
   });
+  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const theme = getSellerThemeClasses(themeState.darkMode);
+  const { showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('mafdesh_user');
 
     if (!storedUser) {
-      alert('Please log in to access this page.');
+      showError('Authentication Required', 'Please log in to access this page.');
       navigate('/login');
       return;
     }
@@ -159,13 +164,28 @@ export default function VerificationSubscription() {
     const userData = JSON.parse(storedUser);
 
     if (userData.role !== 'seller') {
-      alert('Access denied. Only sellers can subscribe for verification.');
+      showError('Access Denied', 'Only sellers can subscribe for verification.');
       navigate('/login');
       return;
     }
 
-    setCurrentUser(userData);
-  }, [navigate]);
+    const loadUser = async () => {
+      const { data: sellerData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userData.id)
+        .single();
+
+      if (sellerData) {
+        setCurrentUser(sellerData);
+        localStorage.setItem('mafdesh_user', JSON.stringify(sellerData));
+      } else {
+        setCurrentUser(userData);
+      }
+    };
+
+    loadUser();
+  }, [navigate, showError]);
 
   const handleInputChange = (field, value) => {
     if (field === 'cardNumber') {
@@ -246,12 +266,12 @@ Website: www.mafdesh.com
 
   const handlePayment = async () => {
     if (!isFormValid()) {
-      alert('Please fill in all payment details correctly.');
+      showWarning('Incomplete Payment Details', 'Please fill in all payment details correctly.');
       return;
     }
 
     if (!currentUser) {
-      alert('Error: User information not found. Please try again.');
+      showError('User Not Found', 'User information not found. Please try again.');
       return;
     }
 
@@ -315,7 +335,7 @@ Website: www.mafdesh.com
       setShowSuccess(true);
     } catch (error) {
       console.error('Payment error:', error);
-      alert('Payment simulation failed. Please try again.');
+      showError('Payment Failed', 'Payment simulation failed. Please try again.');
     } finally {
       setProcessing(false);
     }
@@ -327,8 +347,18 @@ Website: www.mafdesh.com
 
   if (showSuccess) {
     return (
-      <div className="min-h-screen flex flex-col bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.12),_transparent_30%),linear-gradient(180deg,_#eff6ff_0%,_#ffffff_50%,_#fff7ed_100%)]">
-        <Navbar />
+      <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+        <Navbar
+          theme={themeState.darkMode ? 'dark' : 'light'}
+          themeToggle={
+            themeState.canToggleTheme
+              ? {
+                  darkMode: themeState.darkMode,
+                  onToggle: themeState.toggleTheme,
+                }
+              : null
+          }
+        />
 
         <div className="flex-1 px-4 py-12 flex items-center justify-center">
           <div className="max-w-2xl w-full">
@@ -399,14 +429,25 @@ Website: www.mafdesh.com
         </div>
 
         <Footer />
+        <ModalComponent />
       </div>
     );
   }
 
   if (showCheckout) {
     return (
-      <div className="min-h-screen flex flex-col bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.12),_transparent_30%),linear-gradient(180deg,_#eff6ff_0%,_#ffffff_50%,_#fff7ed_100%)]">
-        <Navbar />
+      <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+        <Navbar
+          theme={themeState.darkMode ? 'dark' : 'light'}
+          themeToggle={
+            themeState.canToggleTheme
+              ? {
+                  darkMode: themeState.darkMode,
+                  onToggle: themeState.toggleTheme,
+                }
+              : null
+          }
+        />
 
         <div className="flex-1 px-4 py-6 max-w-5xl mx-auto w-full">
           <button
@@ -563,13 +604,24 @@ Website: www.mafdesh.com
         </div>
 
         <Footer />
+        <ModalComponent />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.12),_transparent_30%),linear-gradient(180deg,_#eff6ff_0%,_#ffffff_50%,_#fff7ed_100%)]">
-      <Navbar />
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+      <Navbar
+        theme={themeState.darkMode ? 'dark' : 'light'}
+        themeToggle={
+          themeState.canToggleTheme
+            ? {
+                darkMode: themeState.darkMode,
+                onToggle: themeState.toggleTheme,
+              }
+            : null
+        }
+      />
 
       <div className="flex-1 px-4 py-6 max-w-6xl mx-auto w-full">
         <button
@@ -772,6 +824,8 @@ Website: www.mafdesh.com
       </div>
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

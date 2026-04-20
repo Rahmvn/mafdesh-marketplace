@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Filter, ShieldCheck, User, Clock3 } from "lucide-react";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import useModal from "../hooks/useModal";
 import { supabase } from "../supabaseClient";
 import {
   ADMIN_ACTION_LABELS,
@@ -10,6 +11,32 @@ import {
   ADMIN_TARGET_TYPES,
   fetchAdminActionLogs,
 } from "../services/adminActionService";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 function getTargetHref(action) {
   if (action.target_type === ADMIN_TARGET_TYPES.USER) {
@@ -29,12 +56,19 @@ function getTargetHref(action) {
 
 function summarizeState(state) {
   if (!state || typeof state !== "object") return null;
+  const productState =
+    state.product && typeof state.product === "object" ? state.product : state;
+  const requestState =
+    state.request && typeof state.request === "object" ? state.request : null;
   const pairs = [
-    ["status", state.status],
-    ["is_approved", state.is_approved],
-    ["is_verified", state.is_verified],
-    ["bank_details_approved", state.bank_details_approved],
-    ["resolution_type", state.resolution_type],
+    ["name", productState.name],
+    ["price", productState.price],
+    ["status", requestState?.status ?? productState.status],
+    ["is_approved", productState.is_approved],
+    ["is_verified", productState.is_verified],
+    ["bank_details_approved", productState.bank_details_approved],
+    ["resolution_type", productState.resolution_type],
+    ["reviewed_by", requestState?.reviewed_by],
   ].filter(([, value]) => value !== undefined && value !== null);
   if (pairs.length === 0) return null;
   return pairs.map(([key, value]) => `${key}: ${String(value)}`).join(" | ");
@@ -59,6 +93,7 @@ export default function AdminAuditLog() {
   const [appliedTargetType, setAppliedTargetType] = useState("");
   const [appliedDateFrom, setAppliedDateFrom] = useState("");
   const [appliedDateTo, setAppliedDateTo] = useState("");
+  const { showError, ModalComponent } = useModal();
 
   const loadAdmins = useCallback(async () => {
     const { data } = await supabase
@@ -81,11 +116,11 @@ export default function AdminAuditLog() {
       setActions(actionRows);
     } catch (error) {
       console.error("Failed to load audit log:", error);
-      alert("Failed to load admin audit log.");
+      showError("Load Failed", "Failed to load admin audit log.");
     } finally {
       setLoading(false);
     }
-  }, [appliedAdminId, appliedActionType, appliedTargetType, appliedDateFrom, appliedDateTo]);
+  }, [appliedAdminId, appliedActionType, appliedTargetType, appliedDateFrom, appliedDateTo, showError]);
 
   // Initial load
   useEffect(() => {
@@ -146,7 +181,7 @@ export default function AdminAuditLog() {
   const targetTypes = useMemo(() => [...new Set(actions.map((a) => a.target_type))].sort(), [actions]);
 
   if (loading && actions.length === 0) {
-    return <div className="min-h-screen flex items-center justify-center">Loading audit log...</div>;
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -338,6 +373,8 @@ export default function AdminAuditLog() {
         )}
       </main>
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

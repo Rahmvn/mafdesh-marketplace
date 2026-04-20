@@ -1,44 +1,48 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle } from 'lucide-react';
-import noBgLogo from '../../mafdesh-img/noBackground-logo.png'; // moved to top
+import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
+import Footer from '../components/FooterSlim';
 
 export default function EmailVerified() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
-      <div className="w-full max-w-md text-center">
-        <div className="mb-8 flex items-center justify-center">
-          <img
-            src={noBgLogo}
-            alt="Mafdesh Logo"
-            className="w-auto"
-            style={{ height: '120px' }}
-          />
-        </div>
-
-        <div className="bg-white border border-green-200 rounded-2xl shadow-xl p-10">
-          <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-12 h-12 text-green-600" />
-            </div>
+    <div className="min-h-screen flex flex-col bg-white">
+      <main className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md text-center">
+          <div className="mb-8 flex items-center justify-center">
+            <img
+              src={noBgLogo}
+              alt="Mafdesh Logo"
+              className="w-auto"
+              style={{ height: '120px' }}
+            />
           </div>
 
-          <h1 className="text-2xl font-bold text-blue-900 mb-4">
-            Email Confirmed Successfully!
-          </h1>
+          <div className="rounded-2xl border border-green-200 bg-white p-10 shadow-xl">
+            <div className="mb-6 flex justify-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+                <CheckCircle className="h-12 w-12 text-green-600" />
+              </div>
+            </div>
 
-          <p className="text-gray-600 mb-8">
-            Your email has been verified. You can now login to Mafdesh.
-          </p>
+            <h1 className="mb-4 text-2xl font-bold text-blue-900">
+              Email Confirmed Successfully!
+            </h1>
 
-          <Link
-            to="/login"
-            className="block w-full bg-blue-900 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-800 transition-colors"
-          >
-            Go to Login
-          </Link>
+            <p className="mb-8 text-gray-600">
+              Your email has been verified. You can now login to Mafdesh.
+            </p>
+
+            <Link
+              to="/login"
+              className="block w-full rounded-xl bg-blue-900 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-800"
+            >
+              Go to Login
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
+      <Footer />
     </div>
   );
 }

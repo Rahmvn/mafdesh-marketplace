@@ -2,9 +2,60 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { Search, Filter, Clock, Package, Truck, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import { formatRemaining, getUrgencyClass } from '../utils/timeUtils';
+import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
+import { getOrderItemsMap } from '../utils/orderItems';
+
+function BuyerOrdersSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 sm:py-8 animate-pulse">
+        <div className="mb-5 sm:mb-6">
+          <div className="h-10 w-48 rounded bg-gray-200" />
+          <div className="mt-2 h-4 w-64 rounded bg-gray-100" />
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="h-10 flex-1 rounded-lg bg-gray-100" />
+            <div className="h-10 w-full sm:w-52 rounded-lg bg-gray-100" />
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="w-24 h-24 rounded-lg bg-gray-100" />
+                <div className="flex-1">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+                    <div>
+                      <div className="h-6 w-52 rounded bg-gray-200" />
+                      <div className="mt-2 h-4 w-36 rounded bg-gray-100" />
+                    </div>
+                    <div className="h-7 w-28 rounded-full bg-gray-100" />
+                  </div>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:gap-4">
+                    <div className="h-4 w-32 rounded bg-gray-100" />
+                    <div className="h-4 w-28 rounded bg-gray-100" />
+                  </div>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <div className="h-10 w-full sm:w-40 rounded-lg bg-gray-200" />
+                    <div className="h-10 w-full sm:w-36 rounded-lg bg-gray-100" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 export default function BuyerOrders() {
   const navigate = useNavigate();
@@ -39,57 +90,11 @@ export default function BuyerOrders() {
       return;
     }
 
-    const orderIds = ordersData.map(o => o.id);
-    const itemsMap = {};
-
-    if (orderIds.length > 0) {
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select(`
-          order_id,
-          quantity,
-          price_at_time,
-          product:products (id, name, images)
-        `)
-        .in('order_id', orderIds);
-
-      if (itemsError) {
-        console.error('Order items error:', itemsError);
-      } else {
-        itemsData.forEach(item => {
-          if (!itemsMap[item.order_id]) {
-            itemsMap[item.order_id] = [];
-          }
-          itemsMap[item.order_id].push(item);
-        });
-      }
-
-      const legacyOrders = ordersData.filter(o => o.product_id && !itemsMap[o.id]);
-      if (legacyOrders.length > 0) {
-        const legacyProductIds = legacyOrders.map(o => o.product_id);
-        const { data: products, error: productsError } = await supabase
-          .from('products')
-          .select('id, name, images')
-          .in('id', legacyProductIds);
-
-        if (productsError) {
-          console.error('Products error:', productsError);
-        } else {
-          const productMap = {};
-          products.forEach(p => { productMap[p.id] = p; });
-          legacyOrders.forEach(order => {
-            const product = productMap[order.product_id];
-            if (product) {
-              itemsMap[order.id] = [{
-                order_id: order.id,
-                quantity: order.quantity,
-                price_at_time: order.product_price,
-                product
-              }];
-            }
-          });
-        }
-      }
+    let itemsMap = {};
+    try {
+      itemsMap = await getOrderItemsMap(ordersData);
+    } catch (itemsError) {
+      console.error('Order items error:', itemsError);
     }
 
     setOrderItemsMap(itemsMap);
@@ -111,25 +116,27 @@ export default function BuyerOrders() {
   }, []);
 
   const handleConfirmDelivery = async (orderId) => {
-    const confirmAction = window.confirm(
-      "Confirm that you received the item(s). You have inspected them and they match the description."
+    showGlobalConfirm(
+      'Confirm Delivery',
+      'Confirm that you received the item(s). You have inspected them and they match the description.',
+      async () => {
+        const { error } = await supabase
+          .from("orders")
+          .update({
+            status: "COMPLETED",
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", orderId);
+
+        if (error) {
+          console.error(error);
+          showGlobalError('Confirmation Failed', 'Failed to confirm delivery.');
+          return;
+        }
+
+        loadOrders();
+      }
     );
-    if (!confirmAction) return;
-
-    const { error } = await supabase
-      .from("orders")
-      .update({ 
-        status: "COMPLETED", 
-        completed_at: new Date().toISOString() 
-      })
-      .eq("id", orderId);
-
-    if (error) {
-      console.error(error);
-      alert("Failed to confirm delivery");
-      return;
-    }
-    loadOrders();
   };
 
   const handleReportIssue = async (orderId) => {
@@ -147,7 +154,7 @@ export default function BuyerOrders() {
 
     if (error) {
       console.error(error);
-      alert("Failed to report issue");
+      showGlobalError('Report Failed', 'Failed to report issue.');
       return;
     }
     loadOrders();
@@ -177,7 +184,7 @@ export default function BuyerOrders() {
   });
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading orders...</div>;
+    return <BuyerOrdersSkeleton />;
   }
 
   return (
@@ -329,3 +336,4 @@ export default function BuyerOrders() {
     </div>
   );
 }
+

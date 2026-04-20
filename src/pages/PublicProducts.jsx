@@ -2,18 +2,43 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Shield, ShoppingCart } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import VerificationBadge from '../components/VerificationBadge'; // import
 import { cartService } from '../services/cartService';
+import { showGlobalError, showGlobalSuccess, showGlobalWarning } from '../hooks/modalService';
+import {
+  readCachedPublicProducts,
+  writeCachedPublicProducts,
+} from '../utils/publicProductsStorage';
+
+function PublicProductsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 animate-pulse">
+      {Array.from({ length: 12 }).map((_, index) => (
+        <div key={index} className="overflow-hidden rounded-xl border border-blue-100 bg-white shadow-sm">
+          <div className="h-40 bg-blue-50" />
+          <div className="p-3">
+            <div className="h-4 rounded bg-blue-100" />
+            <div className="mt-2 h-4 w-4/5 rounded bg-blue-50" />
+            <div className="mt-3 h-6 w-24 rounded bg-orange-100" />
+            <div className="mt-3 h-9 rounded-lg bg-blue-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PublicProducts() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(() => readCachedPublicProducts());
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All Categories');
   const [sortBy, setSortBy] = useState('newest');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(
+    () => readCachedPublicProducts().length === 0
+  );
   const [addingProductId, setAddingProductId] = useState(null);
 
   const categories = [
@@ -36,7 +61,8 @@ export default function PublicProducts() {
       if (response.ok) {
         let data = await response.json();
         // Filter out products with stock_quantity <= 0
-        let filtered = (data.products || []).filter(p => p.stock_quantity > 0);
+        const allProducts = (data.products || []).filter(p => p.stock_quantity > 0);
+        let filtered = [...allProducts];
 
         // Filter by category
         if (selectedCategory !== 'All Categories') {
@@ -61,6 +87,7 @@ export default function PublicProducts() {
         }
 
         setProducts(filtered);
+        writeCachedPublicProducts(allProducts);
       }
     } catch (error) {
       console.error('Error loading products:', error);
@@ -77,7 +104,7 @@ export default function PublicProducts() {
     try {
       setAddingProductId(product.id);
       await cartService.addToCart(product, 1);
-      alert('Added to cart');
+      showGlobalSuccess('Added to Cart', 'This item has been added to your cart.');
     } catch (error) {
       console.error('Add to cart error:', error);
 
@@ -90,11 +117,14 @@ export default function PublicProducts() {
       }
 
       if (error.message === 'INSUFFICIENT_STOCK') {
-        alert('You already have the maximum available quantity in your cart.');
+        showGlobalWarning(
+          'Stock Limit Reached',
+          'You already have the maximum available quantity in your cart.'
+        );
       } else if (error.message === 'OUT_OF_STOCK') {
-        alert('This product is out of stock.');
+        showGlobalWarning('Out of Stock', 'This product is out of stock.');
       } else {
-        alert('Failed to add to cart');
+        showGlobalError('Add to Cart Failed', 'Failed to add this product to your cart.');
       }
     } finally {
       setAddingProductId(null);
@@ -155,16 +185,15 @@ export default function PublicProducts() {
             <h1 className="heading-2 mb-2">
               {selectedCategory === 'All Categories' ? 'All Products' : selectedCategory}
             </h1>
-            <p className="text-subtle">
-              {isLoading ? 'Loading...' : `${products.length} products found`}
-            </p>
+            {isLoading && products.length === 0 ? (
+              <div className="h-5 w-28 rounded bg-blue-100 animate-pulse" />
+            ) : (
+              <p className="text-subtle">{`${products.length} products found`}</p>
+            )}
           </div>
 
-          {isLoading ? (
-            <div className="text-center py-20">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
-              <p className="text-blue-700 mt-4">Loading products...</p>
-            </div>
+          {isLoading && products.length === 0 ? (
+            <PublicProductsSkeleton />
           ) : products.length === 0 ? (
             <div className="text-center py-20">
               <ShoppingCart className="w-16 h-16 text-blue-300 mx-auto mb-4" />
@@ -226,3 +255,4 @@ export default function PublicProducts() {
     </div>
   );
 }
+

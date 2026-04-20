@@ -122,6 +122,43 @@ serve(async (req) => {
 
     console.log('Stock deducted successfully');
 
+    const { data: flashSaleItems, error: flashSaleItemsError } = await supabaseAdmin
+      .from('order_items')
+      .select('product_id, quantity, price_at_time, product:products(price)')
+      .eq('order_id', orderId)
+
+    if (flashSaleItemsError) {
+      console.error('Flash sale lookup error:', flashSaleItemsError);
+      return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        status: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    for (const item of flashSaleItems || []) {
+      const confirmedProductPrice = Number(item.product?.price ?? 0);
+      const orderItemPrice = Number(item.price_at_time ?? 0);
+      const flashSaleQuantity = Number(item.quantity ?? 0);
+
+      if (!item.product_id || orderItemPrice <= 0 || orderItemPrice >= confirmedProductPrice) {
+        continue;
+      }
+
+      for (let index = 0; index < flashSaleQuantity; index += 1) {
+        const { error: incrementError } = await supabaseAdmin.rpc('increment_sale_quantity', {
+          product_id: item.product_id,
+        });
+
+        if (incrementError) {
+          console.error('Flash sale increment error:', incrementError);
+          return new Response(JSON.stringify({ error: 'Internal server error' }), {
+            status: 500,
+            headers: { 'Access-Control-Allow-Origin': '*' },
+          })
+        }
+      }
+    }
+
 // Always set ship_deadline for all orders (48h)
 const { data: order } = await supabaseAdmin
   .from('orders')

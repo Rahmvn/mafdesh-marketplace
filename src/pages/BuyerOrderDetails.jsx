@@ -2,10 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Phone } from "lucide-react";
 import VerificationBadge from "../components/VerificationBadge";
 import DisputeThread from "../components/DisputeThread";
+import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
+import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
 
 export default function BuyerOrderDetails() {
   const { id } = useParams();
@@ -50,28 +53,36 @@ export default function BuyerOrderDetails() {
       .select(`
         quantity,
         price_at_time,
+        product_snapshot,
         product:products (
           id,
           name,
-          images
+          images,
+          category,
+          description,
+          seller_id
         )
       `)
       .eq("order_id", id);
 
     let finalItems = [];
     if (!itemsError && itemsData && itemsData.length > 0) {
-      finalItems = itemsData;
+      finalItems = itemsData.map((item) => ({
+        ...item,
+        product: snapshotToProduct(item.product_snapshot, item.product),
+      }));
     } else if (orderData.product_id) {
       const { data: product, error: prodError } = await supabase
         .from("products")
-        .select("id, name, images")
+        .select("id, name, images, category, description, seller_id")
         .eq("id", orderData.product_id)
         .single();
-      if (!prodError && product) {
+      const normalizedProduct = snapshotToProduct(orderData.product_snapshot, !prodError ? product : null);
+      if (normalizedProduct) {
         finalItems = [{
           quantity: orderData.quantity,
           price_at_time: orderData.product_price,
-          product: product
+          product: normalizedProduct
         }];
       }
     }
@@ -133,39 +144,46 @@ export default function BuyerOrderDetails() {
   };
 
   const confirmDelivery = async () => {
-    if (!window.confirm("Confirm you received all items? This will release payment to the seller.")) return;
-    await supabase
-      .from("orders")
-      .update({
-        status: "COMPLETED",
-        delivered_at: new Date().toISOString(),
-        completed_at: new Date().toISOString()
-      })
-      .eq("id", order.id);
-    loadOrder();
+    showGlobalConfirm(
+      "Confirm Delivery",
+      "Confirm you received all items? This will release payment to the seller.",
+      async () => {
+        await supabase
+          .from("orders")
+          .update({
+            status: "COMPLETED",
+            delivered_at: new Date().toISOString(),
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", order.id);
+        loadOrder();
+      }
+    );
   };
 
   const confirmPickup = async () => {
     if (order.auto_cancel_at && new Date(order.auto_cancel_at) <= now) {
-      alert("Pickup deadline has passed. You can no longer pick up the items.");
+      showGlobalWarning(
+        "Pickup Deadline Passed",
+        "Pickup deadline has passed. You can no longer pick up the items."
+      );
       return;
     }
-    // Enhanced confirmation message
-    if (!window.confirm(
-      "⚠️ IMPORTANT: Please inspect all items thoroughly before confirming.\n\n" +
-      "Once you confirm pickup, the transaction is considered complete and you will NOT be able to request a refund or open a dispute.\n\n" +
-      "If anything is wrong with the items, please use the 'Report a Problem' button instead of confirming.\n\n" +
-      "Have you inspected and received all items in good condition?"
-    )) return;
-    await supabase
-      .from("orders")
-      .update({
-        status: "COMPLETED",
-        picked_up_at: new Date().toISOString(),
-        completed_at: new Date().toISOString()
-      })
-      .eq("id", order.id);
-    loadOrder();
+    showGlobalConfirm(
+      "Confirm Pickup",
+      "Please inspect all items before confirming. Once you confirm pickup, the transaction is final and you will not be able to request a refund or open a dispute. If anything is wrong, use Report a Problem instead. Have you inspected and received all items in good condition?",
+      async () => {
+        await supabase
+          .from("orders")
+          .update({
+            status: "COMPLETED",
+            picked_up_at: new Date().toISOString(),
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", order.id);
+        loadOrder();
+      }
+    );
   };
 
   const uploadDisputeImages = async (files) => {
@@ -187,7 +205,7 @@ export default function BuyerOrderDetails() {
 
   const submitDispute = async () => {
     if (!disputeMessage.trim()) {
-      alert('Please describe the issue.');
+      showGlobalWarning('Issue Required', 'Please describe the issue.');
       return;
     }
     setUploadingDispute(true);
@@ -215,23 +233,24 @@ export default function BuyerOrderDetails() {
           dispute_status: 'open'
         })
         .eq('id', order.id);
-      alert('Dispute submitted successfully. Our team will review.');
+      showGlobalSuccess('Dispute Submitted', 'Your dispute was submitted successfully. Our team will review.');
       setDisputeModal(false);
       setDisputeMessage('');
       setDisputeImages([]);
       loadOrder();
     } catch (err) {
       console.error(err);
-      alert('Failed to submit dispute. Please try again.');
+      showGlobalError('Dispute Failed', 'Failed to submit dispute. Please try again.');
     } finally {
       setUploadingDispute(false);
     }
   };
 
   const cancelOrder = async () => {
-    if (!window.confirm("Cancel this order?")) return;
-    await supabase.from("orders").update({ status: "CANCELLED" }).eq("id", order.id);
-    navigate("/buyer/orders");
+    showGlobalConfirm("Cancel Order", "Cancel this order?", async () => {
+      await supabase.from("orders").update({ status: "CANCELLED" }).eq("id", order.id);
+      navigate("/buyer/orders");
+    });
   };
 
   const formatRemaining = (deadline) => {
@@ -276,14 +295,14 @@ export default function BuyerOrderDetails() {
       });
     if (error) {
       if (error.code === '23505') {
-        alert('You have already reviewed this product.');
+        showGlobalWarning('Already Reviewed', 'You have already reviewed this product.');
       } else {
-        alert('Failed to submit review. Please try again.');
+        showGlobalError('Review Failed', 'Failed to submit review. Please try again.');
       }
       console.error(error);
       return;
     }
-    alert('Review submitted successfully!');
+    showGlobalSuccess('Review Submitted', 'Your review was submitted successfully.');
     setReviewModal({ open: false, productId: null, productName: '' });
     const { data: newReviews } = await supabase
       .from('reviews')
@@ -296,11 +315,13 @@ export default function BuyerOrderDetails() {
     setComment('');
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return <MarketplaceDetailSkeleton />;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
 
   const isDelivery = order.delivery_type === "delivery";
   const isPickup = order.delivery_type === "pickup";
+  const deliverySnapshot = order.delivery_zone_snapshot || null;
+  const pickupSnapshot = order.pickup_location_snapshot || null;
   const isSingleItem = order.product_price !== null && items.length === 1;
   const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
@@ -363,7 +384,7 @@ export default function BuyerOrderDetails() {
     }
    } else if (order.status === "DELIVERED") {
   if (disputeDeadlineExpired) {
-    actionMessage = "The dispute window has passed. The order will auto‑complete.";
+    actionMessage = "The dispute window has passed. The order will auto-complete.";
   } else {
     actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
     actionButton = (
@@ -445,7 +466,7 @@ export default function BuyerOrderDetails() {
       infoBox = (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Dispute window closed</h3>
-          <p className="text-sm text-gray-700">You did not confirm or dispute in time. The order will auto‑complete and payment will be released.</p>
+          <p className="text-sm text-gray-700">You did not confirm or dispute in time. The order will auto-complete and payment will be released.</p>
         </div>
       );
     } else {
@@ -454,7 +475,7 @@ export default function BuyerOrderDetails() {
           <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Confirm delivery or report an issue</h3>
           <p className="text-sm text-yellow-700">
             You have <strong className={getUrgencyClass(order.dispute_deadline)}>{formatRemaining(order.dispute_deadline)}</strong> to confirm delivery or open a dispute.
-            If you don't act, the order will auto‑complete and payment will be released to the seller.
+            If you don't act, the order will auto-complete and payment will be released to the seller.
           </p>
         </div>
       );
@@ -516,8 +537,7 @@ export default function BuyerOrderDetails() {
               <p className="text-gray-500">No items found for this order.</p>
             ) : (
               items.map((item, idx) => {
-                const imageUrl = item.product?.images?.[0];
-                const safeImageUrl = imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/')) ? imageUrl : '/placeholder.png';
+                const safeImageUrl = getSafeProductImage(item.product);
                 const isReviewed = existingReviews.includes(item.product.id);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
@@ -574,8 +594,18 @@ export default function BuyerOrderDetails() {
               <MapPin size={20} className="text-orange-500" />
               Pickup Location
             </h2>
-            {order.selected_pickup_location ? (
-              <p className="text-lg font-bold text-gray-800">{order.selected_pickup_location}</p>
+            {pickupSnapshot?.label || order.selected_pickup_location ? (
+              <>
+                <p className="text-lg font-bold text-gray-800">
+                  {pickupSnapshot?.label || order.selected_pickup_location}
+                </p>
+                {pickupSnapshot?.address_text && (
+                  <p className="text-gray-700 mt-1">{pickupSnapshot.address_text}</p>
+                )}
+                {pickupSnapshot?.state_name && (
+                  <p className="text-sm text-gray-500 mt-1">{pickupSnapshot.state_name}</p>
+                )}
+              </>
             ) : (
               <p className="text-gray-500">The seller will provide pickup details. Contact them for arrangement.</p>
             )}
@@ -599,6 +629,11 @@ export default function BuyerOrderDetails() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="font-semibold text-gray-900 mb-3">Delivery Address</h2>
             <p className="text-gray-700">{order.delivery_state}, {order.delivery_address}</p>
+            {deliverySnapshot && (
+              <p className="text-sm text-gray-500 mt-2">
+                Delivery fee snapshot: ₦{Number(deliverySnapshot.flat_fee || 0).toLocaleString()}
+              </p>
+            )}
           </div>
         )}
 
@@ -798,3 +833,4 @@ export default function BuyerOrderDetails() {
     </div>
   );
 }
+

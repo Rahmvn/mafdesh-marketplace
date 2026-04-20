@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import useModal from "../hooks/useModal";
 import AdminActionModal from "../components/AdminActionModal";
 import {
   ADMIN_ACTION_TYPES,
@@ -17,6 +18,33 @@ import {
   getCurrentAdminUser,
   performAdminAction,
 } from "../services/adminActionService";
+import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 const CONSTITUTION_SECTIONS = [
   { value: "4.1", label: "4.1 - Item Never Arrived" },
@@ -96,6 +124,7 @@ export default function AdminOrderDetails() {
   const [notes, setNotes] = useState("");
   const [resolving, setResolving] = useState(false);
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false);
+  const { showSuccess, showError, showWarning, ModalComponent } = useModal();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -143,10 +172,14 @@ export default function AdminOrderDetails() {
         .select(`
           quantity,
           price_at_time,
+          product_snapshot,
           product:products (
             id,
             name,
-            images
+            images,
+            category,
+            description,
+            seller_id
           )
         `)
         .eq("order_id", id);
@@ -154,19 +187,23 @@ export default function AdminOrderDetails() {
       let finalItems = [];
 
       if (!itemsError && itemsData?.length) {
-        finalItems = itemsData;
+        finalItems = itemsData.map((item) => ({
+          ...item,
+          product: snapshotToProduct(item.product_snapshot, item.product),
+        }));
       } else if (orderData.product_id) {
         const { data: productData } = await supabase
           .from("products")
-          .select("id, name, images")
+          .select("id, name, images, category, description, seller_id")
           .eq("id", orderData.product_id)
           .maybeSingle();
 
+        const normalizedProduct = snapshotToProduct(orderData.product_snapshot, productData || null);
         finalItems = [
           {
             quantity: orderData.quantity,
             price_at_time: orderData.product_price,
-            product: productData || {
+            product: normalizedProduct || {
               id: orderData.product_id,
               name: "Product not found",
               images: [],
@@ -284,14 +321,14 @@ export default function AdminOrderDetails() {
 
   const validateResolution = () => {
     if (!resolutionType || !constitutionSection) {
-      alert("Please select a resolution type and constitution section.");
+      showWarning("Resolution Required", "Please select a resolution type and constitution section.");
       return false;
     }
 
     if (resolutionType === "partial_refund") {
       const amount = Number(partialAmount);
       if (!partialAmount || Number.isNaN(amount) || amount <= 0) {
-        alert("Please enter a valid partial refund amount.");
+        showWarning("Invalid Amount", "Please enter a valid partial refund amount.");
         return false;
       }
     }
@@ -385,22 +422,18 @@ export default function AdminOrderDetails() {
       });
 
       setResolutionModalOpen(false);
-      alert("Dispute resolved successfully.");
+      showSuccess("Dispute Resolved", "Dispute resolved successfully.");
       navigate("/admin/disputes");
     } catch (error) {
       console.error("Error resolving dispute:", error);
-      alert("Failed to resolve dispute.");
+      showError("Resolution Failed", "Failed to resolve dispute.");
     } finally {
       setResolving(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-blue-50">
-        Loading order...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   if (!order) {
@@ -410,6 +443,9 @@ export default function AdminOrderDetails() {
       </div>
     );
   }
+
+  const deliverySnapshot = order.delivery_zone_snapshot || null;
+  const pickupSnapshot = order.pickup_location_snapshot || null;
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -504,7 +540,7 @@ export default function AdminOrderDetails() {
             ) : (
               <div className="space-y-4">
                 {items.map((item, index) => {
-                  const imageUrl = item.product?.images?.[0] || "/placeholder.png";
+                  const imageUrl = getSafeProductImage(item.product);
 
                   return (
                     <div
@@ -543,6 +579,26 @@ export default function AdminOrderDetails() {
               </p>
               <p>
                 <strong>Address:</strong> {order.delivery_address || "N/A"}
+              </p>
+              {deliverySnapshot && (
+                <p>
+                  <strong>Delivery Fee Snapshot:</strong> {formatCurrency(deliverySnapshot.flat_fee)}
+                </p>
+              )}
+            </section>
+          )}
+
+          {order.delivery_type === "pickup" && (
+            <section className="bg-white p-6 rounded-lg border md:col-span-2">
+              <h2 className="font-semibold mb-4 text-blue-900">Pickup Info</h2>
+              <p>
+                <strong>Location:</strong> {pickupSnapshot?.label || order.selected_pickup_location || "N/A"}
+              </p>
+              <p>
+                <strong>Address:</strong> {pickupSnapshot?.address_text || "N/A"}
+              </p>
+              <p>
+                <strong>State:</strong> {pickupSnapshot?.state_name || "N/A"}
               </p>
             </section>
           )}
@@ -771,6 +827,8 @@ export default function AdminOrderDetails() {
       </AdminActionModal>
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

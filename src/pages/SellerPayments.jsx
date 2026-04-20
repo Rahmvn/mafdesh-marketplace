@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock3, CreditCard, Wallet } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { showGlobalConfirm } from '../hooks/modalService';
 import {
   formatSellerCurrency,
   getSellerThemeClasses,
@@ -30,11 +31,11 @@ export default function SellerPayments() {
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = '/login';
-    }
+    });
   };
 
   const loadPayouts = useCallback(async (sellerId) => {
@@ -132,8 +133,6 @@ export default function SellerPayments() {
       currentUser={currentUser}
       onLogout={handleLogout}
       themeState={themeState}
-      title="Payments"
-      subtitle="Keep earnings readable at a glance. The page stays simple: what you have earned, what is pending, and what has already been paid out."
     >
       <section className="grid gap-4 md:grid-cols-3">
         <SellerStatCard

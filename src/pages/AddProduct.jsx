@@ -1,22 +1,31 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload, AlertCircle, Search, Plus, X, CreditCard } from 'lucide-react';
+import { ArrowLeft, Search, CreditCard, Truck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { productService } from '../services/productService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
+import useModal from '../hooks/useModal';
+import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
 import { v4 as uuidv4 } from 'uuid';
 import ProductPreviewModal from '../components/ProductPreviewModal';
+import {
+  getSellerPickupLocations,
+  PICKUP_MODE,
+} from '../services/deliveryService';
 
 export default function AddProduct() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() =>
+    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
+  );
   const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
   const [checkingBank, setCheckingBank] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+  const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -27,68 +36,74 @@ export default function AddProduct() {
     features: '',
     specs: '',
     images: [null, null, null, null, null],
-    pickupLocations: [],
+    pickupEnabled: false,
   });
 
-  const [newLocation, setNewLocation] = useState('');
   const [errors, setErrors] = useState({});
   const [isUploading, setIsUploading] = useState(false);
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const theme = getSellerThemeClasses(themeState.darkMode);
+  const { showSuccess, showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 
   const filteredCategories = PRODUCT_CATEGORIES.filter(cat =>
     cat.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
-useEffect(() => {
-  const checkAuth = async () => {
-    const storedUser = localStorage.getItem('mafdesh_user');
-    if (!storedUser) {
-      alert('Please log in to access this page.');
-      navigate('/login');
-      return;
-    }
-
-    const userData = JSON.parse(storedUser);
-    if (userData.role !== 'seller') {
-      alert('Access denied. Only sellers can add products.');
-      navigate('/login');
-      return;
-    }
-
-    setCurrentUser(userData);
-
-    // Fetch the user's bank details and approval status
-    try {
-      const { data: user, error } = await supabase
-        .from('users')
-        .select('bank_details_approved, bank_name, account_number')
-        .eq('id', userData.id)
-        .single();
-
-      if (error || !user) {
-        throw new Error('User not found');
+  useEffect(() => {
+    const checkAuth = async () => {
+      const storedUser = localStorage.getItem('mafdesh_user');
+      if (!storedUser) {
+        showError('Authentication Required', 'Please log in to access this page.');
+        navigate('/login');
+        return;
       }
 
-      // Determine if bank details exist and are approved
-      const hasBankDetails = user.bank_name && user.account_number;
-      const isApproved = user.bank_details_approved === true;
-      setBankDetailsApproved(hasBankDetails && isApproved);
-    } catch (err) {
-      console.error('Error fetching bank details approval:', err);
-      setBankDetailsApproved(false);
-    } finally {
-      setCheckingBank(false);
-    }
-  };
+      const userData = JSON.parse(storedUser);
+      if (userData.role !== 'seller') {
+        showError('Access Denied', 'Only sellers can add products.');
+        navigate('/login');
+        return;
+      }
 
-  checkAuth();
-}, [navigate]);
+      setCurrentUser(userData);
+
+      // Fetch the user's bank details and approval status
+      try {
+        const { data: user, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userData.id)
+          .single();
+
+        if (error || !user) {
+          throw new Error('User not found');
+        }
+
+        // Determine if bank details exist and are approved
+        setCurrentUser(user);
+        const pickupLocations = await getSellerPickupLocations(user.id).catch(() => []);
+        setSellerPickupLocations(pickupLocations);
+
+        const hasBankDetails = user.bank_name && user.account_number;
+        const isApproved = user.bank_details_approved === true;
+        setBankDetailsApproved(hasBankDetails && isApproved);
+      } catch (err) {
+        console.error('Error fetching bank details approval:', err);
+        setBankDetailsApproved(false);
+      } finally {
+        setCheckingBank(false);
+      }
+    };
+
+    checkAuth();
+  }, [navigate, showError]);
 
   const handleImageChange = (index, file) => {
     if (!file) return;
     if (file.size > 3 * 1024 * 1024) {
-      alert('Each image must be less than 3MB');
+      showWarning('Image Too Large', 'Each image must be less than 3MB.');
       return;
     }
 
@@ -103,23 +118,6 @@ useEffect(() => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
-  };
-
-  const addPickupLocation = () => {
-    if (newLocation.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        pickupLocations: [...prev.pickupLocations, newLocation.trim()]
-      }));
-      setNewLocation('');
-    }
-  };
-
-  const removePickupLocation = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      pickupLocations: prev.pickupLocations.filter((_, i) => i !== index)
-    }));
   };
 
   const validate = () => {
@@ -149,6 +147,9 @@ useEffect(() => {
     }
     if (requiredImages.some(img => img === null)) {
       newErrors.images = 'At least 3 images are required';
+    }
+    if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
+      newErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
     }
 
     setErrors(newErrors);
@@ -202,15 +203,17 @@ ${formData.specs}
         stock_quantity: parseInt(formData.stock),
         is_approved: false,
         images: uploadedUrls,
-        pickup_locations: formData.pickupLocations,
+        delivery_enabled: true,
+        pickup_mode: formData.pickupEnabled ? PICKUP_MODE.SELLER_DEFAULT : PICKUP_MODE.DISABLED,
+        pickup_locations: [],
       };
 
       await productService.createProduct(productData);
-      alert('Product submitted successfully. It is now pending admin approval.');
+      showSuccess('Product Submitted', 'Product submitted successfully. It is now pending admin approval.');
       navigate('/seller/products');
     } catch (err) {
       console.error(err);
-      alert('Upload failed. Please try again.');
+      showError('Upload Failed', 'Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
     }
@@ -222,21 +225,23 @@ ${formData.specs}
     setShowPreview(true);
   };
 
-  if (checkingBank) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-blue-50">
-        <div className="text-blue-600 font-semibold">Loading...</div>
-      </div>
-    );
-  }
-
   // If bank details are not approved, show message and link to profile
-  if (!bankDetailsApproved) {
+  if (!checkingBank && !bankDetailsApproved) {
     return (
-      <div className="min-h-screen flex flex-col bg-blue-50">
-        <Navbar />
+      <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+        <Navbar
+          theme={themeState.darkMode ? 'dark' : 'light'}
+          themeToggle={
+            themeState.canToggleTheme
+              ? {
+                darkMode: themeState.darkMode,
+                onToggle: themeState.toggleTheme,
+              }
+              : null
+          }
+        />
         <div className="flex-1 flex items-center justify-center px-4">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center border border-blue-200">
+          <div className={`rounded-xl p-8 max-w-md w-full text-center ${theme.panel}`}>
             <div className="flex justify-center mb-4">
               <CreditCard className="w-16 h-16 text-orange-500" />
             </div>
@@ -254,30 +259,42 @@ ${formData.specs}
           </div>
         </div>
         <Footer />
+        <ModalComponent />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-blue-50">
-      <Navbar />
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
+      <Navbar
+        theme={themeState.darkMode ? 'dark' : 'light'}
+        themeToggle={
+          themeState.canToggleTheme
+            ? {
+              darkMode: themeState.darkMode,
+              onToggle: themeState.toggleTheme,
+            }
+            : null
+        }
+      />
 
       <div className="flex-1 px-4 py-6 max-w-4xl mx-auto w-full">
         <button
           onClick={() => navigate('/seller/products')}
-          className="flex items-center gap-2 text-blue-700 hover:text-blue-900 mb-6 font-semibold transition-colors"
+          className={`flex items-center gap-2 mb-6 font-semibold transition-colors ${theme.actionGhost}`}
         >
           <ArrowLeft className="w-5 h-5" />
           Back to Products
         </button>
 
-        <div className="bg-white rounded-lg border border-blue-200 shadow-sm p-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-blue-900 mb-2">Add New Product</h1>
-            <p className="text-sm text-blue-600">Fill in the details below to list your product on the marketplace.</p>
-          </div>
+        {!checkingBank && (
+          <div className={`rounded-lg p-6 ${theme.panel}`}>
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold text-blue-900 mb-2">Add New Product</h1>
+              <p className="text-sm text-blue-600">Fill in the details below to list your product on the marketplace.</p>
+            </div>
 
-          <div className="space-y-6">
+            <div className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-blue-900 mb-2">
                 Product Name <span className="text-orange-500">*</span>
@@ -288,9 +305,8 @@ ${formData.specs}
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="e.g., Wireless Headphones"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-                  errors.name ? 'border-orange-500' : 'border-blue-200'
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.name ? 'border-orange-500' : 'border-blue-200'
+                  }`}
               />
               {errors.name && <p className="text-sm text-orange-600 mt-1">{errors.name}</p>}
             </div>
@@ -350,9 +366,8 @@ ${formData.specs}
                   value={formData.price}
                   onChange={handleChange}
                   placeholder="e.g., 15000 or ₦15,000"
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-                    errors.price ? 'border-orange-500' : 'border-blue-200'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.price ? 'border-orange-500' : 'border-blue-200'
+                    }`}
                 />
                 {errors.price && <p className="text-sm text-orange-600 mt-1">{errors.price}</p>}
               </div>
@@ -369,50 +384,76 @@ ${formData.specs}
                 onChange={handleChange}
                 placeholder="e.g., 50"
                 min="0"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-                  errors.stock ? 'border-orange-500' : 'border-blue-200'
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.stock ? 'border-orange-500' : 'border-blue-200'
+                  }`}
               />
               {errors.stock && <p className="text-sm text-orange-600 mt-1">{errors.stock}</p>}
             </div>
 
-            {/* Pickup Locations Section */}
+            {/* Fulfillment Configuration */}
             <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Pickup Locations (Optional)
+              <label className="block text-sm font-semibold text-blue-900 mb-3">
+                Delivery and Pickup
               </label>
-              <p className="text-sm text-blue-600 mb-2">
-                Add locations where buyers can pick up this item (e.g., malls, landmarks). Leave empty if not offering pickup.
-              </p>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={newLocation}
-                  onChange={(e) => setNewLocation(e.target.value)}
-                  placeholder="e.g., Ikeja City Mall"
-                  className="flex-1 px-4 py-2 border border-blue-200 rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={addPickupLocation}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
-                >
-                  <Plus size={18} /> Add
-                </button>
-              </div>
-              <div className="space-y-2">
-                {formData.pickupLocations.map((loc, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-blue-50 p-2 rounded">
-                    <span className="flex-1">{loc}</span>
-                    <button
-                      type="button"
-                      onClick={() => removePickupLocation(index)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <X size={18} />
-                    </button>
+
+              <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div>
+                  <div className="flex items-start gap-3">
+                    <div>
+                      <span className="flex items-center gap-2 font-semibold text-blue-900">
+                        <Truck className="h-4 w-4 text-orange-500" />
+                        Delivery is included automatically
+                      </span>
+                      <p className="text-sm text-blue-700">
+                        Buyers can always request delivery. The platform calculates the fee automatically from your ship-from state to their delivery state.
+                      </p>
+                    </div>
                   </div>
-                ))}
+                </div>
+
+                <div>
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={formData.pickupEnabled}
+                      onChange={(event) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          pickupEnabled: event.target.checked,
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <div>
+                      <span className="font-semibold text-blue-900">
+                        Enable pickup for this product
+                      </span>
+                      <p className="text-sm text-blue-700">
+                        Buyers who choose pickup will see your seller pickup locations.
+                      </p>
+                    </div>
+                  </label>
+                  {formData.pickupEnabled && sellerPickupLocations.length === 0 && (
+                    <div className="mt-3 rounded-lg border border-dashed border-orange-300 bg-white p-4 text-sm text-orange-700">
+                      <p>No active seller pickup locations yet. Add them from the seller delivery page first.</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/seller/delivery')}
+                        className="mt-3 font-semibold text-orange-700 underline underline-offset-2"
+                      >
+                        Open delivery settings
+                      </button>
+                    </div>
+                  )}
+                  {formData.pickupEnabled && sellerPickupLocations.length > 0 && (
+                    <p className="mt-3 text-sm text-blue-700">
+                      Pickup will use {sellerPickupLocations.length} active seller location{sellerPickupLocations.length === 1 ? '' : 's'}.
+                    </p>
+                  )}
+                  {errors.pickupEnabled && (
+                    <p className="text-sm text-orange-600 mt-1">{errors.pickupEnabled}</p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -505,14 +546,7 @@ ${formData.specs}
               </div>
             </div>
 
-            {showPreview && (
-              <ProductPreviewModal
-                previewData={previewData}
-                onClose={() => setShowPreview(false)}
-                onConfirm={confirmUpload}
-                isUploading={isUploading}
-              />
-            )}
+            {/* preview modal moved to bottom of page to render outside the form */}
 
             <div className="flex gap-4 pt-4">
               <button
@@ -531,11 +565,22 @@ ${formData.specs}
                 {isUploading ? 'Uploading...' : 'Preview Product'}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
+      {showPreview && (
+        <ProductPreviewModal
+          previewData={previewData}
+          onClose={() => setShowPreview(false)}
+          onConfirm={confirmUpload}
+          isUploading={isUploading}
+        />
+      )}
+
       <Footer />
+      <ModalComponent />
     </div>
   );
 }

@@ -1,41 +1,278 @@
-import React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, AtSign, Briefcase, Shield, Lock, ArrowLeft, Phone, CreditCard, CheckCircle, AlertCircle, Calendar, MapPin, FileText } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  AtSign,
+  Briefcase,
+  Calendar,
+  CheckCircle,
+  CreditCard,
+  Lock,
+  LogOut,
+  Mail,
+  Phone,
+  Shield,
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import VerificationBadge from '../components/VerificationBadge';
+import useModal from '../hooks/useModal';
+import { RetryablePageError } from '../components/PageFeedback';
 
 const NIGERIAN_BANKS = [
-  "Access Bank", "Citibank", "Ecobank", "Fidelity Bank", "First Bank of Nigeria", 
-  "First City Monument Bank (FCMB)", "Globus Bank", "Guaranty Trust Bank (GTBank)", 
-  "Heritage Bank", "Jaiz Bank", "Keystone Bank", "Polaris Bank", "Providus Bank", 
-  "Stanbic IBTC Bank", "Standard Chartered Bank", "Sterling Bank", "SunTrust Bank", 
-  "Titan Trust Bank", "Union Bank of Nigeria", "United Bank for Africa (UBA)", 
-  "Unity Bank", "Wema Bank", "Zenith Bank"
+  'Access Bank',
+  'Citibank',
+  'Ecobank',
+  'Fidelity Bank',
+  'First Bank of Nigeria',
+  'First City Monument Bank (FCMB)',
+  'Globus Bank',
+  'Guaranty Trust Bank (GTBank)',
+  'Heritage Bank',
+  'Jaiz Bank',
+  'Keystone Bank',
+  'Polaris Bank',
+  'Providus Bank',
+  'Stanbic IBTC Bank',
+  'Standard Chartered Bank',
+  'Sterling Bank',
+  'SunTrust Bank',
+  'Titan Trust Bank',
+  'Union Bank of Nigeria',
+  'United Bank for Africa (UBA)',
+  'Unity Bank',
+  'Wema Bank',
+  'Zenith Bank',
 ];
+
+function InlineMessage({ message }) {
+  if (!message?.text) {
+    return null;
+  }
+
+  const isSuccess = message.type === 'success';
+  const Icon = isSuccess ? CheckCircle : AlertCircle;
+
+  return (
+    <div
+      className={`mt-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm font-medium ${isSuccess
+        ? 'border-green-200 bg-green-50 text-green-700'
+        : 'border-red-200 bg-red-50 text-red-700'
+        }`}
+    >
+      <Icon className="mt-0.5 h-5 w-5 shrink-0" />
+      <p>{message.text}</p>
+    </div>
+  );
+}
+
+function ConfirmationBox({
+  description,
+  onConfirm,
+  onCancel,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+        <div className="flex-1">
+          <p className="font-semibold">Are you sure?</p>
+          <p className="mt-1 text-sm text-red-700">{description}</p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+            >
+              {confirmLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+            >
+              {cancelLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailItem({ label, value, accent = 'blue' }) {
+  const styles = {
+    blue: {
+      wrapper: 'border-blue-100 bg-blue-50',
+      label: 'text-blue-600',
+      value: 'text-blue-900',
+    },
+    yellow: {
+      wrapper: 'border-yellow-100 bg-yellow-50/70',
+      label: 'text-yellow-700',
+      value: 'text-yellow-900',
+    },
+  };
+
+  const tone = styles[accent] || styles.blue;
+
+  return (
+    <div className={`rounded-xl border p-4 ${tone.wrapper}`}>
+      <div className={`mb-1 text-xs font-semibold uppercase ${tone.label}`}>{label}</div>
+      <div className={`font-medium ${tone.value}`}>{value}</div>
+    </div>
+  );
+}
+
+function BankDetailsForm({ values, onChange, onSubmit, onCancel, saving, title }) {
+  const submitLabel = title?.toLowerCase().includes('change')
+    ? 'Submit Request'
+    : 'Submit for Approval';
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      {title ? <p className="text-sm font-semibold text-gray-700">{title}</p> : null}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Bank Name *</label>
+        <select
+          value={values.bank_name}
+          onChange={(event) => onChange('bank_name', event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+        >
+          <option value="">Select Bank</option>
+          {NIGERIAN_BANKS.map((bank) => (
+            <option key={bank} value={bank}>
+              {bank}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Account Number *</label>
+        <input
+          type="text"
+          value={values.account_number}
+          onChange={(event) => onChange('account_number', event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+          placeholder="10-digit account number"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Account Name *</label>
+        <input
+          type="text"
+          value={values.account_name}
+          onChange={(event) => onChange('account_name', event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+          placeholder="Full name as on account"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Business Address</label>
+        <textarea
+          value={values.business_address}
+          onChange={(event) => onChange('business_address', event.target.value)}
+          rows="2"
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+          placeholder="Full business address"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">BVN (optional)</label>
+        <input
+          type="text"
+          value={values.bvn}
+          onChange={(event) => onChange('bvn', event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+          placeholder="11-digit BVN"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700">Tax ID (optional)</label>
+        <input
+          type="text"
+          value={values.tax_id}
+          onChange={(event) => onChange('tax_id', event.target.value)}
+          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+          placeholder="TIN / RC Number"
+        />
+      </div>
+
+      <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? 'Submitting...' : submitLabel}
+        </button>
+
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg bg-gray-200 px-4 py-2 font-semibold text-gray-800 transition-colors hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="container mx-auto max-w-3xl px-4 py-8">
+      <div className="animate-pulse space-y-6">
+        <div className="h-32 rounded-2xl bg-blue-100" />
+        <div className="px-2">
+          <div className="h-24 w-24 rounded-full bg-blue-100" />
+          <div className="mt-8 space-y-4">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="h-14 rounded-xl bg-blue-50" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { showConfirm, ModalComponent } = useModal();
   const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [showChangeForm, setShowChangeForm] = useState(false);
+  const [showCancelSubscriptionConfirm, setShowCancelSubscriptionConfirm] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState(null);
+  const [bankMessage, setBankMessage] = useState(null);
+  const [subscriptionMessage, setSubscriptionMessage] = useState(null);
 
-  // Pending details (for sellers)
   const [pendingDetails, setPendingDetails] = useState({
     bank_name: '',
     account_number: '',
     account_name: '',
     business_address: '',
     bvn: '',
-    tax_id: ''
+    tax_id: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -49,7 +286,6 @@ export default function Profile() {
 
       const userId = data.session.user.id;
 
-      // Fetch from users table
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -61,19 +297,16 @@ export default function Profile() {
         return;
       }
 
-      // Fetch from profiles table
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
-      // Merge: profileData takes precedence for overlapping fields (full_name, username, location)
       const merged = { ...userData, ...profileData };
 
       setProfile(merged);
 
-      // Pre‑fill pending details for seller
       if (merged.role === 'seller') {
         setPendingDetails({
           bank_name: merged.bank_name || '',
@@ -81,7 +314,7 @@ export default function Profile() {
           account_name: merged.account_name || '',
           business_address: merged.business_address || '',
           bvn: merged.bvn || '',
-          tax_id: merged.tax_id || ''
+          tax_id: merged.tax_id || '',
         });
       }
     } catch (error) {
@@ -96,41 +329,75 @@ export default function Profile() {
     loadUserProfile();
   }, [loadUserProfile]);
 
+  const handlePendingDetailsChange = (field, value) => {
+    setPendingDetails((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setBankMessage(null);
+  };
+
+  const handlePasswordFieldChange = (field, value) => {
+    setPasswordData((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setPasswordMessage(null);
+  };
+
   const cancelSubscription = async () => {
-    if (!window.confirm('Are you sure you want to cancel your verification subscription? This will immediately remove your verified badge and you will not receive a refund for any unused time.')) return;
+    setShowCancelSubscriptionConfirm(false);
+
     const { error } = await supabase
       .from('users')
       .update({
         is_verified: false,
-        verification_expiry: null
+        verification_expiry: null,
       })
       .eq('id', profile.id);
+
     if (error) {
-      alert('Failed to cancel subscription.');
+      setSubscriptionMessage({
+        type: 'error',
+        text: 'Failed to cancel subscription.',
+      });
       console.error(error);
     } else {
-      alert('Subscription cancelled. Your verified badge has been removed.');
-      await loadUserProfile(); // refresh
+      await loadUserProfile();
+      setSubscriptionMessage({
+        type: 'success',
+        text: 'Subscription cancelled. Your verified badge has been removed.',
+      });
     }
   };
 
-  const handlePasswordChange = async (e) => {
-    e.preventDefault();
+  const handlePasswordChange = async (event) => {
+    event.preventDefault();
+    setPasswordMessage(null);
 
     const { currentPassword, newPassword, confirmPassword } = passwordData;
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      alert('All fields are required');
+      setPasswordMessage({
+        type: 'error',
+        text: 'All fields are required',
+      });
       return;
     }
 
     if (newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+      setPasswordMessage({
+        type: 'error',
+        text: 'Password must be at least 6 characters',
+      });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      alert('Passwords do not match');
+      setPasswordMessage({
+        type: 'error',
+        text: 'Passwords do not match',
+      });
       return;
     }
 
@@ -139,99 +406,149 @@ export default function Profile() {
       const session = data.session;
 
       if (!session) {
-        alert('Session expired. Please login again.');
-        navigate('/login');
+        setPasswordMessage({
+          type: 'error',
+          text: 'Session expired. Please login again.',
+        });
+        window.setTimeout(() => {
+          navigate('/login');
+        }, 1200);
         return;
       }
 
-      // Verify current password
       const { error: verifyError } = await supabase.auth.signInWithPassword({
         email: session.user.email,
         password: currentPassword,
       });
 
       if (verifyError) {
-        alert('Current password is incorrect.');
+        setPasswordMessage({
+          type: 'error',
+          text: 'Current password is incorrect.',
+        });
         return;
       }
 
-      // Update password
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (updateError) {
-        alert('Failed to update password.');
+        setPasswordMessage({
+          type: 'error',
+          text: 'Failed to update password.',
+        });
         return;
       }
 
-      alert('Password updated successfully. Please login again.');
-      await supabase.auth.signOut();
-      localStorage.clear();
-      navigate('/login');
+      setPasswordMessage({
+        type: 'success',
+        text: 'Password updated successfully. Please login again.',
+      });
+
+      window.setTimeout(async () => {
+        await supabase.auth.signOut();
+        localStorage.clear();
+        navigate('/login');
+      }, 1200);
     } catch (error) {
       console.error(error);
-      alert('Something went wrong.');
+      setPasswordMessage({
+        type: 'error',
+        text: 'Something went wrong.',
+      });
     }
   };
 
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      await supabase.auth.signOut();
-      localStorage.clear();
-      navigate('/login');
-    }
+  const handleLogout = () => {
+    showConfirm(
+      'Log Out',
+      'Are you sure you want to log out of your account?',
+      confirmLogout
+    );
   };
 
-  const submitChangeRequest = async () => {
-    // Basic validation
+  const confirmLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.clear();
+    navigate('/login');
+  };
+
+  const submitChangeRequest = async (event) => {
+    if (event) {
+      event.preventDefault();
+    }
+
+    setBankMessage(null);
+
     if (!pendingDetails.bank_name || !pendingDetails.account_number || !pendingDetails.account_name) {
-      alert('Bank name, account number and account name are required.');
+      setBankMessage({
+        type: 'error',
+        text: 'Bank name, account number and account name are required.',
+      });
       return;
     }
+
     setSaving(true);
+
     const pendingData = {
       bank_name: pendingDetails.bank_name,
       account_number: pendingDetails.account_number,
       account_name: pendingDetails.account_name,
       business_address: pendingDetails.business_address,
       bvn: pendingDetails.bvn,
-      tax_id: pendingDetails.tax_id
+      tax_id: pendingDetails.tax_id,
     };
+
     const { error } = await supabase
       .from('users')
       .update({
         bank_details_pending: pendingData,
-        bank_details_approved: false
+        bank_details_approved: false,
       })
       .eq('id', profile.id);
+
     if (error) {
-      alert('Failed to submit request');
+      setBankMessage({
+        type: 'error',
+        text: 'Failed to submit request',
+      });
       console.error(error);
     } else {
-      alert('Request submitted. Admin will review.');
-      await loadUserProfile(); // refresh
+      await loadUserProfile();
+      setBankMessage({
+        type: 'success',
+        text: 'Request submitted. Admin will review.',
+      });
       setShowChangeForm(false);
     }
+
     setSaving(false);
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-blue-600 font-semibold text-lg">
-          Loading profile...
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+        <Navbar />
+        <ProfileSkeleton />
+        <Footer />
+        <ModalComponent />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-600 font-semibold text-lg">
-          Failed to load profile
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+        <Navbar />
+        <RetryablePageError
+          className="flex-1"
+          title="We could not load your profile"
+          message="Something went wrong while fetching your account details."
+          onRetry={loadUserProfile}
+        />
+        <Footer />
+        <ModalComponent />
       </div>
     );
   }
@@ -239,422 +556,358 @@ export default function Profile() {
   const isSeller = profile.role === 'seller';
   const isVerified = profile.is_verified;
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
-  const hasPendingRequest = profile.bank_details_pending !== null;
+  const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
+  const avatarGradientClass = isSeller
+    ? 'bg-gradient-to-br from-orange-500 to-orange-600'
+    : 'bg-gradient-to-br from-blue-800 to-blue-500';
+  const activeDetails = [
+    { label: 'Bank', value: profile.bank_name || 'Not set' },
+    { label: 'Account Number', value: profile.account_number || 'Not set' },
+    { label: 'Account Name', value: profile.account_name || 'Not set' },
+    { label: 'Business Address', value: profile.business_address || 'Not set' },
+    { label: 'BVN', value: profile.bvn ? `****${profile.bvn.slice(-4)}` : 'Not set' },
+    { label: 'Tax ID', value: profile.tax_id || 'Not set' },
+  ];
+  const pendingRequestDetails = profile.bank_details_pending
+    ? [
+      { label: 'Bank', value: profile.bank_details_pending.bank_name || 'Not set' },
+      {
+        label: 'Account Number',
+        value: profile.bank_details_pending.account_number || 'Not set',
+      },
+      { label: 'Account Name', value: profile.bank_details_pending.account_name || 'Not set' },
+      {
+        label: 'Business Address',
+        value: profile.bank_details_pending.business_address || 'Not set',
+      },
+      {
+        label: 'BVN',
+        value: profile.bank_details_pending.bvn
+          ? `****${profile.bank_details_pending.bvn.slice(-4)}`
+          : 'Not set',
+      },
+      { label: 'Tax ID', value: profile.bank_details_pending.tax_id || 'Not set' },
+    ]
+    : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
-      <Navbar onLogout={handleLogout} />
-      
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
+    <div className="min-h-screen bg-slate-100">
+      <Navbar />
+
+      <div className="container mx-auto max-w-3xl px-4 py-8">
         <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold mb-6 transition-colors"
+          onClick={() => {
+            if (profile?.role === 'seller') {
+              navigate('/seller/dashboard');
+            } else {
+              navigate('/marketplace');
+            }
+          }}
+          className="mb-6 flex items-center gap-2 font-semibold text-blue-600 transition-colors hover:text-blue-800"
         >
           <ArrowLeft size={20} />
           <span>Back</span>
         </button>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-blue-100 overflow-hidden">
-          <div 
-            className="h-32"
-            style={{
-              background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #ea580c 100%)'
-            }}
-          ></div>
+        <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-lg">
+          <div className="h-32 bg-gradient-to-br from-blue-800 via-blue-500 to-orange-600" />
 
           <div className="px-8 pb-8">
-            <div 
-              className="w-24 h-24 rounded-full -mt-12 mb-6 flex items-center justify-center text-white font-bold text-3xl"
-              style={{
-                background: isSeller 
-                  ? 'linear-gradient(135deg, #ea580c, #f97316)'
-                  : 'linear-gradient(135deg, #1e40af, #3b82f6)',
-                border: '4px solid white',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-              }}
+            <div
+              className={`-mt-12 mb-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-white text-3xl font-bold text-white shadow-lg ${avatarGradientClass}`}
             >
               {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
             </div>
 
-            <div className="flex items-center gap-2 mb-2">
+            <div className="mb-2 flex items-center gap-2">
               <h1 className="text-3xl font-extrabold text-blue-900">
                 {profile?.full_name || 'User'}
               </h1>
-              {isSeller && isVerified && <VerificationBadge />}
+              {isSeller && isVerified ? <VerificationBadge /> : null}
             </div>
-            <p className="text-blue-600 font-semibold mb-8 capitalize">
+            <p className="mb-8 font-semibold capitalize text-blue-600">
               {isSeller ? '🏪 Seller' : '👤 Buyer'}
             </p>
 
-            <div className="space-y-4 mb-8">
-              <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <Mail className="text-blue-600 mt-0.5" size={20} />
+            <div className="mb-8 space-y-4">
+              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <Mail className="mt-0.5 text-blue-600" size={20} />
                 <div className="flex-1">
-                  <div className="text-xs text-blue-600 font-semibold uppercase mb-1">Email Address</div>
-                  <div className="text-blue-900 font-medium">{profile?.email}</div>
+                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+                    Email Address
+                  </div>
+                  <div className="font-medium text-blue-900">{profile?.email}</div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <AtSign className="text-blue-600 mt-0.5" size={20} />
+              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <AtSign className="mt-0.5 text-blue-600" size={20} />
                 <div className="flex-1">
-                  <div className="text-xs text-blue-600 font-semibold uppercase mb-1">Username</div>
-                  <div className="text-blue-900 font-medium">@{profile?.username || 'N/A'}</div>
+                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+                    Username
+                  </div>
+                  <div className="font-medium text-blue-900">@{profile?.username || 'N/A'}</div>
                 </div>
               </div>
 
-              {profile?.phone_number && (
-                <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <Phone className="text-blue-600 mt-0.5" size={20} />
+              {profile?.phone_number ? (
+                <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                  <Phone className="mt-0.5 text-blue-600" size={20} />
                   <div className="flex-1">
-                    <div className="text-xs text-blue-600 font-semibold uppercase mb-1">Phone Number</div>
-                    <div className="text-blue-900 font-medium">{profile?.phone_number}</div>
+                    <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+                      Phone Number
+                    </div>
+                    <div className="font-medium text-blue-900">{profile?.phone_number}</div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <Shield className="text-blue-600 mt-0.5" size={20} />
+              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <Shield className="mt-0.5 text-blue-600" size={20} />
                 <div className="flex-1">
-                  <div className="text-xs text-blue-600 font-semibold uppercase mb-1">Account Type</div>
-                  <div className="text-blue-900 font-medium capitalize">{profile?.role}</div>
+                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+                    Account Type
+                  </div>
+                  <div className="font-medium capitalize text-blue-900">{profile?.role}</div>
                 </div>
               </div>
 
-              {profile?.business_name && (
-                <div className="flex items-start gap-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
-                  <Briefcase className="text-orange-600 mt-0.5" size={20} />
+              {profile?.business_name ? (
+                <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
+                  <Briefcase className="mt-0.5 text-orange-600" size={20} />
                   <div className="flex-1">
-                    <div className="text-xs text-orange-600 font-semibold uppercase mb-1">Business Name</div>
-                    <div className="text-orange-900 font-medium">{profile?.business_name}</div>
+                    <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
+                      Business Name
+                    </div>
+                    <div className="font-medium text-orange-900">{profile?.business_name}</div>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Verification Status (only for sellers) */}
-            {isSeller && (
+            {isSeller ? (
               <div className="mb-8">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="mb-3 flex items-center gap-2">
                   <Shield size={20} className="text-orange-500" />
                   <h2 className="text-lg font-bold text-gray-800">Verification Status</h2>
                 </div>
                 {isVerified ? (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="rounded-xl border border-green-200 bg-green-50 p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle size={18} className="text-green-600" />
                       <p className="font-semibold text-green-700">Verified Seller</p>
                     </div>
-                    <p className="text-sm text-green-600 mt-1">
+                    <p className="mt-1 text-sm text-green-600">
                       Your account is verified. The orange badge appears on all your products.
                     </p>
-                    {profile.verification_expiry && (
-                      <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                    {profile.verification_expiry ? (
+                      <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
                         <Calendar size={12} />
                         Valid until {new Date(profile.verification_expiry).toLocaleDateString()}
                       </p>
+                    ) : null}
+
+                    {showCancelSubscriptionConfirm ? (
+                      <ConfirmationBox
+                        description="This will immediately remove your verified badge and you will not receive a refund for any unused time."
+                        onConfirm={cancelSubscription}
+                        onCancel={() => setShowCancelSubscriptionConfirm(false)}
+                        confirmLabel="Cancel Subscription"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubscriptionMessage(null);
+                          setShowCancelSubscriptionConfirm(true);
+                        }}
+                        className="mt-3 rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                      >
+                        Cancel Subscription
+                      </button>
                     )}
-                    <button
-                      onClick={cancelSubscription}
-                      className="mt-3 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-semibold"
-                    >
-                      Cancel Subscription
-                    </button>
+                    <InlineMessage message={subscriptionMessage} />
                   </div>
                 ) : (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
                     <div className="flex items-center gap-2">
                       <AlertCircle size={18} className="text-orange-600" />
                       <p className="font-semibold text-orange-700">Not Verified</p>
                     </div>
-                    <p className="text-sm text-orange-600 mt-1">
+                    <p className="mt-1 text-sm text-orange-600">
                       Get verified to build trust and boost your sales.
                     </p>
                     <button
+                      type="button"
                       onClick={() => navigate('/seller/verification')}
-                      className="mt-3 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-semibold"
+                      className="mt-3 rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
                     >
                       Get Verified Now
                     </button>
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {/* Seller Business & Bank Details */}
-            {isSeller && (
+            {isSeller ? (
               <div className="mb-8">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="mb-3 flex items-center gap-2">
                   <CreditCard size={20} className="text-blue-600" />
-                  <h2 className="text-lg font-bold text-gray-800">Business & Bank Details</h2>
+                  <h2 className="text-lg font-bold text-gray-800">Business &amp; Bank Details</h2>
                 </div>
-                <div className="bg-white rounded-xl border border-blue-200 p-4 space-y-4">
-                  {/* Initial Setup – if no details and no pending */}
-                  {!hasActiveDetails && !hasPendingRequest && (
+                <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4">
+                  {!hasActiveDetails && !hasPendingRequest ? (
                     <>
-                      <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                        <p className="text-sm font-semibold text-blue-800">Set up your payout details</p>
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                        <p className="text-sm font-semibold text-blue-800">
+                          Set up your payout details
+                        </p>
                         <p className="text-sm text-blue-700">
-                          Please provide your bank and business information. Admin will review and approve.
+                          Please provide your bank and business information. Admin will review
+                          and approve.
                         </p>
                       </div>
-                      <div className="mt-4">
-                        <div className="space-y-3">
-                          {/* Form fields */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Bank Name *</label>
-                            <select
-                              value={pendingDetails.bank_name}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, bank_name: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                            >
-                              <option value="">Select Bank</option>
-                              {NIGERIAN_BANKS.map(bank => (
-                                <option key={bank} value={bank}>{bank}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Account Number *</label>
-                            <input
-                              type="text"
-                              value={pendingDetails.account_number}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, account_number: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                              placeholder="10-digit account number"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Account Name *</label>
-                            <input
-                              type="text"
-                              value={pendingDetails.account_name}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, account_name: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                              placeholder="Full name as on account"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Business Address</label>
-                            <textarea
-                              value={pendingDetails.business_address}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, business_address: e.target.value })}
-                              rows="2"
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                              placeholder="Full business address"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">BVN (optional)</label>
-                            <input
-                              type="text"
-                              value={pendingDetails.bvn}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, bvn: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                              placeholder="11-digit BVN"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Tax ID (optional)</label>
-                            <input
-                              type="text"
-                              value={pendingDetails.tax_id}
-                              onChange={(e) => setPendingDetails({ ...pendingDetails, tax_id: e.target.value })}
-                              className="w-full border border-gray-300 rounded-lg p-2"
-                              placeholder="TIN / RC Number"
-                            />
-                          </div>
-                          <button
-                            onClick={submitChangeRequest}
-                            disabled={saving}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold disabled:opacity-50"
-                          >
-                            {saving ? 'Submitting...' : 'Submit for Approval'}
-                          </button>
+                      <BankDetailsForm
+                        values={pendingDetails}
+                        onChange={handlePendingDetailsChange}
+                        onSubmit={submitChangeRequest}
+                        saving={saving}
+                        title="Payout details"
+                      />
+                    </>
+                  ) : null}
+
+                  {hasActiveDetails && !hasPendingRequest ? (
+                    <>
+                      <div className="border-b border-gray-100 pb-4">
+                        <p className="mb-3 text-sm font-semibold text-gray-700">
+                          Current Active Details
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {activeDetails.map((item) => (
+                            <DetailItem key={item.label} label={item.label} value={item.value} />
+                          ))}
                         </div>
                       </div>
-                    </>
-                  )}
 
-                  {/* If there are active details and no pending request */}
-                  {hasActiveDetails && !hasPendingRequest && (
-                    <>
-                      <div className="border-b border-gray-100 pb-3">
-                        <p className="text-sm font-semibold text-gray-700 mb-2">Current Active Details:</p>
-                        <p><span className="font-medium">Bank:</span> {profile.bank_name || 'Not set'}</p>
-                        <p><span className="font-medium">Account Number:</span> {profile.account_number || 'Not set'}</p>
-                        <p><span className="font-medium">Account Name:</span> {profile.account_name || 'Not set'}</p>
-                        <p><span className="font-medium">Business Address:</span> {profile.business_address || 'Not set'}</p>
-                        <p><span className="font-medium">BVN:</span> {profile.bvn ? `****${profile.bvn.slice(-4)}` : 'Not set'}</p>
-                        <p><span className="font-medium">Tax ID:</span> {profile.tax_id || 'Not set'}</p>
-                      </div>
-
-                      {/* Change button */}
-                      <button
-                        onClick={() => setShowChangeForm(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
-                      >
-                        Change Details
-                      </button>
-
-                      {/* Collapsible change form */}
-                      {showChangeForm && (
-                        <div className="mt-4 border-t pt-4">
-                          <p className="text-sm font-semibold text-gray-700 mb-2">Request Change:</p>
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Bank Name *</label>
-                              <select
-                                value={pendingDetails.bank_name}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, bank_name: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                              >
-                                <option value="">Select Bank</option>
-                                {NIGERIAN_BANKS.map(bank => (
-                                  <option key={bank} value={bank}>{bank}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Account Number *</label>
-                              <input
-                                type="text"
-                                value={pendingDetails.account_number}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, account_number: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                                placeholder="10-digit account number"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Account Name *</label>
-                              <input
-                                type="text"
-                                value={pendingDetails.account_name}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, account_name: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                                placeholder="Full name as on account"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Business Address</label>
-                              <textarea
-                                value={pendingDetails.business_address}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, business_address: e.target.value })}
-                                rows="2"
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                                placeholder="Full business address"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">BVN (optional)</label>
-                              <input
-                                type="text"
-                                value={pendingDetails.bvn}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, bvn: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                                placeholder="11-digit BVN"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Tax ID (optional)</label>
-                              <input
-                                type="text"
-                                value={pendingDetails.tax_id}
-                                onChange={(e) => setPendingDetails({ ...pendingDetails, tax_id: e.target.value })}
-                                className="w-full border border-gray-300 rounded-lg p-2"
-                                placeholder="TIN / RC Number"
-                              />
-                            </div>
-                          </div>
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              onClick={submitChangeRequest}
-                              disabled={saving}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold disabled:opacity-50"
-                            >
-                              {saving ? 'Submitting...' : 'Submit Request'}
-                            </button>
-                            <button
-                              onClick={() => setShowChangeForm(false)}
-                              className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded font-semibold"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                      {!showChangeForm ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBankMessage(null);
+                            setShowChangeForm(true);
+                          }}
+                          className="rounded bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
+                        >
+                          Change Details
+                        </button>
+                      ) : (
+                        <div className="border-t pt-4">
+                          <BankDetailsForm
+                            values={pendingDetails}
+                            onChange={handlePendingDetailsChange}
+                            onSubmit={submitChangeRequest}
+                            onCancel={() => setShowChangeForm(false)}
+                            saving={saving}
+                            title="Request change"
+                          />
                         </div>
                       )}
                     </>
-                  )}
+                  ) : null}
 
-                  {/* Pending Request (if any) */}
-                  {hasPendingRequest && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                      <p className="text-sm font-semibold text-yellow-800">Pending Approval</p>
-                      <p className="text-sm text-yellow-700">
-                        Your request to update your business & bank details is under review.
-                      </p>
-                      <p><span className="font-medium">Bank:</span> {profile.bank_details_pending.bank_name}</p>
-                      <p><span className="font-medium">Account Number:</span> {profile.bank_details_pending.account_number}</p>
-                      <p><span className="font-medium">Account Name:</span> {profile.bank_details_pending.account_name}</p>
-                      <p><span className="font-medium">Business Address:</span> {profile.bank_details_pending.business_address || 'Not set'}</p>
-                      <p><span className="font-medium">BVN:</span> {profile.bank_details_pending.bvn ? `****${profile.bank_details_pending.bvn.slice(-4)}` : 'Not set'}</p>
-                      <p><span className="font-medium">Tax ID:</span> {profile.bank_details_pending.tax_id || 'Not set'}</p>
+                  {hasPendingRequest ? (
+                    <div className="rounded-2xl border border-yellow-200 border-l-4 border-l-yellow-400 bg-yellow-50 p-4">
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-yellow-800">Pending Approval</p>
+                          <p className="mt-1 text-sm text-yellow-700">
+                            Your request to update your business &amp; bank details is under
+                            review.
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center rounded-full bg-yellow-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-800">
+                          Under Review
+                        </span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {pendingRequestDetails.map((item) => (
+                          <DetailItem
+                            key={item.label}
+                            label={item.label}
+                            value={item.value}
+                            accent="yellow"
+                          />
+                        ))}
+                      </div>
                     </div>
-                  )}
+                  ) : null}
+
+                  <InlineMessage message={bankMessage} />
                 </div>
               </div>
-            )}
+            ) : null}
 
-            {/* Password Change Section */}
-            {!showPasswordChange ? (
-              <button
-                onClick={() => setShowPasswordChange(true)}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
-              >
-                <Lock size={18} />
-                <span>Change Password</span>
-              </button>
+            {!isPasswordFormOpen ? (
+              <>
+                <p className="mt-8 mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Account Settings</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordMessage(null);
+                    setIsPasswordFormOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700"
+                >
+                  <Lock size={18} />
+                  <span>Change Password</span>
+                </button>
+              </>
             ) : (
-              <div className="border-2 border-blue-200 rounded-xl p-6 bg-blue-50">
-                <h3 className="text-lg font-bold text-blue-900 mb-4">Change Password</h3>
+              <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-6">
+                <h3 className="mb-4 text-lg font-bold text-blue-900">Change Password</h3>
                 <form onSubmit={handlePasswordChange} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2">
+                    <label className="mb-2 block text-sm font-semibold text-blue-700">
                       Current Password
                     </label>
                     <input
                       type="password"
                       value={passwordData.currentPassword}
-                      onChange={(e) =>
-                        setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                      onChange={(event) =>
+                        handlePasswordFieldChange('currentPassword', event.target.value)
                       }
-                      className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:outline-none focus:border-blue-600 bg-white"
+                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
                       placeholder="Enter current password"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2">
+                    <label className="mb-2 block text-sm font-semibold text-blue-700">
                       New Password
                     </label>
                     <input
                       type="password"
                       value={passwordData.newPassword}
-                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                      className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:outline-none focus:border-blue-600 bg-white"
+                      onChange={(event) =>
+                        handlePasswordFieldChange('newPassword', event.target.value)
+                      }
+                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
                       placeholder="Enter new password"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-blue-700 mb-2">
+                    <label className="mb-2 block text-sm font-semibold text-blue-700">
                       Confirm Password
                     </label>
                     <input
                       type="password"
                       value={passwordData.confirmPassword}
-                      onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                      className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:outline-none focus:border-blue-600 bg-white"
+                      onChange={(event) =>
+                        handlePasswordFieldChange('confirmPassword', event.target.value)
+                      }
+                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
                       placeholder="Confirm new password"
                       required
                     />
@@ -662,29 +915,46 @@ export default function Profile() {
                   <div className="flex gap-3">
                     <button
                       type="submit"
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                      className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
                     >
                       Update Password
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        setShowPasswordChange(false);
-                        setPasswordData({ newPassword: '', confirmPassword: '' });
+                        setIsPasswordFormOpen(false);
+                        setPasswordMessage(null);
+                        setPasswordData({
+                          currentPassword: '',
+                          newPassword: '',
+                          confirmPassword: '',
+                        });
                       }}
-                      className="flex-1 bg-white hover:bg-blue-50 text-blue-700 font-semibold py-2 px-4 rounded-lg border border-blue-300 transition-colors"
+                      className="flex-1 rounded-lg border border-blue-300 bg-white px-4 py-2 font-semibold text-blue-700 transition-colors hover:bg-blue-50"
                     >
                       Cancel
                     </button>
                   </div>
                 </form>
+                <InlineMessage message={passwordMessage} />
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 py-3 font-semibold text-red-600 transition-colors hover:bg-red-50"
+            >
+              <LogOut size={18} />
+              <span>Log Out</span>
+            </button>
           </div>
         </div>
       </div>
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

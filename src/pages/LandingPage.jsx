@@ -5,11 +5,18 @@ import { Search } from 'lucide-react';
 import Footer from '../components/Footer';
 import {supabase} from '../supabaseClient';
 import GuestNavbar from '../components/GuestNavbar';
+import { GenericContentSkeleton } from '../components/PageFeedback';
+import {
+  readCachedPublicProducts,
+  writeCachedPublicProducts,
+} from '../utils/publicProductsStorage';
 export default function LandingPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState(() => readCachedPublicProducts());
+  const [isLoading, setIsLoading] = useState(
+    () => readCachedPublicProducts().length === 0
+  );
 
   const categories = [
     'Electronics', 'Fashion & Clothing', 'Food & Beverages',
@@ -25,7 +32,11 @@ export default function LandingPage() {
       .gt('stock_quantity', 0)
       .order('created_at', { ascending: false });
 
-    if (!error) setProducts(data || []);
+    if (!error) {
+      const nextProducts = data || [];
+      setProducts(nextProducts);
+      writeCachedPublicProducts(nextProducts);
+    }
     setIsLoading(false);
   }
 
@@ -88,9 +99,9 @@ export default function LandingPage() {
 
       {/* Products */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {isLoading ? (
-          <div className="flex justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+        {isLoading && products.length === 0 ? (
+          <div className="py-8">
+            <GenericContentSkeleton />
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-20">

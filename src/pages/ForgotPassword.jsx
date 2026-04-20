@@ -2,18 +2,21 @@ import React, { useState } from "react";
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import useModal from '../hooks/useModal';
+import Footer from '../components/FooterSlim';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const navigate = useNavigate();
+  const { showError, showWarning, ModalComponent } = useModal();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!email) {
-      alert('Please enter your email address');
+      showWarning('Email Required', 'Please enter your email address.');
       return;
     }
 
@@ -25,7 +28,7 @@ export default function ForgotPassword() {
       });
 
       if (error) {
-        alert('Error: ' + error.message);
+        showError('Reset Failed', `Error: ${error.message}`);
         setIsLoading(false);
         return;
       }
@@ -34,104 +37,111 @@ export default function ForgotPassword() {
       setIsLoading(false);
     } catch (err) {
       console.error('Password reset error:', err);
-      alert('An error occurred. Please try again.');
+      showError('Reset Failed', 'An error occurred. Please try again.');
       setIsLoading(false);
     }
   };
 
   if (emailSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
-        <div className="w-full max-w-md text-center">
-          <div className="mb-8">
+      <div className="min-h-screen flex flex-col bg-white">
+        <main className="flex flex-1 items-center justify-center px-6 py-12">
+          <div className="w-full max-w-md text-center">
+            <div className="mb-8">
+              <img
+                src={noBgLogo}
+                alt="Mafdesh Logo"
+                className="w-auto mx-auto"
+                style={{ height: '200px' }}
+              />
+            </div>
+
+            <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-orange-50 p-8">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-900 to-blue-700">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+
+              <h2 className="mb-3 text-2xl font-extrabold text-blue-900">Check Your Email</h2>
+              <p className="mb-6 font-medium text-gray-700">
+                We've sent a password reset link to <span className="font-bold text-blue-900">{email}</span>
+              </p>
+              <p className="mb-6 text-sm text-gray-600">
+                Click the link in the email to reset your password. The link will expire in 1 hour.
+              </p>
+
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-900 to-blue-700 py-3 font-bold text-white transition-all hover:scale-[1.02] hover:shadow-lg"
+              >
+                Back to Login
+              </button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-white">
+      <main className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          <div className="mb-8 text-center">
             <img
               src={noBgLogo}
               alt="Mafdesh Logo"
               className="w-auto mx-auto"
               style={{ height: '200px' }}
             />
+            <h1 className="mt-4 text-xl font-bold text-blue-900">Mafdesh</h1>
+            <p className="mt-3 text-base font-medium text-gray-600">Reset your password</p>
           </div>
 
-          <div className="bg-gradient-to-br from-blue-50 to-orange-50 rounded-2xl p-8 border-2 border-blue-200">
-            <div className="w-16 h-16 bg-gradient-to-r from-blue-900 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
+          <div className="border-t-4 border-gradient-to-r from-blue-900 to-orange-500 rounded-2xl bg-white p-8 shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-800">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="w-full rounded-xl border-2 border-blue-200 px-4 py-3.5 text-base outline-none transition-all focus:border-blue-900 focus:ring-2 focus:ring-blue-100"
+                  disabled={isLoading}
+                />
+                <p className="mt-2 text-sm font-medium text-gray-600">
+                  We'll send you a link to reset your password
+                </p>
+              </div>
 
-            <h2 className="text-2xl font-extrabold text-blue-900 mb-3">Check Your Email</h2>
-            <p className="text-gray-700 font-medium mb-6">
-              We've sent a password reset link to <span className="font-bold text-blue-900">{email}</span>
-            </p>
-            <p className="text-sm text-gray-600 mb-6">
-              Click the link in the email to reset your password. The link will expire in 1 hour.
-            </p>
-
-            <button
-              onClick={() => navigate('/login')}
-              className="w-full py-3 bg-gradient-to-r from-blue-900 to-blue-700 text-white font-bold rounded-xl hover:shadow-lg transform hover:scale-[1.02] transition-all"
-            >
-              Back to Login
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img
-            src={noBgLogo}
-            alt="Mafdesh Logo"
-            className="w-auto mx-auto"
-            style={{ height: '200px' }}
-          />
-          <h1 className="text-blue-900 text-xl font-bold mt-4">Mafdesh</h1>
-          <p className="text-gray-600 text-base mt-3 font-medium">Reset your password</p>
-        </div>
-
-        <div className="bg-white rounded-2xl p-8 shadow-sm border-t-4 border-gradient-to-r from-blue-900 to-orange-500">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-gray-800 font-bold text-sm mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="w-full px-4 py-3.5 border-2 border-blue-200 rounded-xl focus:border-blue-900 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-base"
-                disabled={isLoading}
-              />
-              <p className="text-sm text-gray-600 mt-2 font-medium">
-                We'll send you a link to reset your password
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 rounded-xl text-white font-bold text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-blue-900 to-blue-700"
-            >
-              {isLoading ? 'Sending...' : 'Send Reset Link'}
-            </button>
-
-            <div className="text-center">
               <button
-                type="button"
-                onClick={() => navigate('/login')}
-                className="text-blue-900 font-bold hover:text-blue-700 text-sm"
+                type="submit"
+                disabled={isLoading}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-900 to-blue-700 py-3.5 text-base font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
               >
-                ← Back to Login
+                {isLoading ? 'Sending...' : 'Send Reset Link'}
               </button>
-            </div>
-          </form>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="text-sm font-bold text-blue-900 hover:text-blue-700"
+                >
+                  â† Back to Login
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      </main>
+      <Footer />
+      <ModalComponent />
     </div>
   );
 }

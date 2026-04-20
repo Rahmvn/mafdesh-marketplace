@@ -10,13 +10,40 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import useModal from "../hooks/useModal";
 import AdminActionModal from "../components/AdminActionModal";
 import {
   ADMIN_ACTION_TYPES,
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from "../services/adminActionService";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 export default function AdminUsers() {
   const navigate = useNavigate();
@@ -29,13 +56,14 @@ export default function AdminUsers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [updating, setUpdating] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+  const { showSuccess, showError, showConfirm, ModalComponent } = useModal();
 
   const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to logout?")) {
+    showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = "/login";
-    }
+    });
   };
 
   const applyFilters = useCallback((userList, role, search) => {
@@ -111,11 +139,11 @@ export default function AdminUsers() {
       applyFilters(usersWithHistory, roleFilter, searchTerm);
     } catch (error) {
       console.error("Error loading users:", error);
-      alert("Failed to load users.");
+      showError("Load Failed", "Failed to load users.");
     } finally {
       setLoading(false);
     }
-  }, [applyFilters, roleFilter, searchTerm]);
+  }, [applyFilters, roleFilter, searchTerm, showError]);
 
   useEffect(() => {
     loadUsers();
@@ -187,7 +215,8 @@ export default function AdminUsers() {
           reason,
         });
 
-        alert(
+        showSuccess(
+          "User Updated",
           `User ${pendingAction.nextStatus === "suspended" ? "suspended" : "activated"} successfully.`
         );
       } else if (pendingAction.kind === "verification") {
@@ -199,7 +228,8 @@ export default function AdminUsers() {
           reason,
         });
 
-        alert(
+        showSuccess(
+          "Verification Updated",
           `Seller ${pendingAction.nextVerified ? "verified" : "unverified"} successfully.`
         );
       }
@@ -208,18 +238,14 @@ export default function AdminUsers() {
       await loadUsers();
     } catch (error) {
       console.error("Error updating user:", error);
-      alert(error.message || "Failed to complete admin action.");
+      showError("Action Failed", error.message || "Failed to complete admin action.");
     } finally {
       setUpdating(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading users...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -419,6 +445,8 @@ export default function AdminUsers() {
       />
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

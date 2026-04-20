@@ -1,22 +1,35 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { showGlobalError, showGlobalWarning } from "../hooks/modalService";
+import Footer from "../components/FooterSlim";
+import {
+  GenericContentSkeleton,
+  RetryablePageError,
+} from "../components/PageFeedback";
 
 export default function Payment() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   const loadOrder = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", id)
-      .single();
+    setLoading(true);
+    setLoadFailed(false);
 
-    if (!error) setOrder(data);
+    const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
+
+    if (error) {
+      setOrder(null);
+      setLoadFailed(true);
+    } else {
+      setOrder(data);
+    }
+    setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -51,12 +64,18 @@ export default function Payment() {
 
       if (!response.ok) {
         if (response.status === 409) {
-          alert("Sorry, this item is no longer available. Your order could not be completed.");
+          showGlobalWarning(
+            "Item Unavailable",
+            "Sorry, this item is no longer available. Your order could not be completed."
+          );
           await supabase.from("orders").delete().eq("id", id);
         } else if (response.status === 403) {
-          alert("You are not allowed to confirm this order.");
+          showGlobalError("Action Not Allowed", "You are not allowed to confirm this order.");
         } else {
-          alert(result.error || "Payment confirmation failed. Please contact support.");
+          showGlobalError(
+            "Payment Confirmation Failed",
+            result.error || "Payment confirmation failed. Please contact support."
+          );
         }
         navigate("/marketplace");
         return;
@@ -65,51 +84,73 @@ export default function Payment() {
       navigate(`/order-success/${id}`);
     } catch (err) {
       console.error(err);
-      alert("An error occurred. Please try again.");
+      showGlobalError("Payment Error", "An error occurred. Please try again.");
     } finally {
       setProcessing(false);
     }
   };
 
-
-  if (!order) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading payment...
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <main className="flex flex-1 items-center justify-center px-4 py-12">
+          <div className="w-full max-w-3xl">
+            <GenericContentSkeleton />
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (loadFailed || !order) {
+    return (
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <main className="flex flex-1 items-center justify-center">
+          <RetryablePageError
+            title="We could not load this payment"
+            message="Please refresh the order details and try again."
+            onRetry={loadOrder}
+          />
+        </main>
+        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-blue-50">
-      <div className="bg-white p-8 rounded-xl border border-blue-100 shadow-sm w-full max-w-md">
-        <h1 className="text-xl font-bold text-blue-900 mb-6">
-          Complete Payment
-        </h1>
+    <div className="min-h-screen flex flex-col bg-blue-50">
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md rounded-xl border border-blue-100 bg-white p-8 shadow-sm">
+          <h1 className="mb-6 text-xl font-bold text-blue-900">
+            Complete Payment
+          </h1>
 
-        <div className="space-y-2 mb-6">
-          <div className="flex justify-between">
-            <span>Product</span>
-            <span>₦{Number(order.product_price).toLocaleString()}</span>
+          <div className="mb-6 space-y-2">
+            <div className="flex justify-between">
+              <span>Product</span>
+              <span>â‚¦{Number(order.product_price).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Delivery</span>
+              <span>â‚¦{Number(order.delivery_fee).toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between border-t pt-2 font-semibold">
+              <span>Total</span>
+              <span>â‚¦{Number(order.total_amount).toLocaleString()}</span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span>Delivery</span>
-            <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
-          </div>
-          <div className="border-t pt-2 flex justify-between font-semibold">
-            <span>Total</span>
-            <span>₦{Number(order.total_amount).toLocaleString()}</span>
-          </div>
+
+          <button
+            onClick={handlePayment}
+            disabled={processing}
+            className="w-full rounded-lg bg-orange-600 py-3 text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {processing ? "Processing..." : "Confirm Payment"}
+          </button>
         </div>
-
-        <button
-          onClick={handlePayment}
-          disabled={processing}
-          className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg disabled:opacity-50"
-        >
-          {processing ? "Processing..." : "Confirm Payment"}
-        </button>
-      </div>
+      </main>
+      <Footer />
     </div>
   );
 }

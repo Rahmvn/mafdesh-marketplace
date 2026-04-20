@@ -4,6 +4,8 @@ import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import useModal from '../hooks/useModal';
+import Footer from '../components/FooterSlim';
 
 export default function SignUp() {
   const [userType, setUserType] = useState("buyer");
@@ -32,6 +34,7 @@ export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
+  const { showError, showWarning, ModalComponent } = useModal();
 
   const validateUsername = (username) => {
     if (username.length < 3) {
@@ -82,7 +85,7 @@ const handleSignUp = async (formData) => {
 
     if (error) throw error;
     if (!data.user) {
-      alert("Signup failed");
+      showError("Signup Failed", "Signup failed.");
       return false;
     }
 
@@ -101,7 +104,7 @@ const { error: profileError } = await supabase
 
     if (profileError) {
       console.error('Profile insert error:', profileError);
-      alert('Failed to create profile: ' + profileError.message);
+      showError('Profile Creation Failed', `Failed to create profile: ${profileError.message}`);
       return false;
     }
 
@@ -118,14 +121,14 @@ const { error: profileError } = await supabase
 
     if (userError) {
       console.error('User insert error:', userError);
-      alert('Failed to create user record: ' + userError.message);
+      showError('User Creation Failed', `Failed to create user record: ${userError.message}`);
       return false;
     }
 
     return true;
   } catch (error) {
     console.error(error);
-    alert(error.message);
+    showError('Signup Failed', error.message);
     return false;
   }
 };
@@ -137,8 +140,9 @@ const { error: profileError } = await supabase
         background: "white",
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
-      className="flex items-center justify-center px-4 py-12"
+      className="flex flex-col"
     >
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
       <div style={{ maxWidth: "500px", width: "100%" }}>
         {/* Logo Section */}
         <div className="text-center mb-10">
@@ -261,27 +265,27 @@ const { error: profileError } = await supabase
                 e.preventDefault();
 
                 if (!formData.full_name || !formData.email || !formData.username || !formData.password || !formData.location) {
-                  alert('Please fill in all required fields including location');
+                  showWarning('Missing Details', 'Please fill in all required fields including location.');
                   return;
                 }
 
                 if (userType === "seller" && !formData.business_name) {
-                  alert('Please enter your business name');
+                  showWarning('Business Name Required', 'Please enter your business name.');
                   return;
                 }
 
                 if (formData.password.length < 6) {
-                  alert('Password must be at least 6 characters');
+                  showWarning('Password Too Short', 'Password must be at least 6 characters.');
                   return;
                 }
 
                 if (formData.password !== formData.confirmPassword) {
-                  alert('Passwords do not match');
+                  showWarning('Password Mismatch', 'Passwords do not match.');
                   return;
                 }
 
                 if (!agreedToTerms) {
-                  alert('Please agree to the Terms & Conditions and Privacy Policy');
+                  showWarning('Terms Required', 'Please agree to the Terms & Conditions and Privacy Policy.');
                   return;
                 }
 
@@ -833,6 +837,9 @@ const { error: profileError } = await supabase
           </div>
         </div>
       </div>
+      </main>
+      <Footer />
+      <ModalComponent />
     </div>
   );
 }

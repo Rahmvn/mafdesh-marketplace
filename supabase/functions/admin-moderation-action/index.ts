@@ -16,6 +16,8 @@ const ADMIN_ACTION_TYPES = {
   APPROVE_PRODUCT: "APPROVE_PRODUCT",
   UNAPPROVE_PRODUCT: "UNAPPROVE_PRODUCT",
   ARCHIVE_PRODUCT: "ARCHIVE_PRODUCT",
+  APPROVE_PRODUCT_EDIT: "APPROVE_PRODUCT_EDIT",
+  REJECT_PRODUCT_EDIT: "REJECT_PRODUCT_EDIT",
   RESTORE_PRODUCT: "RESTORE_PRODUCT",
   APPROVE_BANK_DETAILS: "APPROVE_BANK_DETAILS",
   REJECT_BANK_DETAILS: "REJECT_BANK_DETAILS",
@@ -72,6 +74,35 @@ function previousValuesFor(
     rollback[key] = previousState[key];
     return rollback;
   }, {});
+}
+
+function normalizeImages(images: unknown) {
+  return Array.isArray(images)
+    ? images.filter((image) => typeof image === "string" && image.trim().length > 0)
+    : [];
+}
+
+function getChangedCoreFields(
+  currentSnapshot: Record<string, unknown> | null,
+  proposedSnapshot: Record<string, unknown> | null
+) {
+  if (!currentSnapshot || !proposedSnapshot) {
+    return [];
+  }
+
+  const fields = ["name", "price", "category", "description", "images"];
+
+  return fields.filter((field) => {
+    if (field === "images") {
+      return JSON.stringify(normalizeImages(currentSnapshot.images)) !== JSON.stringify(normalizeImages(proposedSnapshot.images));
+    }
+
+    if (field === "price") {
+      return Number(currentSnapshot.price || 0) !== Number(proposedSnapshot.price || 0);
+    }
+
+    return String(currentSnapshot[field] || "").trim() !== String(proposedSnapshot[field] || "").trim();
+  });
 }
 
 async function rollbackAfterAuditFailure(
@@ -182,6 +213,8 @@ serve(async (req) => {
     const actionType = body?.actionType;
     const targetId = body?.targetId;
     const reason = normalizeReason(body?.reason);
+    const context =
+      body?.context && typeof body.context === "object" ? body.context : {};
 
     if (!actionType || !targetId) {
       return jsonResponse({ error: "Missing required fields" }, 400);
@@ -300,7 +333,7 @@ serve(async (req) => {
         const { data: product, error: productError } = await supabaseAdmin
           .from("products")
           .select(
-            "id, seller_id, name, price, is_approved, deleted_at, deleted_by_admin_id, deletion_reason"
+            "id, seller_id, name, price, is_approved, reapproval_reason, deleted_at, deleted_by_admin_id, deletion_reason"
           )
           .eq("id", targetId)
           .single();
@@ -315,6 +348,7 @@ serve(async (req) => {
           name: product.name,
           price: product.price,
           is_approved: product.is_approved,
+          reapproval_reason: product.reapproval_reason,
           deleted_at: product.deleted_at,
           deleted_by_admin_id: product.deleted_by_admin_id,
           deletion_reason: product.deletion_reason,
@@ -324,6 +358,7 @@ serve(async (req) => {
 
         if (actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT) {
           updates.is_approved = true;
+          updates.reapproval_reason = null;
         }
 
         if (actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT) {
@@ -380,6 +415,220 @@ serve(async (req) => {
         }
 
         return jsonResponse({ success: true, newState });
+      }
+
+      case ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT:
+      case ADMIN_ACTION_TYPES.REJECT_PRODUCT_EDIT: {
+        const requestId =
+          typeof context.requestId === "string" ? context.requestId : "";
+
+        if (!requestId) {
+          return jsonResponse(
+            { error: "A product edit request id is required." },
+            400
+          );
+        }
+
+        const { data: editRequest, error: editRequestError } = await supabaseAdmin
+          .from("product_edit_requests")
+          .select(
+            "id, product_id, seller_id, status, current_snapshot, proposed_snapshot, admin_reason, submitted_at, reviewed_at, reviewed_by"
+          )
+          .eq("id", requestId)
+          .single();
+
+        if (editRequestError || !editRequest) {
+          return jsonResponse({ error: "Product edit request not found." }, 404);
+        }
+
+        if (editRequest.status !== "pending") {
+          return jsonResponse(
+            { error: "Only pending product edit requests can be reviewed." },
+            409
+          );
+        }
+
+        const { data: product, error: productError } = await supabaseAdmin
+          .from("products")
+          .select(
+            "id, seller_id, name, price, category, description, images, is_approved, deleted_at"
+          )
+          .eq("id", editRequest.product_id)
+          .single();
+
+        if (productError || !product) {
+          return jsonResponse({ error: "Linked product not found." }, 404);
+        }
+
+        if (
+          actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT &&
+          (!product.is_approved || product.deleted_at)
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "Only live approved products can accept pending edit requests.",
+            },
+            409
+          );
+        }
+
+        const reviewedAt = new Date().toISOString();
+        const previousProductState = {
+          id: product.id,
+          seller_id: product.seller_id,
+          name: product.name,
+          price: product.price,
+          category: product.category,
+          description: product.description,
+          images: product.images,
+          is_approved: product.is_approved,
+          deleted_at: product.deleted_at,
+        };
+        const previousRequestState = {
+          id: editRequest.id,
+          product_id: editRequest.product_id,
+          seller_id: editRequest.seller_id,
+          status: editRequest.status,
+          current_snapshot: editRequest.current_snapshot,
+          proposed_snapshot: editRequest.proposed_snapshot,
+          admin_reason: editRequest.admin_reason,
+          submitted_at: editRequest.submitted_at,
+          reviewed_at: editRequest.reviewed_at,
+          reviewed_by: editRequest.reviewed_by,
+        };
+
+        const requestUpdates: Record<string, unknown> = {
+          status:
+            actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT
+              ? "approved"
+              : "rejected",
+          admin_reason: reason,
+          reviewed_at: reviewedAt,
+          reviewed_by: actingAdmin.id,
+        };
+
+        const proposedSnapshot =
+          editRequest.proposed_snapshot &&
+          typeof editRequest.proposed_snapshot === "object"
+            ? editRequest.proposed_snapshot
+            : {};
+        const productUpdates: Record<string, unknown> =
+          actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT
+            ? {
+                name:
+                  typeof proposedSnapshot.name === "string"
+                    ? proposedSnapshot.name.trim()
+                    : product.name,
+                price: Number(proposedSnapshot.price ?? product.price),
+                category:
+                  typeof proposedSnapshot.category === "string"
+                    ? proposedSnapshot.category.trim()
+                    : product.category,
+                description:
+                  typeof proposedSnapshot.description === "string"
+                    ? proposedSnapshot.description.trim()
+                    : product.description,
+                images: Array.isArray(proposedSnapshot.images)
+                  ? proposedSnapshot.images
+                  : product.images,
+                updated_at: reviewedAt,
+              }
+            : {};
+
+        if (actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT) {
+          const { error: updateProductError } = await supabaseAdmin
+            .from("products")
+            .update(productUpdates)
+            .eq("id", product.id);
+
+          if (updateProductError) {
+            throw stagedError("approve_product_edit", updateProductError);
+          }
+        }
+
+        const { error: updateRequestError } = await supabaseAdmin
+          .from("product_edit_requests")
+          .update(requestUpdates)
+          .eq("id", editRequest.id);
+
+        if (updateRequestError) {
+          if (actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT) {
+            await rollbackAfterAuditFailure(supabaseAdmin, {
+              table: "products",
+              id: product.id,
+              updates: productUpdates,
+              previousState: previousProductState,
+              stage: "approve_product_edit_request",
+            });
+          }
+
+          throw stagedError("update_product_edit_request", updateRequestError);
+        }
+
+        const newProductState =
+          actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT
+            ? { ...previousProductState, ...productUpdates }
+            : previousProductState;
+        const newRequestState = {
+          ...previousRequestState,
+          ...requestUpdates,
+        };
+
+        try {
+          await recordAdminAction(supabaseAdmin, {
+            adminId: actingAdmin.id,
+            actionType,
+            targetType: "product",
+            targetId: product.id,
+            reason,
+            metadata: {
+              request_id: editRequest.id,
+              seller_id: product.seller_id,
+              product_name: product.name,
+              changed_fields: getChangedCoreFields(
+                previousRequestState.current_snapshot,
+                previousRequestState.proposed_snapshot
+              ),
+            },
+            previousState: {
+              product: previousProductState,
+              request: previousRequestState,
+            },
+            newState: {
+              product: newProductState,
+              request: newRequestState,
+            },
+          });
+        } catch (auditError) {
+          await rollbackAfterAuditFailure(supabaseAdmin, {
+            table: "product_edit_requests",
+            id: editRequest.id,
+            updates: requestUpdates,
+            previousState: previousRequestState,
+            stage: "product_edit_request_action",
+          });
+
+          if (actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT) {
+            await rollbackAfterAuditFailure(supabaseAdmin, {
+              table: "products",
+              id: product.id,
+              updates: productUpdates,
+              previousState: previousProductState,
+              stage: "product_edit_product_action",
+            });
+          }
+
+          throw auditError;
+        }
+
+        return jsonResponse({
+          success: true,
+          newState: {
+            product: newProductState,
+            request: newRequestState,
+          },
+        });
       }
 
       case ADMIN_ACTION_TYPES.APPROVE_BANK_DETAILS:

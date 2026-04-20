@@ -2,13 +2,20 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag } from "lucide-react";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
+import { showGlobalConfirm, showGlobalError, showGlobalWarning } from "../hooks/modalService";
+import {
+  clearCachedCart,
+  readCachedCartItems,
+  writeCachedCartItems,
+} from "../utils/cartStorage";
+import { getProductPricing } from "../utils/flashSale";
 
 export default function Cart() {
   const navigate = useNavigate();
-  const [cartItems, setCartItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [cartItems, setCartItems] = useState(() => readCachedCartItems());
+  const [loading, setLoading] = useState(() => readCachedCartItems().length === 0);
   const [removedItems, setRemovedItems] = useState([]);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [syncingIds, setSyncingIds] = useState(new Set()); // track which items are syncing
@@ -20,6 +27,7 @@ export default function Cart() {
     const { data: sessionData } = await supabase.auth.getSession();
 
     if (!sessionData.session) {
+      setLoading(false);
       navigate("/login");
       return;
     }
@@ -47,6 +55,7 @@ export default function Cart() {
         .select()
         .single();
       setCartItems([]);
+      clearCachedCart();
       setLoading(false);
       return;
     }
@@ -59,9 +68,17 @@ export default function Cart() {
           id,
           name,
           price,
+          sale_price,
+          sale_start,
+          sale_end,
+          sale_quantity_limit,
+          sale_quantity_sold,
+          is_flash_sale,
           images,
           stock_quantity,
-          seller_id
+          seller_id,
+          category,
+          description
         )
       `)
       .eq("cart_id", cart.id);
@@ -96,6 +113,7 @@ export default function Cart() {
       setRemovedItems(removed);
     }
     setCartItems(validItems);
+    writeCachedCartItems(validItems);
     setLoading(false);
   }, [navigate]);
 
@@ -110,13 +128,19 @@ export default function Cart() {
 
   // Remove item from cart (local + backend)
   const removeItem = async (itemId) => {
-    const confirm = window.confirm("Remove this item from your cart?");
-    if (!confirm) return;
-
-    // Optimistic UI update
-    setCartItems((prev) => prev.filter((item) => item.id !== itemId));
-    await supabase.from("cart_items").delete().eq("id", itemId);
-    window.dispatchEvent(new Event("cartUpdated"));
+    showGlobalConfirm("Remove Item", "Remove this item from your cart?", async () => {
+      setCartItems((prev) => {
+        const nextItems = prev.filter((item) => item.id !== itemId);
+        if (nextItems.length === 0) {
+          clearCachedCart();
+        } else {
+          writeCachedCartItems(nextItems);
+        }
+        return nextItems;
+      });
+      await supabase.from("cart_items").delete().eq("id", itemId);
+      window.dispatchEvent(new Event("cartUpdated"));
+    });
   };
 
   // Update quantity locally and sync to backend
@@ -128,16 +152,18 @@ export default function Cart() {
 
     const maxStock = item.products.stock_quantity;
     if (newQuantity > maxStock) {
-      alert(`Only ${maxStock} items available.`);
+      showGlobalWarning("Stock Limit Reached", `Only ${maxStock} item${maxStock === 1 ? "" : "s"} available.`);
       return;
     }
 
     // Optimistic UI update
-    setCartItems((prev) =>
-      prev.map((i) =>
+    setCartItems((prev) => {
+      const nextItems = prev.map((i) =>
         i.id === item.id ? { ...i, quantity: newQuantity } : i
-      )
-    );
+      );
+      writeCachedCartItems(nextItems);
+      return nextItems;
+    });
 
     // Mark as syncing (optional: show spinner on the button)
     setSyncingIds((prev) => new Set(prev).add(item.id));
@@ -151,12 +177,14 @@ export default function Cart() {
     if (error) {
       console.error("Failed to update quantity:", error);
       // Revert optimistic update on failure
-      setCartItems((prev) =>
-        prev.map((i) =>
+      setCartItems((prev) => {
+        const nextItems = prev.map((i) =>
           i.id === item.id ? { ...i, quantity: item.quantity } : i
-        )
-      );
-      alert("Failed to update quantity. Please try again.");
+        );
+        writeCachedCartItems(nextItems);
+        return nextItems;
+      });
+      showGlobalError("Update Failed", "Failed to update quantity. Please try again.");
     }
 
     setSyncingIds((prev) => {
@@ -197,7 +225,7 @@ export default function Cart() {
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
-      alert("Your cart is empty.");
+      showGlobalWarning("Cart Empty", "Your cart is empty.");
       return;
     }
 
@@ -211,7 +239,7 @@ export default function Cart() {
             `• ${issue.name}: only ${issue.available} left, you have ${issue.requested}`
         )
         .join("\n");
-      alert(`Stock issues:\n${issueMessages}\n\nPlease update your cart.`);
+      showGlobalWarning("Stock Issues", `Please update your cart. ${issueMessages.replaceAll("\n", "; ")}`);
       setCheckoutLoading(false);
       return;
     }
@@ -222,7 +250,7 @@ export default function Cart() {
 
   const getTotal = () => {
     return cartItems.reduce(
-      (sum, item) => sum + item.products.price * item.quantity,
+      (sum, item) => sum + getProductPricing(item.products).displayPrice * item.quantity,
       0
     );
   };
@@ -296,6 +324,7 @@ export default function Cart() {
                 const maxStock = item.products.stock_quantity;
                 const isSyncing = syncingIds.has(item.id);
                 const quantity = item.quantity;
+                const pricing = getProductPricing(item.products);
 
                 return (
                   <div
@@ -314,7 +343,7 @@ export default function Cart() {
                         {item.products?.name}
                       </p>
                       <p className="text-orange-600 font-bold mt-1">
-                        ₦{Number(item.products?.price).toLocaleString()}
+                        ₦{Number(pricing.displayPrice).toLocaleString()}
                       </p>
 
                       {/* Quantity controls */}
@@ -415,3 +444,4 @@ export default function Cart() {
     </div>
   );
 }
+

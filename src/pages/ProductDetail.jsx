@@ -6,18 +6,62 @@ import {
   Truck,
   CheckCircle,
   Star,
+  Clock3,
+  Zap,
 } from "lucide-react";
 import AuthNavbarWrapper from "../components/AuthNavbarWrapper";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
+import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import VerificationBadge from "../components/VerificationBadge";
+import useCountdown from "../hooks/useCountdown";
 import { cartService } from "../services/cartService";
 import { supabase } from "../supabaseClient";
+import { getProductFulfillmentOptions } from "../services/deliveryService";
+import { showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
+import { getProductPricing } from "../utils/flashSale";
+
+const CACHED_PRODUCTS_KEY = "cached_products";
+const RECENTLY_VIEWED_KEY = "recently_viewed";
 
 const TAB_LABELS = {
   overview: "Overview",
   features: "Key Features",
   specs: "Specifications",
 };
+
+function formatPrice(value) {
+  return `\u20A6${Number(value).toLocaleString()}`;
+}
+
+function readCachedProducts() {
+  try {
+    const cachedProducts = localStorage.getItem(CACHED_PRODUCTS_KEY);
+    if (!cachedProducts) {
+      return [];
+    }
+
+    const parsedProducts = JSON.parse(cachedProducts);
+    return Array.isArray(parsedProducts) ? parsedProducts : [];
+  } catch (error) {
+    console.error("Error reading cached products:", error);
+    return [];
+  }
+}
+
+function readRecentlyViewedIds() {
+  try {
+    const storedIds = localStorage.getItem(RECENTLY_VIEWED_KEY);
+    if (!storedIds) {
+      return [];
+    }
+
+    const parsedIds = JSON.parse(storedIds);
+    return Array.isArray(parsedIds) ? parsedIds : [];
+  } catch (error) {
+    console.error("Error reading recently viewed products:", error);
+    return [];
+  }
+}
 
 function ReviewStars({ value, size = 18, compact = false }) {
   return (
@@ -41,9 +85,12 @@ export default function ProductDetail() {
   const [seller, setSeller] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(0);
+  const [fulfillment, setFulfillment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState(() => readRecentlyViewedIds());
+  const [cachedProducts, setCachedProducts] = useState(() => readCachedProducts());
 
   const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "{}");
   const isAdmin = storedUser.role === "admin";
@@ -78,6 +125,7 @@ export default function ProductDetail() {
       }
 
       setProduct(data);
+      setCachedProducts(readCachedProducts());
 
       const { data: sellerData, error: sellerError } = await supabase
         .from("users")
@@ -87,6 +135,13 @@ export default function ProductDetail() {
 
       if (!sellerError) {
         setSeller(sellerData);
+      }
+
+      try {
+        const fulfillmentOptions = await getProductFulfillmentOptions(id, data.seller_id);
+        setFulfillment(fulfillmentOptions);
+      } catch (fulfillmentError) {
+        console.error("Error fetching fulfillment options:", fulfillmentError);
       }
 
       const { data: reviewsData, error: reviewsError } = await supabase
@@ -158,6 +213,22 @@ export default function ProductDetail() {
     };
   }, [product?.description]);
 
+  const recentlyViewedProducts = useMemo(() => {
+    const currentProductId = String(product?.id || id);
+    const productMap = new Map(cachedProducts.map((item) => [String(item.id), item]));
+
+    return recentlyViewedIds
+      .map((recentId) => productMap.get(String(recentId)))
+      .filter((recentProduct) => recentProduct && String(recentProduct.id) !== currentProductId);
+  }, [cachedProducts, id, product?.id, recentlyViewedIds]);
+
+  const showRecentlyViewed = recentlyViewedProducts.length >= 2;
+  const flashSaleCountdown = useCountdown(product?.sale_end);
+  const pricing = useMemo(() => getProductPricing(product), [product]);
+  const showFlashSale = pricing.isFlashSaleActive && !flashSaleCountdown.expired;
+  const isLowFlashSaleStock =
+    pricing.remainingSaleQuantity != null && pricing.remainingSaleQuantity <= 5;
+
   const requireLogin = async () => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
@@ -174,15 +245,18 @@ export default function ProductDetail() {
       setAdding(true);
       await cartService.addToCart(product, 1);
 
-      alert("Added to cart");
+      showGlobalSuccess("Added to Cart", "This item has been added to your cart.");
     } catch (err) {
       console.error(err);
       if (err.message === "INSUFFICIENT_STOCK") {
-        alert("You already have the maximum available quantity in your cart.");
+        showGlobalWarning(
+          "Stock Limit Reached",
+          "You already have the maximum available quantity in your cart."
+        );
       } else if (err.message === "OUT_OF_STOCK") {
-        alert("This product is out of stock.");
+        showGlobalWarning("Out of Stock", "This product is out of stock.");
       } else {
-        alert("Failed to add to cart");
+        showGlobalError("Add to Cart Failed", "Failed to add this product to your cart.");
       }
     } finally {
       setAdding(false);
@@ -194,8 +268,28 @@ export default function ProductDetail() {
     navigate(`/checkout/${product.id}`, { state: { product, quantity: 1 } });
   };
 
+  const handleRecentProductOpen = useCallback(
+    (recentProduct) => {
+      setRecentlyViewedIds((currentIds) => {
+        const productId = String(recentProduct.id);
+        const nextIds = [recentProduct.id, ...currentIds.filter((itemId) => String(itemId) !== productId)].slice(0, 10);
+
+        try {
+          localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(nextIds));
+        } catch (error) {
+          console.error("Error saving recently viewed products:", error);
+        }
+
+        return nextIds;
+      });
+
+      navigate(`/product/${recentProduct.id}`);
+    },
+    [navigate]
+  );
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <MarketplaceDetailSkeleton />;
   }
 
   if (!product) {
@@ -255,9 +349,39 @@ export default function ProductDetail() {
               {product.name}
             </h1>
 
-            <p className="text-3xl font-bold text-orange-600 mt-3">
-              ₦{Number(product.price).toLocaleString()}
-            </p>
+            {showFlashSale ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+                    <Zap size={14} />
+                    Flash Sale
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    <Clock3 size={14} />
+                    {String(flashSaleCountdown.hours).padStart(2, "0")}h{" "}
+                    {String(flashSaleCountdown.minutes).padStart(2, "0")}m{" "}
+                    {String(flashSaleCountdown.seconds).padStart(2, "0")}s
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-400 line-through">
+                    {formatPrice(pricing.regularPrice)}
+                  </p>
+                  <p className="text-3xl font-bold text-orange-600">
+                    {formatPrice(pricing.displayPrice)}
+                  </p>
+                </div>
+                {isLowFlashSaleStock && (
+                  <p className="text-sm font-semibold text-orange-700">
+                    {pricing.remainingSaleQuantity} left at this price
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-3xl font-bold text-orange-600 mt-3">
+                {formatPrice(product.price)}
+              </p>
+            )}
 
             <p className="mt-2 text-sm font-medium">
               {product.stock_quantity > 0 ? (
@@ -290,10 +414,12 @@ export default function ProductDetail() {
             <div className="mt-6 p-4 rounded-lg border border-blue-100 bg-blue-50">
               <p className="text-sm font-semibold text-blue-900">Delivery Information</p>
               <p className="text-sm text-gray-700 mt-1">
-                Delivery fee calculated at checkout based on your location.
+                Delivery fee is calculated automatically at checkout from the seller location to your delivery state.
               </p>
               <p className="text-sm text-gray-700 mt-1">
-                Estimated delivery: 2-5 business days
+                {fulfillment?.pickupLocations?.length
+                  ? `Pickup available at ${fulfillment.pickupLocations.length} location${fulfillment.pickupLocations.length === 1 ? '' : 's'}.`
+                  : 'Pickup is not available for this product.'}
               </p>
             </div>
 
@@ -426,9 +552,45 @@ export default function ProductDetail() {
             </>
           )}
         </section>
+
+        {showRecentlyViewed && (
+          <section className="mt-10 sm:mt-12">
+            <div className="mb-4 flex items-center gap-3">
+              <h2 className="text-lg font-bold text-blue-900 sm:text-xl">Recently viewed</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {recentlyViewedProducts.map((recentProduct) => (
+                <button
+                  key={recentProduct.id}
+                  type="button"
+                  onClick={() => handleRecentProductOpen(recentProduct)}
+                  className="w-[150px] flex-shrink-0 overflow-hidden rounded-xl border border-blue-100 bg-white text-left shadow-sm transition-all duration-200 hover:border-orange-300 hover:shadow-md"
+                >
+                  <div className="flex h-32 items-center justify-center bg-white p-3">
+                    <img
+                      src={recentProduct.images?.[0] || "https://placehold.co/600x600"}
+                      alt={recentProduct.name}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <div className="p-3">
+                    <p className="line-clamp-2 text-sm font-semibold leading-5 text-blue-900">
+                      {recentProduct.name}
+                    </p>
+                    <p className="mt-2 text-sm font-bold text-orange-600">
+                      {formatPrice(recentProduct.price)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <Footer />
     </div>
   );
 }
+

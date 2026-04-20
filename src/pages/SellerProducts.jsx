@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Archive,
   Edit,
   Package,
   Plus,
+  RotateCcw,
   Search,
   Star,
   Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { productService } from '../services/productService';
+import useModal from '../hooks/useModal';
 import {
   formatSellerCurrency,
   getSellerThemeClasses,
@@ -30,13 +33,16 @@ export default function SellerProducts() {
   const [stockFilter, setStockFilter] = useState('ALL');
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
+  const { showConfirm, showError, showSuccess, ModalComponent } = useModal({
+    darkMode: themeState.darkMode,
+  });
 
   const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    showConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
       await supabase.auth.signOut();
       localStorage.clear();
       window.location.href = '/login';
-    }
+    });
   };
 
   const loadProducts = useCallback(async (sellerId) => {
@@ -46,11 +52,11 @@ export default function SellerProducts() {
       setProducts(sellerProducts);
     } catch (error) {
       console.error('Error loading products:', error);
-      alert('Failed to load products');
+      showError('Load Failed', 'Failed to load products.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   const init = useCallback(async () => {
     const { data } = await supabase.auth.getSession();
@@ -84,11 +90,13 @@ export default function SellerProducts() {
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const quantity = Number(product.stock_quantity || 0);
+      const isArchived = Boolean(product.deleted_at);
       const matchesStockFilter =
         stockFilter === 'ALL' ||
-        (stockFilter === 'ACTIVE' && quantity > 0) ||
-        (stockFilter === 'LOW_STOCK' && quantity > 0 && quantity < 10) ||
-        (stockFilter === 'OUT_OF_STOCK' && quantity === 0);
+        (stockFilter === 'ARCHIVED' && isArchived) ||
+        (!isArchived && stockFilter === 'ACTIVE' && quantity > 0) ||
+        (!isArchived && stockFilter === 'LOW_STOCK' && quantity > 0 && quantity < 10) ||
+        (!isArchived && stockFilter === 'OUT_OF_STOCK' && quantity === 0);
 
       if (!matchesStockFilter) {
         return false;
@@ -107,12 +115,20 @@ export default function SellerProducts() {
   }, [products, searchTerm, stockFilter]);
 
   const stats = useMemo(() => {
-    const active = products.filter((product) => Number(product.stock_quantity || 0) > 0).length;
+    const active = products.filter(
+      (product) => !product.deleted_at && Number(product.stock_quantity || 0) > 0
+    ).length;
     const lowStock = products.filter((product) => {
+      if (product.deleted_at) {
+        return false;
+      }
+
       const quantity = Number(product.stock_quantity || 0);
       return quantity > 0 && quantity < 10;
     }).length;
-    const outOfStock = products.filter((product) => Number(product.stock_quantity || 0) === 0).length;
+    const outOfStock = products.filter(
+      (product) => !product.deleted_at && Number(product.stock_quantity || 0) === 0
+    ).length;
 
     return {
       total: products.length,
@@ -122,15 +138,31 @@ export default function SellerProducts() {
     };
   }, [products]);
 
-  const handleDelete = async (productId, productName) => {
-    if (window.confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`)) {
-      try {
-        await productService.deleteProduct(productId);
-        await loadProducts(currentUser.id);
-      } catch (error) {
-        console.error('Error deleting product:', error);
-        alert('Failed to delete product');
+  const handleArchive = async (productId) => {
+    showConfirm(
+      'Archive Product',
+      'Are you sure you want to archive this product? It will be hidden from buyers but your order history will be preserved.',
+      async () => {
+        try {
+          await productService.archiveProduct(productId);
+          await loadProducts(currentUser.id);
+          showSuccess('Product Archived', 'This product is now hidden from buyers.');
+        } catch (error) {
+          console.error('Error archiving product:', error);
+          showError('Archive Failed', error?.message || 'Failed to archive product.');
+        }
       }
+    );
+  };
+
+  const handleUnarchive = async (productId) => {
+    try {
+      await productService.unarchiveProduct(productId);
+      await loadProducts(currentUser.id);
+      showSuccess('Product Unarchived', 'This product is visible in your live catalog again.');
+    } catch (error) {
+      console.error('Error unarchiving product:', error);
+      showError('Unarchive Failed', error?.message || 'Failed to unarchive product.');
     }
   };
 
@@ -139,6 +171,7 @@ export default function SellerProducts() {
     { value: 'ACTIVE', label: 'Live' },
     { value: 'LOW_STOCK', label: 'Low stock' },
     { value: 'OUT_OF_STOCK', label: 'Out of stock' },
+    { value: 'ARCHIVED', label: 'Archived' },
   ];
 
   const getInventoryLabel = (quantity) => {
@@ -155,6 +188,38 @@ export default function SellerProducts() {
     return { label: 'Live', className: 'bg-emerald-100 text-emerald-700' };
   };
 
+  const getLifecycleLabel = (product) => {
+    if (product.deleted_at) {
+      return {
+        label: 'Archived',
+        className: 'bg-slate-200 text-slate-600',
+        note: '',
+      };
+    }
+
+    if (!product.is_approved && product.reapproval_reason) {
+      return {
+        label: 'Pending Review',
+        className: 'bg-orange-100 text-orange-700',
+        note: 'Updated - awaiting re-approval',
+      };
+    }
+
+    if (product.is_approved) {
+      return {
+        label: 'Active',
+        className: 'bg-emerald-100 text-emerald-700',
+        note: '',
+      };
+    }
+
+    return {
+      label: 'Pending',
+      className: 'bg-amber-100 text-amber-700',
+      note: '',
+    };
+  };
+
   if (loading) {
     return <SellerWorkspaceSkeleton darkMode={themeState.darkMode} mode="products" />;
   }
@@ -164,18 +229,6 @@ export default function SellerProducts() {
       currentUser={currentUser}
       onLogout={handleLogout}
       themeState={themeState}
-      title="Products"
-      subtitle="Manage listings, keep stock accurate, and move through product work without the page feeling heavy."
-      actions={
-        <button
-          type="button"
-          onClick={() => navigate('/seller/products/new')}
-          className={`inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold transition ${theme.actionPrimary}`}
-        >
-          <Plus className="h-4 w-4" />
-          Add Product
-        </button>
-      }
     >
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SellerStatCard
@@ -218,15 +271,25 @@ export default function SellerProducts() {
         title="Your catalog"
         description="Search, filter, and jump straight to the listing that needs work."
         action={
-          <div className="relative w-full sm:w-80">
-            <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${theme.softText}`} />
-            <input
-              type="text"
-              placeholder="Search by product name or category"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className={`w-full rounded-lg py-3 pl-10 pr-4 text-sm ${theme.input}`}
-            />
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <div className="relative w-full sm:w-80">
+              <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${theme.softText}`} />
+              <input
+                type="text"
+                placeholder="Search by product name or category"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className={`w-full rounded-lg py-3 pl-10 pr-4 text-sm ${theme.input}`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/seller/products/new')}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition ${theme.actionPrimary}`}
+            >
+              <Plus className="h-4 w-4" />
+              Add Product
+            </button>
           </div>
         }
       >
@@ -275,65 +338,87 @@ export default function SellerProducts() {
         ) : (
           <>
             <div className="space-y-4 md:hidden">
-              {filteredProducts.map((product) => (
-                <article key={product.id} className={`rounded-lg p-4 ${theme.panelMuted}`}>
-                  <div className="flex gap-4">
-                    <img
-                      src={
-                        product.images?.[0] && !product.images[0].startsWith('blob:')
-                          ? product.images[0]
-                          : 'https://placehold.co/600x600'
-                      }
-                      alt={product.name}
-                      className="h-20 w-20 rounded-md object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold">{product.name}</p>
-                        <span
-                          className={`rounded-md px-2 py-1 text-xs font-semibold ${getInventoryLabel(product.stock_quantity).className}`}
-                        >
-                          {getInventoryLabel(product.stock_quantity).label}
-                        </span>
-                      </div>
-                      <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                        {product.category || 'Uncategorized'}
-                      </p>
-                      <p className="mt-3 text-lg font-bold text-orange-500">
-                        {formatSellerCurrency(product.price)}
-                      </p>
-                      <p className={`mt-1 text-sm ${theme.mutedText}`}>Stock: {product.stock_quantity}</p>
-                    </div>
-                  </div>
+              {filteredProducts.map((product) => {
+                const lifecycle = getLifecycleLabel(product);
 
-                  <div className={`mt-4 flex items-center justify-end gap-2 border-t pt-4 ${theme.divider}`}>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/seller/products/${product.id}/reviews`)}
-                      className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
-                    >
-                      <Star className="mr-2 inline h-4 w-4 text-yellow-500" />
-                      Reviews
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/seller/products/${product.id}/edit`)}
-                      className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
-                    >
-                      <Edit className="mr-2 inline h-4 w-4" />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(product.id, product.name)}
-                      className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
-                    >
-                      <Trash2 className="mr-2 inline h-4 w-4 text-orange-500" />
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
+                return (
+                  <article key={product.id} className={`rounded-lg p-4 ${theme.panelMuted}`}>
+                    <div className="flex gap-4">
+                      <img
+                        src={
+                          product.images?.[0] && !product.images[0].startsWith('blob:')
+                            ? product.images[0]
+                            : 'https://placehold.co/600x600'
+                        }
+                        alt={product.name}
+                        className="h-20 w-20 rounded-md object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{product.name}</p>
+                          <span
+                            className={`rounded-md px-2 py-1 text-xs font-semibold ${getInventoryLabel(product.stock_quantity).className}`}
+                          >
+                            {getInventoryLabel(product.stock_quantity).label}
+                          </span>
+                          <span
+                            className={`rounded-md px-2 py-1 text-xs font-semibold ${lifecycle.className}`}
+                          >
+                            {lifecycle.label}
+                          </span>
+                        </div>
+                        {lifecycle.note && (
+                          <p className={`mt-2 text-xs ${theme.softText}`}>{lifecycle.note}</p>
+                        )}
+                        <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                          {product.category || 'Uncategorized'}
+                        </p>
+                        <p className="mt-3 text-lg font-bold text-orange-500">
+                          {formatSellerCurrency(product.price)}
+                        </p>
+                        <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                          Stock: {product.stock_quantity}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className={`mt-4 flex items-center justify-end gap-2 border-t pt-4 ${theme.divider}`}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/seller/products/${product.id}/reviews`)}
+                        className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                      >
+                        <Star className="mr-2 inline h-4 w-4 text-yellow-500" />
+                        Reviews
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/seller/products/${product.id}/edit`)}
+                        className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                      >
+                        <Edit className="mr-2 inline h-4 w-4" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          product.deleted_at
+                            ? handleUnarchive(product.id)
+                            : handleArchive(product.id)
+                        }
+                        className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                      >
+                        {product.deleted_at ? (
+                          <RotateCcw className="mr-2 inline h-4 w-4 text-slate-500" />
+                        ) : (
+                          <Archive className="mr-2 inline h-4 w-4 text-orange-500" />
+                        )}
+                        {product.deleted_at ? 'Unarchive' : 'Archive'}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
 
             <div className={`hidden overflow-hidden rounded-lg md:block ${theme.panelMuted}`}>
@@ -350,8 +435,11 @@ export default function SellerProducts() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.map((product) => (
-                      <tr key={product.id} className={`border-t transition ${theme.divider} ${theme.rowHover}`}>
+                    {filteredProducts.map((product) => {
+                      const lifecycle = getLifecycleLabel(product);
+
+                      return (
+                        <tr key={product.id} className={`border-t transition ${theme.divider} ${theme.rowHover}`}>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
                             <img
@@ -381,7 +469,15 @@ export default function SellerProducts() {
                             >
                               {getInventoryLabel(product.stock_quantity).label}
                             </span>
+                            <span
+                              className={`rounded-md px-2 py-1 text-xs font-semibold ${lifecycle.className}`}
+                            >
+                              {lifecycle.label}
+                            </span>
                           </div>
+                          {lifecycle.note && (
+                            <p className={`mt-2 text-xs ${theme.softText}`}>{lifecycle.note}</p>
+                          )}
                         </td>
                         <td className={`px-4 py-4 text-sm ${theme.mutedText}`}>
                           {product.updated_at
@@ -408,16 +504,25 @@ export default function SellerProducts() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDelete(product.id, product.name)}
+                              onClick={() =>
+                                product.deleted_at
+                                  ? handleUnarchive(product.id)
+                                  : handleArchive(product.id)
+                              }
                               className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
                             >
-                              <Trash2 className="mr-2 inline h-4 w-4 text-orange-500" />
-                              Delete
+                              {product.deleted_at ? (
+                                <RotateCcw className="mr-2 inline h-4 w-4 text-slate-500" />
+                              ) : (
+                                <Archive className="mr-2 inline h-4 w-4 text-orange-500" />
+                              )}
+                              {product.deleted_at ? 'Unarchive' : 'Archive'}
                             </button>
                           </div>
                         </td>
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -430,6 +535,7 @@ export default function SellerProducts() {
           </>
         )}
       </SellerSection>
+      <ModalComponent />
     </SellerShell>
   );
 }

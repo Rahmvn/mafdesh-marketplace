@@ -2,10 +2,36 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Filter, Clock, User, Eye } from "lucide-react";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
 import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 function getDisplayName(info) {
   if (info?.business_name?.trim()) return info.business_name.trim();
@@ -176,11 +202,7 @@ export default function AdminOrders() {
   });
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading orders...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -456,3 +478,4 @@ export default function AdminOrders() {
     </div>
   );
 }
+

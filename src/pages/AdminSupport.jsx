@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Footer from '../components/FooterSlim';
+import useModal from '../hooks/useModal';
 import {
   Filter,
   LifeBuoy,
@@ -9,6 +10,32 @@ import {
   Paperclip,
   Search,
 } from 'lucide-react';
+
+function AdminPageSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Navbar />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-gray-100" />
+        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="space-y-4">
+            {Array.from({ length: 5 }).map((_, rowIndex) => (
+              <div key={rowIndex} className="grid gap-4 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((__, columnIndex) => (
+                  <div
+                    key={`${rowIndex}-${columnIndex}`}
+                    className="h-4 animate-pulse rounded bg-gray-100"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
 
 function statusClass(status) {
   switch (status) {
@@ -27,6 +54,7 @@ export default function AdminSupport() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [savingId, setSavingId] = useState(null);
+  const { showSuccess, showError, ModalComponent } = useModal();
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -145,20 +173,17 @@ export default function AdminSupport() {
             : ticket
         )
       );
+      showSuccess('Status Updated', 'Support ticket status updated successfully.');
     } catch (error) {
       console.error('Failed to update support ticket:', error);
-      alert('Could not update ticket status.');
+      showError('Update Failed', 'Could not update ticket status.');
     } finally {
       setSavingId(null);
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading support tickets...
-      </div>
-    );
+    return <AdminPageSkeleton />;
   }
 
   return (
@@ -286,6 +311,8 @@ export default function AdminSupport() {
         )}
       </main>
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
+

@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Gift, TrendingUp, Users, Coins } from 'lucide-react';
 import { loyaltyService } from '../services/loyaltyService';
+import useModal from '../hooks/useModal';
 
 export default function LoyaltyPointsWidget({ onClose }) {
   const [account, setAccount] = useState(null);
   const [config, setConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [claimingBonus, setClaimingBonus] = useState(false);
+  const { showSuccess, showError, showWarning, ModalComponent } = useModal();
 
   useEffect(() => {
     loadLoyaltyAccount();
@@ -29,15 +31,15 @@ export default function LoyaltyPointsWidget({ onClose }) {
     try {
       setClaimingBonus(true);
       const result = await loyaltyService.getDailyLoginBonus();
-      
+
       if (!result.already_claimed) {
-        alert(`🎉 ${result.message}`);
-        loadLoyaltyAccount(); // Refresh balance
+        showSuccess('Bonus Claimed', result.message);
+        loadLoyaltyAccount();
       } else {
-        alert('✅ You already claimed your daily bonus today! Come back tomorrow.');
+        showWarning('Already Claimed', 'You already claimed your daily bonus today. Come back tomorrow.');
       }
     } catch (error) {
-      alert('Failed to claim daily bonus: ' + error.message);
+      showError('Claim Failed', `Failed to claim daily bonus: ${error.message}`);
     } finally {
       setClaimingBonus(false);
     }
@@ -45,17 +47,39 @@ export default function LoyaltyPointsWidget({ onClose }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-blue-200">
-        <p className="text-center text-gray-600">Loading points...</p>
+      <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-blue-200 animate-pulse">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-7 w-32 rounded bg-blue-100" />
+          <div className="h-8 w-8 rounded-full bg-blue-50" />
+        </div>
+        <div className="rounded-lg border border-blue-100 p-4">
+          <div className="h-4 w-24 rounded bg-blue-50" />
+          <div className="mt-3 h-10 w-32 rounded bg-blue-100" />
+          <div className="mt-3 h-4 w-28 rounded bg-blue-50" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <div className="rounded-lg bg-blue-50 p-3">
+            <div className="h-5 w-5 rounded bg-blue-100" />
+            <div className="mt-3 h-3 w-20 rounded bg-blue-100" />
+            <div className="mt-2 h-6 w-16 rounded bg-blue-50" />
+          </div>
+          <div className="rounded-lg bg-blue-50 p-3">
+            <div className="h-5 w-5 rounded bg-blue-100" />
+            <div className="mt-3 h-3 w-16 rounded bg-blue-100" />
+            <div className="mt-2 h-6 w-14 rounded bg-blue-50" />
+          </div>
+        </div>
+        <div className="mt-4 h-11 rounded-lg bg-blue-100" />
       </div>
     );
   }
 
-  const pointsValue = account ? (account.current_points_balance * (config?.points_to_naira_ratio || 1)).toFixed(2) : '0.00';
+  const pointsValue = account
+    ? (account.current_points_balance * (config?.points_to_naira_ratio || 1)).toFixed(2)
+    : '0.00';
 
   return (
     <div className="bg-gradient-to-br from-blue-500 to-orange-500 rounded-xl shadow-2xl p-6 text-white relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-0 right-0 opacity-10">
         <Gift className="w-32 h-32" />
       </div>
@@ -67,16 +91,15 @@ export default function LoyaltyPointsWidget({ onClose }) {
             Your Points
           </h3>
           {onClose && (
-            <button 
+            <button
               onClick={onClose}
               className="text-white hover:bg-white/20 rounded-full p-1"
             >
-              ✕
+              x
             </button>
           )}
         </div>
 
-        {/* Points Balance */}
         <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 mb-4">
           <p className="text-sm opacity-90 mb-1">Current Balance</p>
           <div className="flex items-baseline gap-2">
@@ -85,19 +108,18 @@ export default function LoyaltyPointsWidget({ onClose }) {
             </span>
             <span className="text-lg">points</span>
           </div>
-          <p className="text-sm mt-1 opacity-75">
-            Worth ≈ ₦{pointsValue}
-          </p>
+          <p className="text-sm mt-1 opacity-75">Worth about NGN {pointsValue}</p>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
             <TrendingUp className="w-5 h-5 mb-1 opacity-75" />
             <p className="text-xs opacity-75">Total Earned</p>
-            <p className="text-xl font-bold">{account?.total_points_earned.toLocaleString() || '0'}</p>
+            <p className="text-xl font-bold">
+              {account?.total_points_earned.toLocaleString() || '0'}
+            </p>
           </div>
-          
+
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
             <Users className="w-5 h-5 mb-1 opacity-75" />
             <p className="text-xs opacity-75">Referrals</p>
@@ -105,7 +127,6 @@ export default function LoyaltyPointsWidget({ onClose }) {
           </div>
         </div>
 
-        {/* Daily Bonus Button */}
         <button
           onClick={handleClaimDaily}
           disabled={claimingBonus}
@@ -115,14 +136,14 @@ export default function LoyaltyPointsWidget({ onClose }) {
           {claimingBonus ? 'Claiming...' : 'Claim Daily Bonus'}
         </button>
 
-        {/* Info */}
         <div className="mt-4 text-xs opacity-75 text-center">
           <p>Earn points with every purchase!</p>
-          <p className="mt-1">
-            {config ? `₦100 = ${Math.floor(100 * config.points_per_naira)} points` : 'Loading...'}
-          </p>
+          {config && (
+            <p className="mt-1">{`NGN 100 = ${Math.floor(100 * config.points_per_naira)} points`}</p>
+          )}
         </div>
       </div>
+      <ModalComponent />
     </div>
   );
 }
