@@ -6,6 +6,7 @@ import Footer from '../components/FooterSlim';
 import { MarketplaceDetailSkeleton } from '../components/MarketplaceLoading';
 import { CheckCircle } from 'lucide-react';
 import { snapshotToProduct } from '../utils/productSnapshots';
+import { getBuyerOrderAmounts } from '../utils/orderAmounts';
 
 export default function OrderSuccess() {
   const { id } = useParams();
@@ -33,6 +34,7 @@ export default function OrderSuccess() {
   if (loading) return <MarketplaceDetailSkeleton />;
   if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
   const orderProduct = snapshotToProduct(order.product_snapshot, order.products || null);
+  const orderAmounts = getBuyerOrderAmounts(order);
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -46,7 +48,9 @@ export default function OrderSuccess() {
           <div className="bg-blue-50 p-4 rounded-lg text-left mb-6">
             <p><strong>Order ID:</strong> {order.id}</p>
             <p><strong>Product:</strong> {orderProduct?.name || 'Product'}</p>
-            <p><strong>Total:</strong> ₦{order.total_amount.toLocaleString()}</p>
+            <p><strong>Subtotal:</strong> ₦{orderAmounts.subtotal.toLocaleString()}</p>
+            <p><strong>Delivery:</strong> ₦{orderAmounts.deliveryFee.toLocaleString()}</p>
+            <p><strong>Total:</strong> ₦{orderAmounts.total.toLocaleString()}</p>
             <p><strong>Status:</strong> {order.status}</p>
           </div>
 

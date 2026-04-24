@@ -22,9 +22,14 @@ function isMockModeEnabled() {
   return mockFlag === 'true' || !paystackSecret
 }
 
-async function finalizePaidOrder(supabaseAdmin: ReturnType<typeof createClient>, orderId: string) {
+async function finalizePaidOrder(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orderId: string,
+  paymentReference?: string | null
+) {
   const paidAt = new Date().toISOString()
   const shipDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+  const normalizedReference = String(paymentReference || '').trim()
 
   const { error } = await supabaseAdmin
     .from('orders')
@@ -32,6 +37,7 @@ async function finalizePaidOrder(supabaseAdmin: ReturnType<typeof createClient>,
       status: 'PAID_ESCROW',
       paid_at: paidAt,
       ship_deadline: shipDeadline,
+      payment_reference: normalizedReference || null,
     })
     .eq('id', orderId)
 
@@ -40,10 +46,14 @@ async function finalizePaidOrder(supabaseAdmin: ReturnType<typeof createClient>,
   }
 
   // Temporary compatibility fallback:
-  // if hosted schema does not yet include paid_at, keep the mock/payment flow working
+  // if hosted schema does not yet include paid_at or payment_reference, keep the mock/payment flow working
   // while still moving the order to PAID_ESCROW. Once paid_at exists everywhere,
   // this fallback can be removed and real payment verification can stay above.
-  if (String(error.code || '') === '42703' || String(error.message || '').includes('paid_at')) {
+  if (
+    String(error.code || '') === '42703' ||
+    String(error.message || '').includes('paid_at') ||
+    String(error.message || '').includes('payment_reference')
+  ) {
     const { error: fallbackError } = await supabaseAdmin
       .from('orders')
       .update({
@@ -64,21 +74,29 @@ async function finalizePaidOrder(supabaseAdmin: ReturnType<typeof createClient>,
 
 async function maybeVerifyPayment({
   mockMode,
+  explicitMockPayment,
   orderId,
+  paymentReference,
 }: {
   mockMode: boolean
+  explicitMockPayment: boolean
   orderId: string
+  paymentReference?: string
 }) {
   if (mockMode) {
+    if (!explicitMockPayment) {
+      throw new Error('Order payment has not been completed yet.')
+    }
+
+    if (!String(paymentReference || '').trim()) {
+      throw new Error('A payment reference is required before this order can be confirmed.')
+    }
+
     console.log(`Mock payment enabled for order ${orderId}; skipping Paystack verification.`)
     return
   }
 
-  // Real payment integration hook:
-  // wire Paystack verification here once payment references are persisted on the order
-  // and PAYSTACK_SECRET_KEY-backed verification is ready for production use.
-  // The existing confirmation flow below remains intact for now.
-  console.log(`Real payment mode enabled for order ${orderId}; proceeding with existing confirmation flow.`)
+  throw new Error('Real payment verification is not enabled yet for single-order checkout.')
 }
 
 async function assertSellerIsActive(
@@ -110,7 +128,7 @@ async function incrementFlashSaleCounters(
 ) {
   const { data: flashSaleOrder, error: flashSaleOrderError } = await supabaseAdmin
     .from('orders')
-    .select('product_id, quantity, product_price, product:products(price)')
+    .select('product_id, quantity, product_price')
     .eq('id', orderId)
     .single()
 
@@ -119,11 +137,26 @@ async function incrementFlashSaleCounters(
     throw flashSaleOrderError
   }
 
-  const confirmedProductPrice = Number(flashSaleOrder?.product?.price ?? 0)
+  if (!flashSaleOrder?.product_id) {
+    return
+  }
+
+  const { data: productRecord, error: productError } = await supabaseAdmin
+    .from('products')
+    .select('price')
+    .eq('id', flashSaleOrder.product_id)
+    .single()
+
+  if (productError) {
+    console.error('Flash sale product lookup error:', productError)
+    throw productError
+  }
+
+  const confirmedProductPrice = Number(productRecord?.price ?? 0)
   const orderProductPrice = Number(flashSaleOrder?.product_price ?? 0)
   const flashSaleQuantity = Number(flashSaleOrder?.quantity ?? 1)
 
-  if (!flashSaleOrder?.product_id || orderProductPrice <= 0 || orderProductPrice >= confirmedProductPrice) {
+  if (orderProductPrice <= 0 || orderProductPrice >= confirmedProductPrice) {
     return
   }
 
@@ -137,6 +170,90 @@ async function incrementFlashSaleCounters(
       throw incrementError
     }
   }
+}
+
+async function fallbackDeductStock(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orderId: string
+) {
+  const { data: orderRecord, error: orderError } = await supabaseAdmin
+    .from('orders')
+    .select('id, product_id, quantity, status')
+    .eq('id', orderId)
+    .single()
+
+  if (orderError || !orderRecord) {
+    throw new Error('Order not found while reserving stock.')
+  }
+
+  if (orderRecord.status !== 'PENDING') {
+    throw new Error('Order already processed.')
+  }
+
+  const quantity = Number(orderRecord.quantity ?? 0)
+  if (!orderRecord.product_id || quantity <= 0) {
+    throw new Error('Order is missing product stock details.')
+  }
+
+  const { data: productRecord, error: productError } = await supabaseAdmin
+    .from('products')
+    .select('id, stock_quantity')
+    .eq('id', orderRecord.product_id)
+    .single()
+
+  if (productError || !productRecord) {
+    throw new Error('Product not found while reserving stock.')
+  }
+
+  const currentStock = Number(productRecord.stock_quantity ?? 0)
+  if (currentStock < quantity) {
+    return false
+  }
+
+  const nextStock = currentStock - quantity
+
+  const { data: updatedProducts, error: updateError } = await supabaseAdmin
+    .from('products')
+    .update({ stock_quantity: nextStock })
+    .eq('id', orderRecord.product_id)
+    .eq('stock_quantity', currentStock)
+    .select('id')
+
+  if (updateError) {
+    throw updateError
+  }
+
+  if (!updatedProducts?.length) {
+    return false
+  }
+
+  return true
+}
+
+async function reserveOrderStock(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orderId: string
+) {
+  const { data: success, error: deductStockError } = await supabaseAdmin.rpc('deduct_stock', {
+    order_id: orderId,
+  })
+
+  if (!deductStockError) {
+    return Boolean(success)
+  }
+
+  const errorMessage = String(deductStockError.message || '')
+  const missingRpc =
+    String(deductStockError.code || '') === '42883' ||
+    errorMessage.includes('Could not find the function public.deduct_stock') ||
+    errorMessage.includes('function public.deduct_stock')
+
+  if (!missingRpc) {
+    throw deductStockError
+  }
+
+  console.warn('deduct_stock RPC unavailable, using inline stock fallback.')
+  return fallbackDeductStock(supabaseAdmin, orderId)
 }
 
 serve(async (req) => {
@@ -165,7 +282,7 @@ serve(async (req) => {
       return jsonResponse({ error: 'Unauthorized' }, 401)
     }
 
-    const { orderId } = await req.json()
+    const { orderId, mockPayment = false, paymentReference = '' } = await req.json()
     if (!orderId) {
       return jsonResponse({ error: 'Missing orderId' }, 400)
     }
@@ -197,27 +314,42 @@ serve(async (req) => {
 
     const mockMode = isMockModeEnabled()
 
-    await maybeVerifyPayment({ mockMode, orderId })
+    await maybeVerifyPayment({
+      mockMode,
+      explicitMockPayment: Boolean(mockPayment),
+      orderId,
+      paymentReference: String(paymentReference || '').trim(),
+    })
 
     // Temporary mock/confirmation path:
     // stock is deducted server-side with the service role client so local/dev checkout
     // behaves like a completed payment. Keep using this until real Paystack verification
     // is enabled in maybeVerifyPayment().
-    const { data: success, error: deductStockError } = await supabaseAdmin.rpc('deduct_stock', {
-      order_id: orderId,
-    })
-
-    if (deductStockError) {
-      console.error('RPC error:', deductStockError)
-      return jsonResponse({ error: 'Internal server error' }, 500)
+    let success
+    try {
+      success = await reserveOrderStock(supabaseAdmin, orderId)
+    } catch (stockError) {
+      console.error('Stock reservation error:', stockError)
+      return jsonResponse(
+        { error: String(stockError?.message || 'Unable to reserve stock for this order.') },
+        500
+      )
     }
 
     if (!success) {
       return jsonResponse({ error: 'Order cannot be completed' }, 409)
     }
 
-    await incrementFlashSaleCounters(supabaseAdmin, orderId)
-    await finalizePaidOrder(supabaseAdmin, orderId)
+    try {
+      await incrementFlashSaleCounters(supabaseAdmin, orderId)
+      await finalizePaidOrder(supabaseAdmin, orderId, String(paymentReference || '').trim())
+    } catch (finalizationError) {
+      console.error('Order finalization error:', finalizationError)
+      return jsonResponse(
+        { error: String(finalizationError?.message || 'Unable to finalize this order.') },
+        500
+      )
+    }
 
     return jsonResponse({
       success: true,
@@ -228,6 +360,13 @@ serve(async (req) => {
     if (String(err?.message || '').includes('not active for marketplace orders')) {
       return jsonResponse({ error: String(err.message) }, 409)
     }
-    return jsonResponse({ error: 'Internal server error' }, 500)
+    if (
+      String(err?.message || '').includes('Order payment has not been completed yet.') ||
+      String(err?.message || '').includes('payment reference is required') ||
+      String(err?.message || '').includes('Real payment verification is not enabled yet')
+    ) {
+      return jsonResponse({ error: String(err.message) }, 409)
+    }
+    return jsonResponse({ error: String(err?.message || 'Internal server error') }, 500)
   }
 })

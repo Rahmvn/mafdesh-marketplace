@@ -6,7 +6,7 @@ export const REFUND_REQUEST_STATUS = {
   REJECTED: "rejected",
   CANCELLED: "cancelled",
 };
-export const REFUND_REVIEW_MAX_DAYS = 5;
+export const REFUND_REVIEW_MAX_DAYS = 10;
 
 const BLOCKED_ORDER_STATUSES = new Set([
   "SHIPPED",

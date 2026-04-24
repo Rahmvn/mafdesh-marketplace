@@ -6,6 +6,7 @@ import Footer from '../components/FooterSlim';
 import { RetryablePageError } from '../components/PageFeedback';
 import { supabase } from '../supabaseClient';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
+import { getBuyerOrderTotal } from '../utils/orderAmounts';
 import { generateReceipt, openReceiptWindow } from '../utils/receiptGenerator';
 import { showGlobalError } from '../hooks/modalService';
 
@@ -72,7 +73,7 @@ function getBuyerPaymentState(order) {
 
 function getRefundAmount(order) {
   const state = getBuyerPaymentState(order);
-  const totalAmount = toAmount(order?.total_amount);
+  const totalAmount = getBuyerOrderTotal(order);
 
   if (!state || !['REFUNDED', 'CANCELLED'].includes(state)) {
     return 0;
@@ -252,7 +253,7 @@ export default function BuyerPayments() {
 
         const items = orderItemsMap[order.id] || [];
         const display = getOrderDisplayDetails(items);
-        const chargedAmount = toAmount(order.total_amount);
+        const chargedAmount = getBuyerOrderTotal(order, items);
         const refundAmount = getRefundAmount(order);
 
         return {

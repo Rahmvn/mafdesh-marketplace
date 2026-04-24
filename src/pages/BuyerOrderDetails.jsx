@@ -28,6 +28,7 @@ import {
   getOrderAdminHoldDescription,
   getOrderAdminHoldTitle,
 } from "../services/orderAdminHoldService";
+import { getBuyerOrderAmounts } from "../utils/orderAmounts";
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -573,7 +574,7 @@ export default function BuyerOrderDetails() {
     .join(", ");
   const showPickupAddressLine = shouldShowDistinctPickupAddress(pickupLabel, pickupAddress);
   const isSingleItem = order.product_price !== null && items.length === 1;
-  const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
+  const orderAmounts = getBuyerOrderAmounts(order, items);
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
   const latestRefundRequest = getLatestRefundRequest(refundRequests);
   const pendingRefundRequest = getPendingRefundRequest(refundRequests);
@@ -586,6 +587,20 @@ export default function BuyerOrderDetails() {
   const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
   const isRefundProcessing = Boolean(pendingRefundRequest);
   const isAdminHoldProcessing = Boolean(activeAdminHold);
+  const displayStatusLabel = isRefundProcessing
+    ? "REFUND PROCESSING"
+    : order.status.replaceAll("_", " ");
+  const displayStatusClass = isRefundProcessing
+    ? "bg-amber-100 text-amber-800"
+    : order.status === "COMPLETED"
+      ? "bg-green-100 text-green-700"
+      : order.status === "CANCELLED"
+        ? "bg-red-100 text-red-700"
+        : order.status === "DISPUTED"
+          ? "bg-orange-100 text-orange-700"
+          : order.status === "REFUNDED"
+            ? "bg-green-100 text-green-700"
+            : "bg-blue-100 text-blue-700";
 
   const shipDeadlineExpired = isExpired(order.ship_deadline);
   const pickupDeadlineExpired = isExpired(order.auto_cancel_at);
@@ -598,7 +613,11 @@ export default function BuyerOrderDetails() {
       label: isDelivery ? "Processing" : "Seller Preparing",
       active: (order.status === "PAID_ESCROW" && !shipDeadlineExpired) || ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: Truck,
-      desc: isDelivery ? "Seller has 48 hours to ship." : "Seller has 48 hours to prepare for pickup.",
+      desc: isRefundProcessing
+        ? "Refund request is processing. Fulfillment is paused during admin review."
+        : isDelivery
+          ? "Seller has 48 hours to ship."
+          : "Seller has 48 hours to prepare for pickup.",
       expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
@@ -621,7 +640,7 @@ export default function BuyerOrderDetails() {
   if (isAdminHoldProcessing) {
     actionMessage = "This order is paused while admin reviews it. Order actions are disabled until review is resolved.";
   } else if (isRefundProcessing) {
-    actionMessage = "Your refund request is processing. The seller cannot ship or mark this order ready for pickup until admin reviews it.";
+    actionMessage = "Your refund request is processing. The seller cannot ship or mark this order ready for pickup while admin reviews it. Admin has up to 10 days to decide.";
   } else if (order.status === "PAID_ESCROW") {
     actionMessage = "Seller is preparing your order. You'll be notified when it's ready.";
     if (order.ship_deadline) {
@@ -689,7 +708,7 @@ export default function BuyerOrderDetails() {
           <AlertCircle size={18} /> Refund review in progress
         </h3>
         <p className="text-sm text-amber-800">
-          This order is temporarily on hold while admin reviews the refund request.
+          This order is temporarily on hold while admin reviews the refund request. Fulfillment stays paused during the review window.
           {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
         </p>
       </div>
@@ -785,6 +804,10 @@ export default function BuyerOrderDetails() {
   }
 
   const submitRefundRequest = async ({ reason }) => {
+    if (!refundRequestModalOpen || submittingRefund || !order?.id) {
+      return;
+    }
+
     const trimmedReason = reason.trim();
     if (trimmedReason.length < 20) {
       showWarning(
@@ -800,7 +823,7 @@ export default function BuyerOrderDetails() {
       setRefundRequestModalOpen(false);
       showSuccess(
         "Refund Request Submitted",
-        "Refund request submitted. Our team will review within 24 hours."
+        "Refund request submitted. Admin has up to 10 days to decide, and seller fulfillment is paused during the review."
       );
       await loadOrder();
     } catch (error) {
@@ -849,7 +872,7 @@ export default function BuyerOrderDetails() {
             <div>
               <h3 className="font-semibold text-amber-900 mb-1">Refund request is processing</h3>
               <p className="text-sm text-amber-800">
-                Admin is now reviewing this order. The seller cannot ship or mark it ready for pickup until a decision is made.
+                Admin is now reviewing this order. The seller cannot ship or mark it ready for pickup until a decision is made, and the review can take up to 10 days.
                 {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
               </p>
             </div>
@@ -925,14 +948,8 @@ export default function BuyerOrderDetails() {
             <span className="text-sm text-gray-500">
               Order #{order.order_number || order.id.slice(0,8)}
             </span>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              order.status === "COMPLETED" ? "bg-green-100 text-green-700" :
-              order.status === "CANCELLED" ? "bg-red-100 text-red-700" :
-              order.status === "DISPUTED" ? "bg-orange-100 text-orange-700" :
-              order.status === "REFUNDED" ? "bg-green-100 text-green-700" :
-              "bg-blue-100 text-blue-700"
-            }`}>
-              {order.status.replaceAll("_", " ")}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${displayStatusClass}`}>
+              {displayStatusLabel}
             </span>
           </div>
 
@@ -1110,28 +1127,28 @@ export default function BuyerOrderDetails() {
               <>
                 <div className="flex justify-between">
                   <span>Product</span>
-                  <span>₦{Number(order.product_price).toLocaleString()}</span>
+                  <span>₦{orderAmounts.subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Delivery</span>
-                  <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
+                  <span>₦{orderAmounts.deliveryFee.toLocaleString()}</span>
                 </div>
               </>
             ) : (
               <>
                 <div className="flex justify-between">
                   <span>Items Subtotal</span>
-                  <span>₦{subtotal.toLocaleString()}</span>
+                  <span>₦{orderAmounts.subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Delivery</span>
-                  <span>₦{Number(order.delivery_fee).toLocaleString()}</span>
+                  <span>₦{orderAmounts.deliveryFee.toLocaleString()}</span>
                 </div>
               </>
             )}
             <div className="border-t pt-2 flex justify-between font-bold">
               <span>Total</span>
-              <span>₦{Number(order.total_amount).toLocaleString()}</span>
+              <span>₦{orderAmounts.total.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -1196,7 +1213,7 @@ export default function BuyerOrderDetails() {
       <AdminActionModal
         isOpen={refundRequestModalOpen}
         title="Request Refund"
-        description="Tell us why this order should be refunded. Your reason will be reviewed by an admin."
+        description="Tell us why this order should be refunded. Admin will review the request within 10 days."
         actionLabel="Submit Request"
         reasonLabel="Refund reason"
         reasonPlaceholder="Explain what has not happened yet and why a refund should be granted."
@@ -1210,7 +1227,7 @@ export default function BuyerOrderDetails() {
         onConfirm={submitRefundRequest}
       >
         <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
-          Include enough detail for review. The reason must be at least 20 characters.
+          Include enough detail for review. The reason must be at least 20 characters, and nothing changes until you submit this request.
         </div>
       </AdminActionModal>
 

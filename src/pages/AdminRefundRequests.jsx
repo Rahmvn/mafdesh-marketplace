@@ -220,7 +220,7 @@ export default function AdminRefundRequests() {
               Refund Requests
             </h1>
             <p className="text-gray-600">
-              Review buyer refund requests for paid orders. Pending requests freeze seller fulfillment and should be resolved within 5 days.
+              Review buyer refund requests for paid orders. Pending requests freeze seller fulfillment and must be resolved within 10 days before they are automatically refunded.
             </p>
           </div>
 

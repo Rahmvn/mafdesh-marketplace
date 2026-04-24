@@ -60,20 +60,20 @@ describe("getRefundEligibility", () => {
 });
 
 describe("refund review helpers", () => {
-  it("builds a five-day admin review deadline from the request creation time", () => {
+  it("builds a ten-day admin review deadline from the request creation time", () => {
     expect(
       getRefundReviewDeadline({
         created_at: "2026-04-21T10:00:00.000Z",
       })
-    ).toBe("2026-04-26T10:00:00.000Z");
+    ).toBe("2026-05-01T10:00:00.000Z");
   });
 
   it("formats remaining time until the admin deadline", () => {
     expect(
       formatTimeUntil(
-        "2026-04-26T10:00:00.000Z",
+        "2026-05-01T10:00:00.000Z",
         new Date("2026-04-24T08:30:00.000Z")
       )
-    ).toBe("2d 1h left");
+    ).toBe("7d 1h left");
   });
 });

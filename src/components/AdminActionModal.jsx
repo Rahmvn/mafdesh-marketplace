@@ -39,7 +39,16 @@ function AdminActionModalContent({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    await onConfirm({ reason: reason.trim() });
+    if (loading) {
+      return;
+    }
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason || typeof onConfirm !== "function") {
+      return;
+    }
+
+    await onConfirm({ reason: trimmedReason });
   };
 
   return (

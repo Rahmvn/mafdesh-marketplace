@@ -302,62 +302,7 @@ export default function Checkout() {
       return;
     }
 
-    // Call edge function to confirm (stock, payment)
-    try {
-      const token = sessionData.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      if (!token) {
-        showGlobalWarning('Login Required', 'Please log in again to complete your order.');
-        setIsSubmitting(false);
-        navigate('/login');
-        return;
-      }
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: anonKey,
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ orderId: order.id }),
-        }
-      );
-
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 409) {
-          const sellerUnavailable = String(result.error || '').includes(
-            'not active for marketplace orders'
-          );
-          showGlobalWarning(
-            sellerUnavailable ? 'Seller Unavailable' : 'Item Unavailable',
-            sellerUnavailable
-              ? 'This seller is not active right now, so the order could not be completed.'
-              : 'Sorry, this item is no longer available. Order cancelled.'
-          );
-          await supabase.from('orders').delete().eq('id', order.id);
-        } else {
-          showGlobalError(
-            'Order Confirmation Failed',
-            result.error || 'Order confirmation failed. Please try again.'
-          );
-        }
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Success
-      navigate(`/order-success/${order.id}`);
-    } catch (err) {
-      console.error(err);
-      showGlobalError('Network Error', 'Network error. Please try again.');
-      setIsSubmitting(false);
-    }
+    navigate(`/payment/${order.id}`);
   };
 
   if (loading) {
@@ -551,10 +496,10 @@ export default function Checkout() {
               disabled={isSubmitting || !hasAvailableMethod}
               className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             >
-              {isSubmitting ? 'Processing...' : 'Place Test Order'}
+              {isSubmitting ? 'Preparing...' : 'Continue to Test Payment'}
             </button>
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Test mode only. No real money is charged right now.
+              Test mode only. Your order stays pending until you complete the payment step.
             </p>
           </div>
         </div>

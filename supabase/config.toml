@@ -1,7 +1,7 @@
 
 [functions.confirm-order]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/confirm-order/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -12,7 +12,7 @@ entrypoint = "./functions/confirm-order/index.ts"
 
 [functions.process-order-deadlines]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/process-order-deadlines/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -23,7 +23,7 @@ entrypoint = "./functions/process-order-deadlines/index.ts"
 
 [functions.confirm-order-multi]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/confirm-order-multi/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx

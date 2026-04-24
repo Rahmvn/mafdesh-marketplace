@@ -444,8 +444,14 @@ export default function SellerOrderDetails() {
   const pendingRefundRequest = getPendingRefundRequest(refundRequests);
   const activeAdminHold = getActiveOrderAdminHold(adminHolds);
   const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
-  const isRefundProcessing = Boolean(pendingRefundRequest && order.status === "PAID_ESCROW");
+  const isRefundProcessing = Boolean(pendingRefundRequest);
   const isAdminHoldProcessing = Boolean(activeAdminHold);
+  const displayStatusLabel = isRefundProcessing
+    ? "REFUND PROCESSING"
+    : order.status.replaceAll("_", " ");
+  const displayStatusClass = isRefundProcessing
+    ? "bg-amber-100 text-amber-800"
+    : "bg-blue-100 text-blue-700";
   const effectiveShipDeadline =
     isRefundProcessing || isAdminHoldProcessing ? null : order.ship_deadline;
   const effectiveShipDeadlineExpired =
@@ -462,7 +468,11 @@ export default function SellerOrderDetails() {
       label: isDelivery ? "Processing" : "Prepare Order",
       active: (order.status === "PAID_ESCROW" && !effectiveShipDeadlineExpired) || ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: Clock,
-      desc: isDelivery ? "You have 48 hours to ship." : "You have 48 hours to prepare for pickup.",
+      desc: isRefundProcessing
+        ? "Refund request is processing. Fulfillment is paused during admin review."
+        : isDelivery
+          ? "You have 48 hours to ship."
+          : "You have 48 hours to prepare for pickup.",
       expired: effectiveShipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
@@ -502,7 +512,7 @@ export default function SellerOrderDetails() {
           <AlertCircle size={18} /> Refund review in progress
         </h3>
         <p className="text-sm text-amber-800">
-          This order is on hold while admin reviews the buyer's refund request.
+          This order is on hold while admin reviews the buyer's refund request. Fulfillment stays paused during the review window.
           {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
         </p>
       </div>
@@ -656,7 +666,7 @@ export default function SellerOrderDetails() {
               This order is processing a refund request.
             </h2>
             <p className="text-sm text-red-700">
-              You cannot mark it as shipped or ready for pickup until admin finishes the review.
+              You cannot mark it as shipped or ready for pickup until admin finishes the review. Admin has up to 10 days to decide.
               {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
             </p>
           </div>
@@ -668,8 +678,8 @@ export default function SellerOrderDetails() {
             <span className="text-sm text-gray-500">
               Order #{order.order_number || order.id.slice(0, 8)}
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-              {order.status.replaceAll("_", " ")}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${displayStatusClass}`}>
+              {displayStatusLabel}
             </span>
           </div>
           <div className="space-y-4">
@@ -894,7 +904,7 @@ export default function SellerOrderDetails() {
                     Refund review is processing
                   </p>
                   <p className="mt-2 text-sm text-amber-800">
-                    Fulfillment is paused until admin decides this refund request.
+                    Fulfillment is paused until admin decides this refund request. Admin has up to 10 days to review it.
                     {refundReviewDeadline ? ` Decision due ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
                   </p>
                 </div>

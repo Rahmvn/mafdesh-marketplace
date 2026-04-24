@@ -7,6 +7,7 @@ import { Search, Clock, Package } from 'lucide-react';
 import { formatRemaining, getUrgencyClass } from '../utils/timeUtils';
 import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
+import { getBuyerOrderTotal } from '../utils/orderAmounts';
 
 const BUYER_STATUS_OPTIONS = [
   { value: 'ALL', label: 'All' },
@@ -257,6 +258,7 @@ export default function BuyerOrders() {
     const items = orderItemsMap[order.id] || [];
     const { displayName: mainName, image: mainImage, itemCount } = getOrderDisplayDetails(items);
     const sellerName = sellerNames[order.seller_id] || 'Seller';
+    const orderTotal = getBuyerOrderTotal(order, items);
 
     let timerText = null;
     let timerClass = '';
@@ -315,7 +317,7 @@ export default function BuyerOrders() {
               <span className="text-gray-600">
                 Total:{' '}
                 <span className="font-bold text-gray-900">
-                  ₦{Number(order.total_amount).toLocaleString()}
+                  ₦{orderTotal.toLocaleString()}
                 </span>
               </span>
               <span className="text-gray-600">

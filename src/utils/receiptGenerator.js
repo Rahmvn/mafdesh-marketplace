@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getOrderItemsMap } from './orderItems';
+import { getBuyerOrderAmounts } from './orderAmounts';
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', {
@@ -78,6 +79,17 @@ function getPartyName(user, profile, fallback) {
   );
 }
 
+function getLandscapeLogoMarkup() {
+  return `
+    <svg width="180" height="40" viewBox="0 0 180 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mafdesh logo">
+      <rect width="180" height="40" rx="8" fill="transparent" />
+      <circle cx="20" cy="20" r="14" fill="#f97316" />
+      <text x="17" y="25" fill="#fff" font-weight="700" font-size="12">H</text>
+      <text x="44" y="26" fill="#1e40af" font-weight="800" font-size="18">Mafdesh</text>
+    </svg>
+  `;
+}
+
 function buildReceiptHtml({
   order,
   items,
@@ -90,9 +102,12 @@ function buildReceiptHtml({
   const buyerName = getPartyName(buyerUser, buyerProfile, 'Buyer');
   const transactionId = getOrderTransactionId(order);
   const paymentMethod = getOrderPaymentMethod(order);
+  const orderAmounts = getBuyerOrderAmounts(order, items);
   const receiptId = `MFD-${String(order?.order_number || order?.id || 'ORDER')
     .replace(/[^a-z0-9-]/gi, '')
     .toUpperCase()}`;
+  const orderReference = escapeHtml(order?.order_number || order?.id || 'Unknown');
+  const receiptStatus = escapeHtml(String(order?.status || 'PAID').replaceAll('_', ' '));
   const itemRows = items
     .map((item) => {
       const quantity = Number(item.quantity || 0);
@@ -122,48 +137,116 @@ function buildReceiptHtml({
           }
           body {
             margin: 0;
-            background: #f8fafc;
-            color: #0f172a;
-            font-family: Arial, sans-serif;
+            background: #eef3f8;
+            color: #172033;
+            font-family: "Segoe UI", Arial, sans-serif;
           }
           .page {
-            max-width: 920px;
+            max-width: 980px;
             margin: 0 auto;
-            padding: 24px;
+            padding: 32px 24px 48px;
           }
           .actions {
             display: flex;
             justify-content: flex-end;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
           }
           .print-button {
             border: none;
             border-radius: 999px;
-            padding: 12px 20px;
-            background: #ea580c;
+            padding: 12px 22px;
+            background: linear-gradient(135deg, #ea580c, #f97316);
             color: white;
             font-weight: 700;
             cursor: pointer;
+            box-shadow: 0 10px 24px rgba(234, 88, 12, 0.24);
           }
           .receipt {
             overflow: hidden;
-            border: 1px solid #e2e8f0;
-            border-radius: 28px;
+            border: 1px solid #d7e0ea;
+            border-radius: 26px;
             background: white;
-            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 22px 60px rgba(15, 23, 42, 0.1);
           }
           .header {
-            padding: 28px 32px;
-            background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 60%, #f97316 100%);
-            color: white;
+            padding: 28px 32px 24px;
+            background:
+              radial-gradient(circle at top right, rgba(249, 115, 22, 0.18), transparent 28%),
+              linear-gradient(135deg, #f8fbff 0%, #eef5ff 55%, #fff7ed 100%);
+            border-bottom: 1px solid #dbe7f3;
+          }
+          .brand-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 20px;
+          }
+          .brand-block {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+          }
+          .brand-copy {
+            max-width: 420px;
+          }
+          .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: #fff;
+            border: 1px solid #dbe7f3;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #36506f;
           }
           .header h1 {
-            margin: 0 0 8px;
-            font-size: 30px;
+            margin: 0 0 10px;
+            font-size: 32px;
+            line-height: 1.1;
+            color: #0f172a;
           }
           .header p {
             margin: 0;
-            color: rgba(255, 255, 255, 0.88);
+            color: #52627a;
+            line-height: 1.6;
+          }
+          .header-meta {
+            min-width: 250px;
+            border: 1px solid #dbe7f3;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.92);
+            padding: 18px;
+          }
+          .meta-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+          }
+          .meta-value {
+            margin-top: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #0f172a;
+          }
+          .status-pill {
+            display: inline-flex;
+            align-items: center;
+            margin-top: 14px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
           }
           .body {
             padding: 32px;
@@ -171,13 +254,13 @@ function buildReceiptHtml({
           .meta-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 16px;
+            gap: 18px;
           }
           .card {
-            border: 1px solid #e2e8f0;
+            border: 1px solid #dbe7f3;
             border-radius: 18px;
-            padding: 16px;
-            background: #f8fafc;
+            padding: 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
           }
           .label {
             margin-bottom: 8px;
@@ -196,14 +279,38 @@ function buildReceiptHtml({
             font-size: 14px;
             color: #475569;
           }
+          .section-title {
+            margin: 32px 0 14px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+          }
           table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 28px;
+            overflow: hidden;
+            margin-top: 0;
+            border: 1px solid #dbe7f3;
+            border-radius: 18px;
+            background: #fff;
           }
-          th,
+          thead {
+            background: #f8fafc;
+          }
+          th {
+            padding: 14px 16px;
+            border-bottom: 1px solid #dbe7f3;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+          }
           td {
-            padding: 12px 0;
+            padding: 16px;
             border-bottom: 1px solid #e2e8f0;
             text-align: left;
             vertical-align: top;
@@ -212,33 +319,50 @@ function buildReceiptHtml({
           td:last-child {
             text-align: right;
           }
+          tbody tr:last-child td {
+            border-bottom: none;
+          }
           .summary {
-            margin-top: 20px;
+            margin-top: 28px;
             margin-left: auto;
-            max-width: 360px;
+            max-width: 380px;
+            border: 1px solid #dbe7f3;
+            border-radius: 20px;
+            background: #fbfdff;
+            padding: 8px 18px;
           }
           .summary-row {
             display: flex;
             justify-content: space-between;
             gap: 16px;
-            padding: 10px 0;
-            border-bottom: 1px solid #e2e8f0;
+            padding: 14px 0;
+            border-bottom: 1px solid #dbe7f3;
           }
           .summary-row.total {
             font-weight: 800;
             color: #ea580c;
+            font-size: 16px;
           }
           .note {
             margin-top: 28px;
             border-radius: 18px;
-            background: #eff6ff;
-            padding: 16px;
-            color: #1d4ed8;
+            background: linear-gradient(135deg, #eff6ff 0%, #fff7ed 100%);
+            padding: 18px;
+            color: #1e3a8a;
+            border: 1px solid #dbeafe;
           }
           .footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
             margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
             font-size: 13px;
             color: #64748b;
+          }
+          .footer strong {
+            color: #0f172a;
           }
           @media print {
             body {
@@ -256,12 +380,24 @@ function buildReceiptHtml({
             }
           }
           @media (max-width: 640px) {
-            .page,
-            .body {
+            .page {
               padding: 16px;
+            }
+            .header,
+            .body {
+              padding: 18px;
+            }
+            .brand-row,
+            .footer {
+              flex-direction: column;
             }
             .meta-grid {
               grid-template-columns: 1fr;
+            }
+            th,
+            td {
+              padding-left: 12px;
+              padding-right: 12px;
             }
           }
         </style>
@@ -273,8 +409,23 @@ function buildReceiptHtml({
           </div>
           <section class="receipt">
             <header class="header">
-              <h1>Mafdesh payment receipt</h1>
-              <p>Receipt ID: ${escapeHtml(receiptId)}</p>
+              <div class="brand-row">
+                <div class="brand-block">
+                  ${getLandscapeLogoMarkup()}
+                  <div class="brand-copy">
+                    <div class="eyebrow">Marketplace Receipt</div>
+                    <h1>Official payment receipt</h1>
+                    <p>This receipt confirms payment received for a Mafdesh marketplace order and is suitable for printing or saving as PDF.</p>
+                  </div>
+                </div>
+                <div class="header-meta">
+                  <div class="meta-label">Receipt ID</div>
+                  <div class="meta-value">${escapeHtml(receiptId)}</div>
+                  <div class="meta-label" style="margin-top: 14px;">Order Reference</div>
+                  <div class="meta-value">${orderReference}</div>
+                  <div class="status-pill">${receiptStatus}</div>
+                </div>
+              </div>
             </header>
             <div class="body">
               <div class="meta-grid">
@@ -307,6 +458,7 @@ function buildReceiptHtml({
                 </div>
               </div>
 
+              <div class="section-title">Purchased Items</div>
               <table>
                 <thead>
                   <tr>
@@ -322,18 +474,18 @@ function buildReceiptHtml({
               </table>
 
               <div class="summary">
-                <div class="summary-row">
-                  <span>Delivery fee</span>
-                  <strong>${formatCurrency(order?.delivery_fee || 0)}</strong>
-                </div>
-                <div class="summary-row">
-                  <span>Platform fee</span>
-                  <strong>${formatCurrency(order?.platform_fee || 0)}</strong>
-                </div>
-                <div class="summary-row total">
-                  <span>Total paid</span>
-                  <strong>${formatCurrency(order?.total_amount || 0)}</strong>
-                </div>
+              <div class="summary-row">
+                <span>Delivery fee</span>
+                <strong>${formatCurrency(orderAmounts.deliveryFee)}</strong>
+              </div>
+              <div class="summary-row">
+                <span>Platform fee</span>
+                <strong>${formatCurrency(orderAmounts.platformFee)}</strong>
+              </div>
+              <div class="summary-row total">
+                <span>Total paid</span>
+                <strong>${formatCurrency(orderAmounts.total)}</strong>
+              </div>
               </div>
 
               <div class="note">
@@ -341,7 +493,8 @@ function buildReceiptHtml({
               </div>
 
               <div class="footer">
-                This receipt was generated from your Mafdesh marketplace account and can be saved as PDF from the print dialog.
+                <div>This receipt was generated from your Mafdesh marketplace account and can be saved as PDF from the print dialog.</div>
+                <div><strong>Mafdesh</strong><br />Marketplace payments and escrow records</div>
               </div>
             </div>
           </section>

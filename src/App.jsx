@@ -325,6 +325,14 @@ export default function App() {
             }
           />
           <Route
+            path="/payment/:id"
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <Payment />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/checkout/multi"
             element={
               <ProtectedRoute allowedRoles={['buyer']}>

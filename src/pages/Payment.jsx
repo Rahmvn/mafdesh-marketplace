@@ -2,14 +2,24 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { showGlobalError, showGlobalWarning } from "../hooks/modalService";
+import { confirmOrder } from "../services/orderConfirmationService";
 import Footer from "../components/FooterSlim";
 import {
   GenericContentSkeleton,
   RetryablePageError,
 } from "../components/PageFeedback";
+import { getBuyerOrderAmounts } from "../utils/orderAmounts";
 
 function formatPrice(value) {
   return `₦${Number(value || 0).toLocaleString()}`;
+}
+
+function createMockPaymentReference(orderId) {
+  const compactOrderId = String(orderId || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 16);
+
+  return `mock_${compactOrderId}_${Date.now()}`;
 }
 
 export default function Payment() {
@@ -45,57 +55,50 @@ export default function Payment() {
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      if (!token) {
+      if (!sessionData.session?.access_token) {
         navigate("/login");
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: anonKey,
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ orderId: id }),
-        }
-      );
-
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 409) {
-          const sellerUnavailable = String(result.error || "").includes(
-            "not active for marketplace orders"
-          );
-          showGlobalWarning(
-            sellerUnavailable ? "Seller Unavailable" : "Item Unavailable",
-            sellerUnavailable
-              ? "This seller is not active right now, so the order could not be completed."
-              : "Sorry, this item is no longer available. Your order could not be completed."
-          );
-          await supabase.from("orders").delete().eq("id", id);
-        } else if (response.status === 403) {
-          showGlobalError("Action Not Allowed", "You are not allowed to confirm this order.");
-        } else {
-          showGlobalError(
-            "Order Confirmation Failed",
-            result.error || "Order confirmation failed. Please try again."
-          );
-        }
-        navigate("/marketplace");
-        return;
-      }
+      await confirmOrder(id, {
+        mockPayment: true,
+        paymentReference: order?.payment_reference || createMockPaymentReference(id),
+      });
 
       navigate(`/order-success/${id}`);
     } catch (err) {
       console.error(err);
-      showGlobalError("Checkout Error", "An error occurred. Please try again.");
+      if (String(err.message || "").toLowerCase().includes("session")) {
+        showGlobalWarning(
+          "Login Required",
+          err.message || "Please log in again to complete your order."
+        );
+        navigate("/login");
+        return;
+      }
+
+      if (err.status === 409) {
+        const sellerUnavailable = String(err.message || "").includes(
+          "not active for marketplace orders"
+        );
+        showGlobalWarning(
+          sellerUnavailable ? "Seller Unavailable" : "Item Unavailable",
+          sellerUnavailable
+            ? "This seller is not active right now, so the order could not be completed."
+            : "Sorry, this item is no longer available. Your order could not be completed."
+        );
+        await supabase.from("orders").delete().eq("id", id);
+      } else if (err.status === 403) {
+        showGlobalError("Action Not Allowed", "You are not allowed to confirm this order.");
+      } else {
+        showGlobalError(
+          "Order Confirmation Failed",
+          err.message || "Order confirmation failed. Please try again."
+        );
+      }
+
+      navigate("/marketplace");
     } finally {
       setProcessing(false);
     }
@@ -129,6 +132,8 @@ export default function Payment() {
     );
   }
 
+  const orderAmounts = getBuyerOrderAmounts(order);
+
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <main className="flex flex-1 items-center justify-center px-4 py-12">
@@ -137,16 +142,16 @@ export default function Payment() {
 
           <div className="mb-6 space-y-2">
             <div className="flex justify-between">
-              <span>Product</span>
-              <span>{formatPrice(order.product_price)}</span>
+              <span>Subtotal</span>
+              <span>{formatPrice(orderAmounts.subtotal)}</span>
             </div>
             <div className="flex justify-between">
               <span>Delivery</span>
-              <span>{formatPrice(order.delivery_fee)}</span>
+              <span>{formatPrice(orderAmounts.deliveryFee)}</span>
             </div>
             <div className="flex justify-between border-t pt-2 font-semibold">
               <span>Total</span>
-              <span>{formatPrice(order.total_amount)}</span>
+              <span>{formatPrice(orderAmounts.total)}</span>
             </div>
           </div>
 
