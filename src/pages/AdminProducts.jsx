@@ -332,7 +332,18 @@ export default function AdminProducts() {
     pendingChanges: Object.keys(pendingEditRequestsByProduct).length,
   }), [pendingEditRequestsByProduct, products]);
 
-  const openToggleModal = (product) => {
+  const openToggleModal = async (product) => {
+    let activeOrderCount = 0;
+
+    if (product.is_approved) {
+      try {
+        const summary = await productService.getProductActiveOrderSummary(product.id);
+        activeOrderCount = Number(summary?.activeOrderCount || 0);
+      } catch (error) {
+        console.error('Active order summary error:', error);
+      }
+    }
+
     setPendingAction({
       kind: 'toggle',
       product,
@@ -340,10 +351,23 @@ export default function AdminProducts() {
       description: `This will ${product.is_approved ? 'remove' : 'grant'} marketplace approval for "${product.name}".`,
       actionLabel: product.is_approved ? 'Unapprove Product' : 'Approve Product',
       confirmTone: product.is_approved ? 'warning' : 'success',
+      riskNotice:
+        product.is_approved && activeOrderCount > 0
+          ? `${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'} will be placed on admin hold for review.`
+          : '',
     });
   };
 
-  const openDeleteModal = (product) => {
+  const openDeleteModal = async (product) => {
+    let activeOrderCount = 0;
+
+    try {
+      const summary = await productService.getProductActiveOrderSummary(product.id);
+      activeOrderCount = Number(summary?.activeOrderCount || 0);
+    } catch (error) {
+      console.error('Active order summary error:', error);
+    }
+
     setPendingAction({
       kind: 'archive',
       product,
@@ -353,7 +377,9 @@ export default function AdminProducts() {
       confirmTone: 'danger',
       confirmationKeyword: 'ARCHIVE',
       riskNotice:
-        'Product removal is now a soft-delete action. The listing is hidden from buyers and sellers, but the record stays recoverable for accountability.',
+        activeOrderCount > 0
+          ? `${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'} will be frozen for admin review. The listing is hidden immediately.`
+          : 'Product removal is now a soft-delete action. The listing is hidden from buyers and sellers, but the record stays recoverable for accountability.',
     });
   };
 

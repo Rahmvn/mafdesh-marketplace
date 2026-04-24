@@ -123,7 +123,12 @@ export function isDeliverySchemaMissingError(error) {
       haystack.includes('delivery_zone_snapshot') ||
       haystack.includes('pickup_location_snapshot') ||
       haystack.includes('ship_from_address_text') ||
-      haystack.includes('ship_from_state')
+      haystack.includes('ship_from_state') ||
+      haystack.includes('lga_name') ||
+      haystack.includes('city_name') ||
+      haystack.includes('area_name') ||
+      haystack.includes('landmark_text') ||
+      haystack.includes('pickup_instructions')
     );
   }
 
@@ -160,16 +165,56 @@ function normalizePickupLocation(location, legacy = false) {
   const label = String(location?.label || location?.address_text || location || '').trim();
   const addressText = String(location?.address_text || label || '').trim();
   const stateName = getCanonicalStateName(location?.state_name) || null;
+  const lgaName = String(location?.lga_name || location?.lga || '').trim() || null;
+  const cityName = String(location?.city_name || location?.city || '').trim() || null;
+  const areaName = String(location?.area_name || location?.area || '').trim() || null;
+  const landmarkText = String(location?.landmark_text || location?.landmark || '').trim() || null;
+  const pickupInstructions =
+    String(location?.pickup_instructions || location?.instructions || '').trim() || null;
 
   return {
     id: location?.id || `legacy:${label}`,
     label,
     address_text: addressText,
     state_name: stateName,
+    lga_name: lgaName,
+    city_name: cityName,
+    area_name: areaName,
+    landmark_text: landmarkText,
+    pickup_instructions: pickupInstructions,
     is_active: location?.is_active !== false,
     sort_order: Number(location?.sort_order || 0),
     legacy,
   };
+}
+
+export function isPickupLocationComplete(location) {
+  const normalized = normalizePickupLocation(location);
+
+  return Boolean(
+    normalized.label &&
+      normalized.address_text &&
+      normalized.state_name &&
+      normalized.lga_name &&
+      normalized.city_name &&
+      normalized.area_name
+  );
+}
+
+export function formatPickupLocationAddress(location) {
+  const normalized = normalizePickupLocation(location);
+
+  return [
+    normalized.address_text,
+    normalized.landmark_text,
+    normalized.area_name,
+    normalized.city_name,
+    normalized.lga_name,
+    normalized.state_name,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ');
 }
 
 function getPickupLocationKey(location) {
@@ -222,7 +267,7 @@ export function resolveProductPickupLocations({
 }) {
   const pickupMode = getNormalizedPickupMode(product);
   const activeSellerLocations = (sellerPickupLocations || []).filter(
-    (location) => location?.is_active !== false
+    (location) => location?.is_active !== false && isPickupLocationComplete(location)
   );
 
   if (pickupMode === PICKUP_MODE.DISABLED) {
@@ -254,7 +299,7 @@ export function resolveProductPickupLocations({
   const legacyLocations = Array.isArray(product?.pickup_locations)
     ? product.pickup_locations
         .map((location) => normalizePickupLocation(location, true))
-        .filter((location) => location.label)
+        .filter((location) => isPickupLocationComplete(location))
     : [];
 
   return uniqueBy(legacyLocations, getPickupLocationKey);
@@ -509,7 +554,10 @@ export async function isDeliverySchemaInstalled() {
 
   const { error: pickupError } = await supabase
     .from('seller_pickup_locations')
-    .select('id', { head: true, count: 'exact' })
+    .select('id, lga_name, city_name, area_name, landmark_text, pickup_instructions', {
+      head: true,
+      count: 'exact',
+    })
     .limit(1);
 
   if (isDeliverySchemaMissingError(pickupError)) {
@@ -650,6 +698,11 @@ export async function createSellerPickupLocation(location) {
   const payload = {
     ...location,
     state_name: getCanonicalStateName(location.state_name) || null,
+    lga_name: String(location.lga_name || '').trim() || null,
+    city_name: String(location.city_name || '').trim() || null,
+    area_name: String(location.area_name || '').trim() || null,
+    landmark_text: String(location.landmark_text || '').trim() || null,
+    pickup_instructions: String(location.pickup_instructions || '').trim() || null,
   };
 
   const { data, error } = await supabase
@@ -676,6 +729,26 @@ export async function updateSellerPickupLocation(locationId, updates) {
       updates.state_name === undefined
         ? updates.state_name
         : getCanonicalStateName(updates.state_name) || null,
+    lga_name:
+      updates.lga_name === undefined
+        ? updates.lga_name
+        : String(updates.lga_name || '').trim() || null,
+    city_name:
+      updates.city_name === undefined
+        ? updates.city_name
+        : String(updates.city_name || '').trim() || null,
+    area_name:
+      updates.area_name === undefined
+        ? updates.area_name
+        : String(updates.area_name || '').trim() || null,
+    landmark_text:
+      updates.landmark_text === undefined
+        ? updates.landmark_text
+        : String(updates.landmark_text || '').trim() || null,
+    pickup_instructions:
+      updates.pickup_instructions === undefined
+        ? updates.pickup_instructions
+        : String(updates.pickup_instructions || '').trim() || null,
   };
 
   const { data, error } = await supabase

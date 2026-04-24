@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Shield,
+  Store,
   Truck,
   CheckCircle,
   Star,
@@ -17,50 +20,274 @@ import useCountdown from "../hooks/useCountdown";
 import { cartService } from "../services/cartService";
 import { supabase } from "../supabaseClient";
 import { getProductFulfillmentOptions } from "../services/deliveryService";
-import { showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
+import {
+  showGlobalError,
+  showGlobalSuccess,
+  showGlobalWarning,
+} from "../hooks/modalService";
 import { getProductPricing } from "../utils/flashSale";
+import { getAttributesForCategory } from "../utils/productAttributes";
 
-const CACHED_PRODUCTS_KEY = "cached_products";
-const RECENTLY_VIEWED_KEY = "recently_viewed";
-
-const TAB_LABELS = {
-  overview: "Overview",
-  features: "Key Features",
-  specs: "Specifications",
-};
+const SWIPE_THRESHOLD = 48;
 
 function formatPrice(value) {
   return `\u20A6${Number(value).toLocaleString()}`;
 }
 
-function readCachedProducts() {
-  try {
-    const cachedProducts = localStorage.getItem(CACHED_PRODUCTS_KEY);
-    if (!cachedProducts) {
-      return [];
-    }
+function getCatalogDiscount(product) {
+  const price = Number(product?.price);
+  const originalPrice = Number(product?.original_price);
 
-    const parsedProducts = JSON.parse(cachedProducts);
-    return Array.isArray(parsedProducts) ? parsedProducts : [];
-  } catch (error) {
-    console.error("Error reading cached products:", error);
-    return [];
+  if (!Number.isFinite(price) || !Number.isFinite(originalPrice) || originalPrice <= price) {
+    return null;
   }
+
+  return {
+    originalPrice,
+    price,
+    discountPercent: Math.round((1 - price / originalPrice) * 100),
+  };
 }
 
-function readRecentlyViewedIds() {
-  try {
-    const storedIds = localStorage.getItem(RECENTLY_VIEWED_KEY);
-    if (!storedIds) {
-      return [];
-    }
+function getSellerStatus(sellerData) {
+  return String(sellerData?.account_status || sellerData?.status || "active").toLowerCase();
+}
 
-    const parsedIds = JSON.parse(storedIds);
-    return Array.isArray(parsedIds) ? parsedIds : [];
-  } catch (error) {
-    console.error("Error reading recently viewed products:", error);
-    return [];
+function getSellerBusinessName(sellerData) {
+  if (String(sellerData?.business_name || "").trim()) {
+    return String(sellerData.business_name).trim();
   }
+  return "";
+}
+
+async function loadSellerIdentity(sellerId, initialSeller = null) {
+  if (!sellerId) {
+    return initialSeller;
+  }
+
+  const normalizedInitialProfiles = Array.isArray(initialSeller?.profiles)
+    ? initialSeller.profiles[0] || null
+    : initialSeller?.profiles || null;
+
+  const baseSeller = {
+    ...(initialSeller || {}),
+    profiles: normalizedInitialProfiles,
+  };
+
+  const [{ data: userData, error: userError }, { data: profileData, error: profileError }] =
+    await Promise.all([
+      supabase
+        .from("users")
+        .select("id, email, business_name, is_verified, status, account_status")
+        .eq("id", sellerId)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("id, full_name, username")
+        .eq("id", sellerId)
+        .maybeSingle(),
+    ]);
+
+  if (userError) {
+    console.error("Error loading seller user record:", userError);
+  }
+
+  if (profileError) {
+    console.error("Error loading seller profile record:", profileError);
+  }
+
+  let mergedSeller = {
+    ...baseSeller,
+    ...(userData || {}),
+    profiles: profileData || baseSeller.profiles || null,
+  };
+
+  if (!String(mergedSeller.business_name || "").trim()) {
+    const { data: publicSeller, error: publicSellerError } = await supabase.rpc(
+      "get_public_seller_identity",
+      {
+        p_seller_id: sellerId,
+      }
+    );
+
+    if (publicSellerError) {
+      console.error("Error loading public seller identity:", publicSellerError);
+    } else {
+      const normalizedPublicSeller = Array.isArray(publicSeller) ? publicSeller[0] : publicSeller;
+
+      if (normalizedPublicSeller) {
+        mergedSeller = {
+          ...mergedSeller,
+          ...normalizedPublicSeller,
+        };
+      }
+    }
+  }
+
+  return mergedSeller;
+}
+
+function normalizeValue(value) {
+  if (Array.isArray(value)) {
+    return value.filter((entry) => String(entry || "").trim() !== "");
+  }
+
+  return String(value ?? "").trim();
+}
+
+function hasStructuredAttributes(product) {
+  return Boolean(
+    product?.attributes &&
+      typeof product.attributes === "object" &&
+      !Array.isArray(product.attributes) &&
+      Object.values(product.attributes).some((value) =>
+        Array.isArray(value) ? value.length > 0 : String(value ?? "").trim() !== ""
+      )
+  );
+}
+
+function formatAttributeText(attribute, value) {
+  const normalizedValue = normalizeValue(value);
+
+  if (Array.isArray(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  return attribute.unit ? `${normalizedValue} ${attribute.unit}` : normalizedValue;
+}
+
+function splitLegacyDescription(description) {
+  const normalizedDescription = String(description || "").trim();
+
+  if (!normalizedDescription) {
+    return {
+      summary: "",
+      detailEntries: [],
+      longTextEntries: [],
+      listSections: [],
+    };
+  }
+
+  if (normalizedDescription.includes("Product Details:")) {
+    const [summaryPart, detailsPart = ""] = normalizedDescription.split("Product Details:");
+    const detailLines = detailsPart
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const detailEntries = [];
+    const freeformLines = [];
+
+    detailLines.forEach((line) => {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex > 0) {
+        detailEntries.push({
+          label: line.slice(0, separatorIndex).trim(),
+          value: line.slice(separatorIndex + 1).trim(),
+        });
+        return;
+      }
+
+      freeformLines.push(line);
+    });
+
+    return {
+      summary: summaryPart.trim(),
+      detailEntries,
+      longTextEntries: freeformLines.length
+        ? [{ label: "More details", value: freeformLines.join("\n") }]
+        : [],
+      listSections: [],
+    };
+  }
+
+  const [overviewPart, keyFeaturePart = ""] = normalizedDescription.split("Key Features:");
+  const [featurePart = "", specificationPart = ""] = keyFeaturePart.split("Specifications:");
+  const features = featurePart
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const specifications = specificationPart
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return {
+    summary: overviewPart.trim(),
+    detailEntries: [],
+    longTextEntries: [],
+    listSections: [
+      { title: "Key Features", values: features },
+      { title: "Specifications", values: specifications },
+    ].filter((section) => section.values.length > 0),
+  };
+}
+
+function buildDetailSections(product) {
+  if (hasStructuredAttributes(product)) {
+    const schema = getAttributesForCategory(product.category);
+    const populatedAttributes = schema.filter((attribute) => {
+      const value = product.attributes?.[attribute.key];
+      const normalizedValue = normalizeValue(value);
+      return Array.isArray(normalizedValue) ? normalizedValue.length > 0 : Boolean(normalizedValue);
+    });
+
+    const descriptionAttribute = populatedAttributes.find((attribute) => attribute.key === "description");
+    const chipEntries = populatedAttributes
+      .filter((attribute) => attribute.type === "multiselect")
+      .map((attribute) => ({
+        label: attribute.label,
+        values: formatAttributeText(attribute, product.attributes?.[attribute.key]),
+      }))
+      .filter((entry) => Array.isArray(entry.values) && entry.values.length > 0);
+    const detailEntries = populatedAttributes
+      .filter(
+        (attribute) =>
+          attribute.key !== "description" &&
+          attribute.type !== "multiselect" &&
+          attribute.type !== "textarea"
+      )
+      .map((attribute) => ({
+        label: attribute.label,
+        value: formatAttributeText(attribute, product.attributes?.[attribute.key]),
+      }))
+      .filter((entry) => !Array.isArray(entry.value) && entry.value);
+    const longTextEntries = populatedAttributes
+      .filter((attribute) => attribute.key !== "description" && attribute.type === "textarea")
+      .map((attribute) => ({
+        label: attribute.label,
+        value: formatAttributeText(attribute, product.attributes?.[attribute.key]),
+      }))
+      .filter((entry) => !Array.isArray(entry.value) && entry.value);
+
+    return {
+      source: "structured",
+      descriptionTitle: descriptionAttribute?.label || "Product Description",
+      descriptionText: descriptionAttribute
+        ? formatAttributeText(descriptionAttribute, product.attributes?.description)
+        : "",
+      detailEntries,
+      chipEntries,
+      longTextEntries,
+      listSections: [],
+    };
+  }
+
+  const legacySections = splitLegacyDescription(product?.description);
+
+  return {
+    source: "legacy",
+    descriptionTitle: "Overview",
+    descriptionText: legacySections.summary,
+    detailEntries: legacySections.detailEntries,
+    chipEntries: [],
+    longTextEntries: legacySections.longTextEntries,
+    listSections: legacySections.listSections,
+  };
 }
 
 function ReviewStars({ value, size = 18, compact = false }) {
@@ -77,34 +304,98 @@ function ReviewStars({ value, size = 18, compact = false }) {
   );
 }
 
+function RelatedProductCard({ product, onOpen }) {
+  const hasDiscount =
+    product.original_price != null &&
+    product.price != null &&
+    Number(product.original_price) > Number(product.price);
+  const sellerName = getSellerBusinessName(product.seller);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group overflow-hidden rounded-[22px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
+    >
+      <div className="relative aspect-square overflow-hidden bg-slate-50 p-4">
+        <img
+          src={product.images?.[0] || "https://placehold.co/600x600"}
+          alt={product.name}
+          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+        />
+        <div className="absolute left-3 top-3">
+          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+            {product.category || "Product"}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <p className="line-clamp-2 min-h-[2.8rem] text-sm font-semibold leading-5 text-slate-900">
+          {product.name}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-bold text-orange-600">{formatPrice(product.price)}</span>
+          {hasDiscount && (
+            <span className="text-xs font-medium text-slate-400 line-through">
+              {formatPrice(product.original_price)}
+            </span>
+          )}
+        </div>
+
+        {(sellerName || product.seller?.is_verified) && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            {sellerName ? <span className="font-medium text-slate-700">{sellerName}</span> : null}
+            {product.seller?.is_verified && <VerificationBadge />}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("overview");
   const [product, setProduct] = useState(null);
   const [seller, setSeller] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [averageRating, setAverageRating] = useState(0);
   const [fulfillment, setFulfillment] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [adding, setAdding] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
-  const [recentlyViewedIds, setRecentlyViewedIds] = useState(() => readRecentlyViewedIds());
-  const [cachedProducts, setCachedProducts] = useState(() => readCachedProducts());
+  const [relatedProducts, setRelatedProducts] = useState([]);
+  const [touchStartX, setTouchStartX] = useState(null);
 
   const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "{}");
   const isAdmin = storedUser.role === "admin";
+  const sellerBusinessName = getSellerBusinessName(seller);
 
   const isMissingDeletedAtColumn = (error) =>
-    error?.code === "42703" &&
-    String(error.message || "").includes("deleted_at");
+    error?.code === "42703" && String(error.message || "").includes("deleted_at");
 
   const loadProduct = useCallback(async () => {
     try {
-      let productQuery = supabase
-        .from("products")
-        .select("*")
-        .eq("id", id);
+      const productSelect = `
+        *,
+        seller:users!products_seller_id_fkey(
+          id,
+          email,
+          business_name,
+          is_verified,
+          status,
+          account_status,
+          profiles(
+            full_name,
+            username
+          )
+        )
+      `;
+
+      let productQuery = supabase.from("products").select(productSelect).eq("id", id);
 
       if (!isAdmin) {
         productQuery = productQuery.is("deleted_at", null);
@@ -115,7 +406,7 @@ export default function ProductDetail() {
       if (!isAdmin && isMissingDeletedAtColumn(error)) {
         ({ data, error } = await supabase
           .from("products")
-          .select("*")
+          .select(productSelect)
           .eq("id", id)
           .single());
       }
@@ -125,16 +416,24 @@ export default function ProductDetail() {
       }
 
       setProduct(data);
-      setCachedProducts(readCachedProducts());
 
-      const { data: sellerData, error: sellerError } = await supabase
-        .from("users")
-        .select("business_name, is_verified")
-        .eq("id", data.seller_id)
-        .single();
+      const mergedSeller = await loadSellerIdentity(data?.seller_id, data?.seller || null);
 
-      if (!sellerError) {
-        setSeller(sellerData);
+      if (mergedSeller) {
+        const sellerStatus = getSellerStatus(mergedSeller);
+
+        if (!isAdmin && sellerStatus !== "active") {
+          showGlobalWarning(
+            "Listing Unavailable",
+            "This seller is not active right now, so the product is unavailable."
+          );
+          navigate("/marketplace", { replace: true });
+          return;
+        }
+
+        setSeller(mergedSeller);
+      } else {
+        setSeller(null);
       }
 
       try {
@@ -181,53 +480,178 @@ export default function ProductDetail() {
     } finally {
       setLoading(false);
     }
-  }, [id, isAdmin]);
+  }, [id, isAdmin, navigate]);
+
+  const loadRelatedProducts = useCallback(
+    async (currentProduct) => {
+      if (!currentProduct?.id || !currentProduct?.category) {
+        setRelatedProducts([]);
+        return;
+      }
+
+      const selectFields = `
+        id,
+        name,
+        price,
+        original_price,
+        images,
+        category,
+        stock_quantity,
+        seller_id,
+        created_at,
+        seller:users!products_seller_id_fkey(
+          id,
+          email,
+          business_name,
+          is_verified,
+          status,
+          account_status,
+          profiles(
+            full_name,
+            username
+          )
+        )
+      `;
+
+      const runQuery = async ({ category = null, limit = 12, includeDeletedCheck = true }) => {
+        let query = supabase
+          .from("products")
+          .select(selectFields)
+          .eq("is_approved", true)
+          .gt("stock_quantity", 0)
+          .neq("id", currentProduct.id)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (category) {
+          query = query.eq("category", category);
+        }
+
+        if (!isAdmin && includeDeletedCheck) {
+          query = query.is("deleted_at", null);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          throw error;
+        }
+
+        return data || [];
+      };
+
+      try {
+        setRelatedLoading(true);
+
+        let sameCategoryCandidates = [];
+
+        try {
+          sameCategoryCandidates = await runQuery({
+            category: currentProduct.category,
+            includeDeletedCheck: true,
+          });
+        } catch (error) {
+          if (isAdmin || !isMissingDeletedAtColumn(error)) {
+            throw error;
+          }
+
+          sameCategoryCandidates = await runQuery({
+            category: currentProduct.category,
+            includeDeletedCheck: false,
+          });
+        }
+
+        let verifiedCandidates = sameCategoryCandidates.filter((candidate) => {
+          const sellerStatus = getSellerStatus(candidate?.seller);
+          return candidate?.seller?.is_verified && sellerStatus === "active";
+        });
+
+        if (verifiedCandidates.length < 4) {
+          let fallbackCandidates = [];
+
+          try {
+            fallbackCandidates = await runQuery({ includeDeletedCheck: true });
+          } catch (error) {
+            if (isAdmin || !isMissingDeletedAtColumn(error)) {
+              throw error;
+            }
+
+            fallbackCandidates = await runQuery({ includeDeletedCheck: false });
+          }
+
+          const seenIds = new Set(verifiedCandidates.map((candidate) => candidate.id));
+
+          fallbackCandidates.forEach((candidate) => {
+            const sellerStatus = getSellerStatus(candidate?.seller);
+            if (
+              candidate?.seller?.is_verified &&
+              sellerStatus === "active" &&
+              !seenIds.has(candidate.id)
+            ) {
+              verifiedCandidates.push(candidate);
+              seenIds.add(candidate.id);
+            }
+          });
+        }
+
+        setRelatedProducts(verifiedCandidates.slice(0, 4));
+      } catch (error) {
+        console.error("Error loading related products:", error);
+        setRelatedProducts([]);
+      } finally {
+        setRelatedLoading(false);
+      }
+    },
+    [isAdmin]
+  );
 
   useEffect(() => {
     loadProduct();
   }, [loadProduct]);
 
-  const parsedDescription = useMemo(() => {
-    if (!product?.description) {
-      return {
-        overview: "",
-        features: [],
-        specs: [],
-      };
-    }
+  useEffect(() => {
+    setActiveImage(0);
+  }, [id]);
 
-    const parts = product.description.split("Key Features:");
-    const overview = parts[0]?.trim() || "";
-    const rest = parts[1]?.split("Specifications:") || [];
+  useEffect(() => {
+    loadRelatedProducts(product);
+  }, [loadRelatedProducts, product]);
 
-    return {
-      overview,
-      features: (rest[0] || "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-      specs: (rest[1] || "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
-    };
-  }, [product?.description]);
+  const galleryImages = useMemo(() => {
+    const images = Array.isArray(product?.images) ? product.images.filter(Boolean) : [];
+    return images.length ? images : ["https://placehold.co/900x900?text=Product"];
+  }, [product?.images]);
 
-  const recentlyViewedProducts = useMemo(() => {
-    const currentProductId = String(product?.id || id);
-    const productMap = new Map(cachedProducts.map((item) => [String(item.id), item]));
-
-    return recentlyViewedIds
-      .map((recentId) => productMap.get(String(recentId)))
-      .filter((recentProduct) => recentProduct && String(recentProduct.id) !== currentProductId);
-  }, [cachedProducts, id, product?.id, recentlyViewedIds]);
-
-  const showRecentlyViewed = recentlyViewedProducts.length >= 2;
+  const detailSections = useMemo(() => buildDetailSections(product), [product]);
+  const hasMultipleImages = galleryImages.length > 1;
   const flashSaleCountdown = useCountdown(product?.sale_end);
   const pricing = useMemo(() => getProductPricing(product), [product]);
   const showFlashSale = pricing.isFlashSaleActive && !flashSaleCountdown.expired;
   const isLowFlashSaleStock =
     pricing.remainingSaleQuantity != null && pricing.remainingSaleQuantity <= 5;
+  const catalogDiscount = useMemo(() => getCatalogDiscount(product), [product]);
+
+  const changeImage = useCallback(
+    (direction) => {
+      if (!hasMultipleImages) {
+        return;
+      }
+
+      setActiveImage((currentImage) => {
+        const nextImage = currentImage + direction;
+
+        if (nextImage < 0) {
+          return galleryImages.length - 1;
+        }
+
+        if (nextImage >= galleryImages.length) {
+          return 0;
+        }
+
+        return nextImage;
+      });
+    },
+    [galleryImages.length, hasMultipleImages]
+  );
 
   const requireLogin = async () => {
     const { data } = await supabase.auth.getSession();
@@ -268,25 +692,31 @@ export default function ProductDetail() {
     navigate(`/checkout/${product.id}`, { state: { product, quantity: 1 } });
   };
 
-  const handleRecentProductOpen = useCallback(
-    (recentProduct) => {
-      setRecentlyViewedIds((currentIds) => {
-        const productId = String(recentProduct.id);
-        const nextIds = [recentProduct.id, ...currentIds.filter((itemId) => String(itemId) !== productId)].slice(0, 10);
+  const handleImageTouchStart = (event) => {
+    setTouchStartX(event.touches[0]?.clientX ?? null);
+  };
 
-        try {
-          localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(nextIds));
-        } catch (error) {
-          console.error("Error saving recently viewed products:", error);
-        }
+  const handleImageTouchEnd = (event) => {
+    if (!hasMultipleImages || touchStartX == null) {
+      setTouchStartX(null);
+      return;
+    }
 
-        return nextIds;
-      });
+    const touchEndX = event.changedTouches[0]?.clientX;
 
-      navigate(`/product/${recentProduct.id}`);
-    },
-    [navigate]
-  );
+    if (touchEndX == null) {
+      setTouchStartX(null);
+      return;
+    }
+
+    const swipeDistance = touchEndX - touchStartX;
+
+    if (Math.abs(swipeDistance) >= SWIPE_THRESHOLD) {
+      changeImage(swipeDistance > 0 ? -1 : 1);
+    }
+
+    setTouchStartX(null);
+  };
 
   if (loading) {
     return <MarketplaceDetailSkeleton />;
@@ -297,252 +727,448 @@ export default function ProductDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-blue-50">
+    <div className="min-h-screen flex flex-col bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef6ff_42%,_#f8fafc_100%)]">
       <AuthNavbarWrapper />
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-5 sm:py-8">
+      <main className="mx-auto flex-1 w-full max-w-7xl px-4 py-5 sm:py-8">
         <button
           onClick={() => navigate(-1)}
-          className="mb-6 flex items-center gap-2 text-blue-700 hover:text-blue-900 font-medium"
+          className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:text-blue-900"
         >
           <ArrowLeft size={18} /> Back
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.04fr_0.96fr] xl:gap-8">
           <section className="min-w-0">
-            <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-blue-100">
-              <div className="aspect-square flex items-center justify-center overflow-hidden">
-                <img
-                  src={product.images?.[activeImage]}
-                  alt={product.name}
-                  className="max-h-full max-w-full object-contain"
-                />
+            <div className="rounded-[30px] border border-slate-200 bg-white p-3 shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:p-4">
+              <div
+                className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.18),_rgba(255,255,255,0.94)_48%,_rgba(239,246,255,0.96)_100%)] p-4 [touch-action:pan-y] sm:p-6"
+                onTouchStart={handleImageTouchStart}
+                onTouchEnd={handleImageTouchEnd}
+                onTouchCancel={() => setTouchStartX(null)}
+              >
+                <div className="absolute left-4 top-4 z-10 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+                  {activeImage + 1} / {galleryImages.length}
+                </div>
+
+                {hasMultipleImages && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => changeImage(-1)}
+                      className="absolute left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-md transition hover:border-orange-300 hover:text-orange-600 lg:flex"
+                      aria-label="Show previous image"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => changeImage(1)}
+                      className="absolute right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-md transition hover:border-orange-300 hover:text-orange-600 lg:flex"
+                      aria-label="Show next image"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </>
+                )}
+
+                <div className="aspect-square flex items-center justify-center overflow-hidden">
+                  <img
+                    src={galleryImages[activeImage]}
+                    alt={product.name}
+                    className="max-h-full max-w-full select-none object-contain"
+                    draggable="false"
+                  />
+                </div>
               </div>
+
+              {hasMultipleImages && (
+                <>
+                  <div className="mt-4 flex items-center justify-center gap-2 lg:hidden">
+                    {galleryImages.map((image, index) => (
+                      <button
+                        key={`${image}-${index}`}
+                        type="button"
+                        onClick={() => setActiveImage(index)}
+                        className={`h-2.5 rounded-full transition-all ${
+                          activeImage === index ? "w-8 bg-orange-500" : "w-2.5 bg-blue-200"
+                        }`}
+                        aria-label={`Show image ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+                    {galleryImages.map((img, index) => (
+                      <button
+                        key={`${img}-${index}`}
+                        type="button"
+                        onClick={() => setActiveImage(index)}
+                        className={`h-16 w-16 shrink-0 overflow-hidden rounded-2xl border bg-white p-1.5 transition sm:h-20 sm:w-20 ${
+                          activeImage === index
+                            ? "border-orange-500 shadow-md shadow-orange-100"
+                            : "border-slate-200 hover:border-orange-300"
+                        }`}
+                      >
+                        <img
+                          src={img}
+                          alt={`${product.name} preview ${index + 1}`}
+                          className="h-full w-full rounded-xl object-contain"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
-            {product.images?.length > 1 && (
-              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
-                {product.images.map((img, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => setActiveImage(index)}
-                    className={`w-14 h-14 sm:w-16 sm:h-16 shrink-0 border rounded-md p-1 transition ${
-                      activeImage === index
-                        ? "border-orange-500"
-                        : "border-blue-100 hover:border-orange-300"
-                    }`}
-                  >
-                    <img
-                      src={img}
-                      alt={`${product.name} preview ${index + 1}`}
-                      className="w-full h-full object-contain"
-                    />
-                  </button>
-                ))}
+            <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Product details</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {detailSections.source === "structured"
+                      ? `Category-specific details for ${product.category || "this product"}.`
+                      : "Showing saved listing details for this product."}
+                  </p>
+                </div>
+                <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
               </div>
-            )}
+
+              <div className="space-y-6">
+                {detailSections.descriptionText ? (
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      {detailSections.descriptionTitle}
+                    </p>
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600 sm:text-[15px]">
+                      {detailSections.descriptionText}
+                    </p>
+                  </section>
+                ) : null}
+
+                {detailSections.detailEntries.length > 0 ? (
+                  <section>
+                    <div className="mb-3 flex items-center gap-3">
+                      <h3 className="text-base font-bold text-slate-900 sm:text-lg">Core details</h3>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {detailSections.detailEntries.map((entry) => (
+                        <div
+                          key={entry.label}
+                          className="rounded-2xl border border-slate-200 bg-white p-4"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            {entry.label}
+                          </p>
+                          <p className="mt-2 text-sm font-medium text-slate-800">
+                            {entry.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {detailSections.chipEntries.length > 0 ? (
+                  <section>
+                    <div className="mb-3 flex items-center gap-3">
+                      <h3 className="text-base font-bold text-slate-900 sm:text-lg">Available options</h3>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <div className="space-y-4">
+                      {detailSections.chipEntries.map((entry) => (
+                        <div
+                          key={entry.label}
+                          className="rounded-2xl border border-slate-200 bg-white p-4"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            {entry.label}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {entry.values.map((value) => (
+                              <span
+                                key={`${entry.label}-${value}`}
+                                className="rounded-full bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-700"
+                              >
+                                {value}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {detailSections.longTextEntries.length > 0 ? (
+                  <section>
+                    <div className="mb-3 flex items-center gap-3">
+                      <h3 className="text-base font-bold text-slate-900 sm:text-lg">More information</h3>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <div className="space-y-4">
+                      {detailSections.longTextEntries.map((entry) => (
+                        <div
+                          key={entry.label}
+                          className="rounded-2xl border border-slate-200 bg-white p-4"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            {entry.label}
+                          </p>
+                          <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
+                            {entry.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {detailSections.listSections.length > 0 ? (
+                  <section className="grid gap-4 lg:grid-cols-2">
+                    {detailSections.listSections.map((section) => (
+                      <div
+                        key={section.title}
+                        className="rounded-2xl border border-slate-200 bg-white p-4"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                          {section.title}
+                        </p>
+                        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-slate-600">
+                          {section.values.map((value, index) => (
+                            <li key={`${section.title}-${index}`}>{value}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </section>
+                ) : null}
+
+                {!detailSections.descriptionText &&
+                detailSections.detailEntries.length === 0 &&
+                detailSections.chipEntries.length === 0 &&
+                detailSections.longTextEntries.length === 0 &&
+                detailSections.listSections.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    No product details have been added yet.
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </section>
 
-          <section className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-blue-100 min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-blue-900 break-words">
-              {product.name}
-            </h1>
+          <section className="min-w-0">
+            <div className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+                  {product.category || "Marketplace"}
+                </span>
+              </div>
 
-            {showFlashSale ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
-                    <Zap size={14} />
-                    Flash Sale
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                    <Clock3 size={14} />
-                    {String(flashSaleCountdown.hours).padStart(2, "0")}h{" "}
-                    {String(flashSaleCountdown.minutes).padStart(2, "0")}m{" "}
-                    {String(flashSaleCountdown.seconds).padStart(2, "0")}s
+              <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+                {product.name}
+              </h1>
+
+              {seller && (sellerBusinessName || seller.is_verified) ? (
+                <div className="mt-5 rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,_rgba(239,246,255,0.92)_0%,_rgba(255,255,255,1)_100%)] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
+                      <Store size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-h-[2.75rem] flex-wrap items-center gap-2">
+                        {sellerBusinessName ? (
+                          <span className="break-words text-lg font-semibold text-slate-900">
+                            {sellerBusinessName}
+                          </span>
+                        ) : null}
+                        {seller.is_verified && <VerificationBadge />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {reviews.length > 0 && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <ReviewStars value={averageRating} compact />
+                  <span className="text-sm text-slate-500">
+                    {averageRating.toFixed(1)} rating from {reviews.length} review
+                    {reviews.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-400 line-through">
-                    {formatPrice(pricing.regularPrice)}
-                  </p>
-                  <p className="text-3xl font-bold text-orange-600">
-                    {formatPrice(pricing.displayPrice)}
-                  </p>
-                </div>
-                {isLowFlashSaleStock && (
-                  <p className="text-sm font-semibold text-orange-700">
-                    {pricing.remainingSaleQuantity} left at this price
+              )}
+
+              <div className="mt-6 rounded-[24px] border border-orange-100 bg-[linear-gradient(135deg,_rgba(255,247,237,0.98)_0%,_rgba(255,255,255,1)_100%)] p-5">
+                {showFlashSale ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+                        <Zap size={14} />
+                        Flash Sale
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                        <Clock3 size={14} />
+                        {String(flashSaleCountdown.hours).padStart(2, "0")}h{" "}
+                        {String(flashSaleCountdown.minutes).padStart(2, "0")}m{" "}
+                        {String(flashSaleCountdown.seconds).padStart(2, "0")}s
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-400 line-through">
+                        {formatPrice(pricing.regularPrice)}
+                      </p>
+                      <p className="text-3xl font-bold text-orange-600 sm:text-4xl">
+                        {formatPrice(pricing.displayPrice)}
+                      </p>
+                    </div>
+                    {isLowFlashSaleStock && (
+                      <p className="text-sm font-semibold text-orange-700">
+                        {pricing.remainingSaleQuantity} left at this price
+                      </p>
+                    )}
+                  </div>
+                ) : catalogDiscount ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-slate-400 line-through">
+                        {formatPrice(catalogDiscount.originalPrice)}
+                      </p>
+                      <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                        {catalogDiscount.discountPercent}% off
+                      </span>
+                    </div>
+                    <p className="text-3xl font-bold text-orange-600 sm:text-4xl">
+                      {formatPrice(catalogDiscount.price)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-3xl font-bold text-orange-600 sm:text-4xl">
+                    {formatPrice(product.price)}
                   </p>
                 )}
-              </div>
-            ) : (
-              <p className="text-3xl font-bold text-orange-600 mt-3">
-                {formatPrice(product.price)}
-              </p>
-            )}
 
-            <p className="mt-2 text-sm font-medium">
-              {product.stock_quantity > 0 ? (
-                <span className="text-green-600">{product.stock_quantity} in stock</span>
+                <div className="mt-5 flex flex-wrap items-center gap-2 text-sm font-medium">
+                  {product.stock_quantity > 0 ? (
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">
+                      {product.stock_quantity} in stock
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">
+                      Out of stock
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-[22px] border border-blue-100 bg-blue-50/90 p-4">
+                <p className="text-sm font-semibold text-blue-900">Delivery information</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Delivery fee is calculated automatically at checkout from the seller location to your delivery state.
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {fulfillment?.pickupLocations?.length
+                    ? `Pickup available at ${fulfillment.pickupLocations.length} location${
+                        fulfillment.pickupLocations.length === 1 ? "" : "s"
+                      }.`
+                    : "Pickup is not available for this product."}
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <Shield size={18} className="text-blue-600" />
+                  <p className="mt-3 text-sm font-semibold text-slate-900">
+                    Verified seller protection
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <Truck size={18} className="text-blue-600" />
+                  <p className="mt-3 text-sm font-semibold text-slate-900">
+                    Reliable delivery options
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <CheckCircle size={18} className="text-blue-600" />
+                  <p className="mt-3 text-sm font-semibold text-slate-900">
+                    Marketplace quality checks
+                  </p>
+                </div>
+              </div>
+
+              {!isAdmin ? (
+                <div className="mt-8 space-y-3">
+                  <button
+                    onClick={handleBuyNow}
+                    disabled={adding || product.stock_quantity <= 0}
+                    className="w-full rounded-2xl bg-orange-600 py-3.5 font-semibold text-white transition hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    Buy Now
+                  </button>
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={adding || product.stock_quantity <= 0}
+                    className="w-full rounded-2xl border border-blue-700 py-3.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
               ) : (
-                <span className="text-red-600">Out of stock</span>
+                <p className="mt-6 text-sm italic text-slate-500">
+                  You are viewing as admin. Purchasing is disabled.
+                </p>
               )}
-            </p>
-
-            {reviews.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                <ReviewStars value={averageRating} compact />
-                <span className="text-sm text-gray-600">
-                  {averageRating.toFixed(1)} ({reviews.length} review
-                  {reviews.length !== 1 ? "s" : ""})
-                </span>
-              </div>
-            )}
-
-            {seller && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm text-gray-600">Sold by:</span>
-                <span className="font-medium text-blue-900 break-words">
-                  {seller.business_name || "Seller"}
-                </span>
-                {seller.is_verified && <VerificationBadge />}
-              </div>
-            )}
-
-            <div className="mt-6 p-4 rounded-lg border border-blue-100 bg-blue-50">
-              <p className="text-sm font-semibold text-blue-900">Delivery Information</p>
-              <p className="text-sm text-gray-700 mt-1">
-                Delivery fee is calculated automatically at checkout from the seller location to your delivery state.
-              </p>
-              <p className="text-sm text-gray-700 mt-1">
-                {fulfillment?.pickupLocations?.length
-                  ? `Pickup available at ${fulfillment.pickupLocations.length} location${fulfillment.pickupLocations.length === 1 ? '' : 's'}.`
-                  : 'Pickup is not available for this product.'}
-              </p>
             </div>
-
-            <div className="mt-6 space-y-2 text-sm text-blue-800">
-              <div className="flex items-start gap-2">
-                <Shield size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                <span>Verified seller protection</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Truck size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                <span>Fast and reliable delivery</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                <span>Quality assured product</span>
-              </div>
-            </div>
-
-            {!isAdmin ? (
-              <div className="mt-8 space-y-3">
-                <button
-                  onClick={handleBuyNow}
-                  disabled={adding || product.stock_quantity <= 0}
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
-                >
-                  Buy Now
-                </button>
-                <button
-                  onClick={handleAddToCart}
-                  disabled={adding || product.stock_quantity <= 0}
-                  className="w-full border border-blue-700 text-blue-700 hover:bg-blue-50 py-3 rounded-lg font-semibold transition disabled:opacity-50"
-                >
-                  Add to Cart
-                </button>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-gray-500 italic">
-                You are viewing as admin - purchasing disabled.
-              </p>
-            )}
           </section>
         </div>
 
-        <section className="mt-10 sm:mt-12 bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
-          <div className="flex overflow-x-auto sm:grid sm:grid-cols-3 border-b border-blue-100">
-            {Object.entries(TAB_LABELS).map(([tab, label]) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`min-w-[128px] sm:min-w-0 flex-1 px-3 py-3 sm:py-4 font-semibold text-xs sm:text-sm text-center transition ${
-                  activeTab === tab
-                    ? "text-orange-600 border-b-2 border-orange-600"
-                    : "text-blue-700 hover:text-blue-900"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="p-4 sm:p-6 text-gray-700 leading-relaxed break-words">
-            {activeTab === "overview" && <p>{parsedDescription.overview}</p>}
-
-            {activeTab === "features" && (
-              <ul className="list-disc pl-5 space-y-2">
-                {parsedDescription.features.map((line, index) => (
-                  <li key={index}>{line}</li>
-                ))}
-              </ul>
-            )}
-
-            {activeTab === "specs" && (
-              <div className="space-y-2">
-                {parsedDescription.specs.map((line, index) => (
-                  <p key={index}>{line}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-10 sm:mt-12 bg-white rounded-xl border border-blue-100 shadow-sm p-4 sm:p-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-blue-900 mb-6 flex flex-wrap items-center gap-2">
-            <Star size={24} className="text-yellow-500 fill-yellow-500" />
+        <section className="mt-10 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:mt-12 sm:p-6">
+          <h2 className="mb-6 flex flex-wrap items-center gap-2 text-xl font-bold text-slate-900 sm:text-2xl">
+            <Star size={24} className="fill-yellow-500 text-yellow-500" />
             Customer Reviews
           </h2>
 
           {reviews.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">
-              No reviews yet. Be the first to review this product!
+            <p className="py-8 text-center text-slate-500">
+              No reviews yet. Be the first to review this product.
             </p>
           ) : (
             <>
               <div className="mb-6 text-center">
-                <span className="text-4xl sm:text-5xl font-bold text-gray-900">
+                <span className="text-4xl font-bold text-slate-900 sm:text-5xl">
                   {averageRating.toFixed(1)}
                 </span>
-                <span className="text-lg sm:text-xl text-gray-600"> / 5</span>
-                <div className="flex justify-center items-center gap-1 mt-2">
+                <span className="text-lg text-slate-500 sm:text-xl"> / 5</span>
+                <div className="mt-2 flex items-center justify-center gap-1">
                   <ReviewStars value={averageRating} size={24} />
                 </div>
-                <p className="text-gray-500 mt-1">
+                <p className="mt-1 text-slate-500">
                   Based on {reviews.length} review{reviews.length !== 1 ? "s" : ""}
                 </p>
               </div>
 
-              <div className="space-y-6 mt-6">
+              <div className="space-y-6">
                 {reviews.map((review, index) => (
-                  <article key={`${review.created_at}-${index}`} className="border-t pt-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <article
+                    key={`${review.created_at}-${index}`}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex flex-wrap items-center gap-2">
                         <ReviewStars value={review.rating} />
-                        <span className="text-sm font-medium text-gray-700 break-words">
+                        <span className="break-words text-sm font-medium text-slate-700">
                           {review.buyer_name}
                         </span>
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-slate-400">
                         {new Date(review.created_at).toLocaleDateString()}
                       </span>
                     </div>
 
                     {review.comment && (
-                      <p className="mt-3 text-gray-700 leading-relaxed break-words">
+                      <p className="mt-3 break-words leading-relaxed text-slate-600">
                         {review.comment}
                       </p>
                     )}
@@ -553,44 +1179,49 @@ export default function ProductDetail() {
           )}
         </section>
 
-        {showRecentlyViewed && (
-          <section className="mt-10 sm:mt-12">
-            <div className="mb-4 flex items-center gap-3">
-              <h2 className="text-lg font-bold text-blue-900 sm:text-xl">Recently viewed</h2>
-              <div className="h-px flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
+        <section className="mt-10 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:mt-12 sm:p-6">
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">Related products</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                More products from verified sellers.
+              </p>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {recentlyViewedProducts.map((recentProduct) => (
-                <button
-                  key={recentProduct.id}
-                  type="button"
-                  onClick={() => handleRecentProductOpen(recentProduct)}
-                  className="w-[150px] flex-shrink-0 overflow-hidden rounded-xl border border-blue-100 bg-white text-left shadow-sm transition-all duration-200 hover:border-orange-300 hover:shadow-md"
+            <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
+          </div>
+
+          {relatedLoading ? (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-[22px] border border-slate-200 bg-white p-3"
                 >
-                  <div className="flex h-32 items-center justify-center bg-white p-3">
-                    <img
-                      src={recentProduct.images?.[0] || "https://placehold.co/600x600"}
-                      alt={recentProduct.name}
-                      className="max-h-full max-w-full object-contain"
-                    />
-                  </div>
-                  <div className="p-3">
-                    <p className="line-clamp-2 text-sm font-semibold leading-5 text-blue-900">
-                      {recentProduct.name}
-                    </p>
-                    <p className="mt-2 text-sm font-bold text-orange-600">
-                      {formatPrice(recentProduct.price)}
-                    </p>
-                  </div>
-                </button>
+                  <div className="aspect-square animate-pulse rounded-2xl bg-slate-100" />
+                  <div className="mt-4 h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+                  <div className="mt-2 h-4 w-2/5 animate-pulse rounded bg-orange-100" />
+                </div>
               ))}
             </div>
-          </section>
-        )}
+          ) : relatedProducts.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+              No related products from verified sellers are available right now.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {relatedProducts.map((relatedProduct) => (
+                <RelatedProductCard
+                  key={relatedProduct.id}
+                  product={relatedProduct}
+                  onOpen={() => navigate(`/product/${relatedProduct.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </main>
 
       <Footer />
     </div>
   );
 }
-

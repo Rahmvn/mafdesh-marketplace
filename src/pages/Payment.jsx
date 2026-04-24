@@ -8,6 +8,10 @@ import {
   RetryablePageError,
 } from "../components/PageFeedback";
 
+function formatPrice(value) {
+  return `₦${Number(value || 0).toLocaleString()}`;
+}
+
 export default function Payment() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -42,6 +46,7 @@ export default function Payment() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       if (!token) {
         navigate("/login");
@@ -54,6 +59,7 @@ export default function Payment() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            apikey: anonKey,
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ orderId: id }),
@@ -64,17 +70,22 @@ export default function Payment() {
 
       if (!response.ok) {
         if (response.status === 409) {
+          const sellerUnavailable = String(result.error || "").includes(
+            "not active for marketplace orders"
+          );
           showGlobalWarning(
-            "Item Unavailable",
-            "Sorry, this item is no longer available. Your order could not be completed."
+            sellerUnavailable ? "Seller Unavailable" : "Item Unavailable",
+            sellerUnavailable
+              ? "This seller is not active right now, so the order could not be completed."
+              : "Sorry, this item is no longer available. Your order could not be completed."
           );
           await supabase.from("orders").delete().eq("id", id);
         } else if (response.status === 403) {
           showGlobalError("Action Not Allowed", "You are not allowed to confirm this order.");
         } else {
           showGlobalError(
-            "Payment Confirmation Failed",
-            result.error || "Payment confirmation failed. Please contact support."
+            "Order Confirmation Failed",
+            result.error || "Order confirmation failed. Please try again."
           );
         }
         navigate("/marketplace");
@@ -84,7 +95,7 @@ export default function Payment() {
       navigate(`/order-success/${id}`);
     } catch (err) {
       console.error(err);
-      showGlobalError("Payment Error", "An error occurred. Please try again.");
+      showGlobalError("Checkout Error", "An error occurred. Please try again.");
     } finally {
       setProcessing(false);
     }
@@ -122,31 +133,33 @@ export default function Payment() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md rounded-xl border border-blue-100 bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-xl font-bold text-blue-900">
-            Complete Payment
-          </h1>
+          <h1 className="mb-6 text-xl font-bold text-blue-900">Simulate Payment</h1>
 
           <div className="mb-6 space-y-2">
             <div className="flex justify-between">
               <span>Product</span>
-              <span>â‚¦{Number(order.product_price).toLocaleString()}</span>
+              <span>{formatPrice(order.product_price)}</span>
             </div>
             <div className="flex justify-between">
               <span>Delivery</span>
-              <span>â‚¦{Number(order.delivery_fee).toLocaleString()}</span>
+              <span>{formatPrice(order.delivery_fee)}</span>
             </div>
             <div className="flex justify-between border-t pt-2 font-semibold">
               <span>Total</span>
-              <span>â‚¦{Number(order.total_amount).toLocaleString()}</span>
+              <span>{formatPrice(order.total_amount)}</span>
             </div>
           </div>
+
+          <p className="mb-6 text-sm text-blue-700">
+            Test mode only. This confirms the order without charging real money.
+          </p>
 
           <button
             onClick={handlePayment}
             disabled={processing}
             className="w-full rounded-lg bg-orange-600 py-3 text-white hover:bg-orange-700 disabled:opacity-50"
           >
-            {processing ? "Processing..." : "Confirm Payment"}
+            {processing ? "Processing..." : "Simulate Payment"}
           </button>
         </div>
       </main>

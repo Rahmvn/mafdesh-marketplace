@@ -5,6 +5,7 @@ import {
   PICKUP_MODE,
   getAutoCalculatedDeliveryFee,
   getAutoDeliveryRouteType,
+  formatPickupLocationAddress,
   quoteSellerDeliveryFromContext,
   resolveProductPickupLocations,
 } from './deliveryService';
@@ -112,7 +113,16 @@ describe('deliveryService', () => {
         { id: 'product-2', pickup_mode: PICKUP_MODE.SELLER_DEFAULT },
       ],
       sellerPickupLocations: [
-        { id: 'pickup-1', label: 'Ikeja Hub', address_text: 'Ikeja City Mall', is_active: true },
+        {
+          id: 'pickup-1',
+          label: 'Ikeja Hub',
+          address_text: 'Ikeja City Mall',
+          area_name: 'Alausa',
+          city_name: 'Ikeja',
+          lga_name: 'Ikeja',
+          state_name: 'Lagos',
+          is_active: true,
+        },
       ],
       deliveryType: DELIVERY_TYPE.PICKUP,
     });
@@ -123,6 +133,8 @@ describe('deliveryService', () => {
     expect(result.pickupLocations[0]).toMatchObject({
       id: 'pickup-1',
       label: 'Ikeja Hub',
+      area_name: 'Alausa',
+      city_name: 'Ikeja',
     });
   });
 
@@ -130,8 +142,26 @@ describe('deliveryService', () => {
     const locations = resolveProductPickupLocations({
       product: { id: 'product-1', pickup_mode: PICKUP_MODE.CUSTOM },
       sellerPickupLocations: [
-        { id: 'pickup-1', label: 'Ikeja Hub', address_text: 'Ikeja City Mall', is_active: true },
-        { id: 'pickup-2', label: 'Lekki Hub', address_text: 'Lekki Phase 1', is_active: true },
+        {
+          id: 'pickup-1',
+          label: 'Ikeja Hub',
+          address_text: 'Ikeja City Mall',
+          area_name: 'Alausa',
+          city_name: 'Ikeja',
+          lga_name: 'Ikeja',
+          state_name: 'Lagos',
+          is_active: true,
+        },
+        {
+          id: 'pickup-2',
+          label: 'Lekki Hub',
+          address_text: 'Lekki Phase 1',
+          area_name: 'Admiralty Way',
+          city_name: 'Lekki',
+          lga_name: 'Eti-Osa',
+          state_name: 'Lagos',
+          is_active: true,
+        },
       ],
       pickupLinksByProduct: {
         'product-1': [{ pickup_location_id: 'pickup-2' }],
@@ -142,10 +172,25 @@ describe('deliveryService', () => {
     expect(locations[0]).toMatchObject({
       id: 'pickup-2',
       label: 'Lekki Hub',
+      area_name: 'Admiralty Way',
+      city_name: 'Lekki',
     });
   });
 
-  it('falls back to legacy pickup arrays for custom products without link records', () => {
+  it('formats pickup locations with area, city, LGA, and state', () => {
+    expect(
+      formatPickupLocationAddress({
+        address_text: 'Shop 12, Main Plaza',
+        landmark_text: 'Beside Slot',
+        area_name: 'Computer Village',
+        city_name: 'Ikeja',
+        lga_name: 'Ikeja',
+        state_name: 'Lagos',
+      })
+    ).toBe('Shop 12, Main Plaza, Beside Slot, Computer Village, Ikeja, Ikeja, Lagos');
+  });
+
+  it('filters out legacy pickup arrays that do not include required location details', () => {
     const locations = resolveProductPickupLocations({
       product: {
         id: 'product-1',
@@ -156,11 +201,6 @@ describe('deliveryService', () => {
       pickupLinksByProduct: {},
     });
 
-    expect(locations).toHaveLength(1);
-    expect(locations[0]).toMatchObject({
-      id: 'legacy:Ikeja City Mall',
-      label: 'Ikeja City Mall',
-      legacy: true,
-    });
+    expect(locations).toHaveLength(0);
   });
 });

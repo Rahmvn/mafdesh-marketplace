@@ -6,11 +6,12 @@ import Footer from '../components/FooterSlim';
 import { ArrowLeft } from 'lucide-react';
 import {
   DELIVERY_TYPE,
+  formatPickupLocationAddress,
   getProductFulfillmentOptions,
   isDeliverySchemaMissingError,
   quoteSellerDelivery,
 } from '../services/deliveryService';
-import { NIGERIAN_STATES } from '../utils/nigeriaStates';
+import { NIGERIAN_STATES, NIGERIA_LGAS } from '../utils/nigeriaData';
 import { showGlobalError, showGlobalWarning } from '../hooks/modalService';
 import {
   GenericContentSkeleton,
@@ -33,6 +34,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(true);
   const [deliveryType, setDeliveryType] = useState(DELIVERY_TYPE.DELIVERY);
   const [deliveryState, setDeliveryState] = useState('');
+  const [deliveryLga, setDeliveryLga] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [selectedPickup, setSelectedPickup] = useState('');
   const [fulfillment, setFulfillment] = useState(null);
@@ -43,7 +45,15 @@ export default function Checkout() {
   const loadProduct = useCallback(async (productId = id) => {
     const { data, error } = await supabase
       .from('products')
-      .select('*, pickup_locations')
+      .select(`
+        *,
+        pickup_locations,
+        seller:users!products_seller_id_fkey(
+          id,
+          status,
+          account_status
+        )
+      `)
       .eq('id', productId)
       .single();
 
@@ -52,6 +62,20 @@ export default function Checkout() {
       navigate('/marketplace');
       return;
     }
+
+    const sellerStatus = String(
+      data?.seller?.account_status || data?.seller?.status || 'active'
+    ).toLowerCase();
+
+    if (sellerStatus !== 'active') {
+      showGlobalWarning(
+        'Seller Unavailable',
+        'This seller is not active right now, so checkout is unavailable.'
+      );
+      navigate('/marketplace', { replace: true });
+      return;
+    }
+
     try {
       const fulfillmentOptions = await getProductFulfillmentOptions(data.id, data.seller_id);
       setFulfillment(fulfillmentOptions);
@@ -132,14 +156,26 @@ export default function Checkout() {
     }
   }, [deliveryType, fulfillment]);
 
+  useEffect(() => {
+    setDeliveryLga('');
+  }, [deliveryState]);
+
   const pricing = useMemo(() => getProductPricing(product), [product]);
   const productPrice = pricing.displayPrice;
+  const availableLgas = useMemo(
+    () => NIGERIA_LGAS[deliveryState] || [],
+    [deliveryState]
+  );
 
   const handleConfirm = async () => {
     // Validation
     if (deliveryType === DELIVERY_TYPE.DELIVERY) {
       if (!deliveryState) {
         showGlobalWarning('Delivery State Required', 'Please select a delivery state.');
+        return;
+      }
+      if (!deliveryLga) {
+        showGlobalWarning('Delivery LGA Required', 'Please select a local government area.');
         return;
       }
       if (!deliveryAddress.trim()) {
@@ -177,6 +213,10 @@ export default function Checkout() {
     const platformFee = Math.round(productPrice * 0.05);
     const totalAmount = productPrice + deliveryFee;
     const orderNumber = generateOrderNumber();
+    const fullDeliveryAddress =
+      deliveryType === DELIVERY_TYPE.DELIVERY
+        ? `${deliveryAddress.trim()}, ${deliveryLga}, ${deliveryState}`
+        : null;
 
     // Create order
     const orderPayload = {
@@ -190,7 +230,7 @@ export default function Checkout() {
       platform_fee: platformFee,
       total_amount: totalAmount,
       delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
-      delivery_address: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryAddress : null,
+      delivery_address: fullDeliveryAddress,
       delivery_type: deliveryType,
       selected_pickup_location: deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
       delivery_zone_snapshot:
@@ -201,6 +241,11 @@ export default function Checkout() {
               id: pickupLocation.id,
               label: pickupLocation.label,
               address_text: pickupLocation.address_text,
+              lga_name: pickupLocation.lga_name || null,
+              city_name: pickupLocation.city_name || null,
+              area_name: pickupLocation.area_name || null,
+              landmark_text: pickupLocation.landmark_text || null,
+              pickup_instructions: pickupLocation.pickup_instructions || null,
               state_name: pickupLocation.state_name || null,
             }
           : null,
@@ -231,7 +276,7 @@ export default function Checkout() {
           platform_fee: platformFee,
           total_amount: totalAmount,
           delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
-          delivery_address: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryAddress : null,
+          delivery_address: fullDeliveryAddress,
           delivery_type: deliveryType,
           selected_pickup_location:
             deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
@@ -244,36 +289,62 @@ export default function Checkout() {
 
     if (orderError) {
       console.error(orderError);
-      showGlobalError('Order Creation Failed', 'Failed to create order. Please try again.');
+      const orderErrorMessage = String(orderError.message || '');
+      if (orderErrorMessage.includes('not active for marketplace orders')) {
+        showGlobalWarning(
+          'Seller Unavailable',
+          'This seller is not active right now, so checkout is unavailable.'
+        );
+      } else {
+        showGlobalError('Order Creation Failed', 'Failed to create order. Please try again.');
+      }
       setIsSubmitting(false);
       return;
     }
 
     // Call edge function to confirm (stock, payment)
     try {
-      const token = sessionData.session.access_token;
+      const token = sessionData.session?.access_token;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!token) {
+        showGlobalWarning('Login Required', 'Please log in again to complete your order.');
+        setIsSubmitting(false);
+        navigate('/login');
+        return;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-order`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            apikey: anonKey,
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ orderId: order.id }),
         }
       );
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         if (response.status === 409) {
-          showGlobalWarning('Item Unavailable', 'Sorry, this item is no longer available. Order cancelled.');
+          const sellerUnavailable = String(result.error || '').includes(
+            'not active for marketplace orders'
+          );
+          showGlobalWarning(
+            sellerUnavailable ? 'Seller Unavailable' : 'Item Unavailable',
+            sellerUnavailable
+              ? 'This seller is not active right now, so the order could not be completed.'
+              : 'Sorry, this item is no longer available. Order cancelled.'
+          );
           await supabase.from('orders').delete().eq('id', order.id);
         } else {
           showGlobalError(
-            'Payment Confirmation Failed',
-            result.error || 'Payment confirmation failed. Please contact support.'
+            'Order Confirmation Failed',
+            result.error || 'Order confirmation failed. Please try again.'
           );
         }
         setIsSubmitting(false);
@@ -392,7 +463,7 @@ export default function Checkout() {
                     <option value="">Choose a pickup point</option>
                     {pickupOptions.map((loc) => (
                       <option key={loc.id} value={loc.id}>
-                        {loc.label} - {loc.address_text}
+                        {loc.label} - {formatPickupLocationAddress(loc)}
                       </option>
                     ))}
                   </select>
@@ -416,6 +487,19 @@ export default function Checkout() {
                   {NIGERIAN_STATES.map((state) => (
                     <option key={state} value={state}>
                       {state}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={deliveryLga}
+                  onChange={(e) => setDeliveryLga(e.target.value)}
+                  disabled={!deliveryState}
+                  className="w-full border border-blue-200 rounded-lg p-3 disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  <option value="">Select Local Government Area</option>
+                  {availableLgas.map((lga) => (
+                    <option key={lga} value={lga}>
+                      {lga}
                     </option>
                   ))}
                 </select>
@@ -467,10 +551,10 @@ export default function Checkout() {
               disabled={isSubmitting || !hasAvailableMethod}
               className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             >
-              {isSubmitting ? 'Processing...' : 'Confirm Order'}
+              {isSubmitting ? 'Processing...' : 'Place Test Order'}
             </button>
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Your payment is protected by Mafdesh escrow.
+              Test mode only. No real money is charged right now.
             </p>
           </div>
         </div>

@@ -22,6 +22,52 @@ function mapProductList(data) {
   );
 }
 
+function isSellerMarketplaceActive(seller) {
+  if (!seller) {
+    return false;
+  }
+
+  const accountStatus = String(
+    seller.account_status || seller.status || 'active'
+  ).toLowerCase();
+
+  return accountStatus === 'active';
+}
+
+export function getProductArchiveActionMessage(error) {
+  const message = String(error?.message || error || "");
+
+  if (message.includes("archived by admin")) {
+    return "This product was archived by admin and cannot be changed by the seller.";
+  }
+
+  if (message.includes("active orders")) {
+    return "This product cannot be archived while it has active orders.";
+  }
+
+  if (message.includes("active flash sale")) {
+    return "This product cannot be archived while it has an active flash sale.";
+  }
+
+  if (message.includes("recent purchase")) {
+    return "This product cannot be archived within 7 days of a recent purchase.";
+  }
+
+  if (message.includes("pending product edit review")) {
+    return "Resolve the pending product edit review before changing archive status.";
+  }
+
+  if (message.includes("Only approved products can be unarchived")) {
+    return "Only approved products can be unarchived.";
+  }
+
+  if (message.includes("Restock this product before unarchiving")) {
+    return "Restock this product before unarchiving it.";
+  }
+
+  return message || "Unable to change this product's archive status.";
+}
+
 export const productService = {
   async getAllProducts() {
     let query = supabase
@@ -36,6 +82,8 @@ export const productService = {
         images,
         created_at,
         users (
+          status,
+          account_status,
           business_name,
           profiles (
             full_name,
@@ -63,6 +111,8 @@ export const productService = {
           images,
           created_at,
           users (
+            status,
+            account_status,
             business_name,
             profiles (
               full_name,
@@ -76,7 +126,9 @@ export const productService = {
     }
 
     if (error) throw error;
-    return mapProductList(data);
+    return mapProductList(data).filter((product) =>
+      isSellerMarketplaceActive(product.users)
+    );
   },
 
   async getSellerProducts(userId) {

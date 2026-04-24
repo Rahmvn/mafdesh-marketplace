@@ -5,15 +5,13 @@ import {
   CheckCircle,
   Clock,
   DollarSign,
-  Filter,
   Package,
   Search,
-  Truck,
-  XCircle,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getSellerOrderPayout } from '../utils/sellerPayouts';
+import { getDeliveryDeadlineState } from '../services/sellerOrderTransitionService';
 import { showGlobalConfirm } from '../hooks/modalService';
 import {
   formatSellerCurrency,
@@ -45,25 +43,17 @@ function getStatusStyle(status, darkMode) {
   }
 }
 
-function getGroupAccent(groupKey, darkMode) {
-  const lightMap = {
-    action: 'text-orange-600',
-    transit: 'text-sky-600',
-    done: 'text-emerald-600',
-    dispute: 'text-red-600',
-    closed: 'text-slate-500',
-  };
-
-  const darkMap = {
-    action: 'text-orange-300',
-    transit: 'text-sky-300',
-    done: 'text-emerald-300',
-    dispute: 'text-red-300',
-    closed: 'text-slate-300',
-  };
-
-  return darkMode ? darkMap[groupKey] : lightMap[groupKey];
-}
+const SELLER_STATUS_OPTIONS = [
+  { value: 'ALL', label: 'All Orders' },
+  { value: 'PAID_ESCROW', label: 'Need Action' },
+  { value: 'SHIPPED', label: 'Shipped' },
+  { value: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
+  { value: 'DELIVERED', label: 'Delivered' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'DISPUTED', label: 'Disputed' },
+  { value: 'REFUNDED', label: 'Refunded' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+];
 
 export default function SellerOrders() {
   const navigate = useNavigate();
@@ -176,10 +166,8 @@ export default function SellerOrders() {
     return theme.mutedText;
   };
 
-  const filteredOrders = useMemo(() => {
+  const baseFilteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      if (statusFilter !== 'ALL' && order.status !== statusFilter) return false;
-
       const orderDate = new Date(order.created_at);
       if (dateFrom && orderDate < new Date(dateFrom)) return false;
       if (dateTo && orderDate > new Date(dateTo)) return false;
@@ -197,63 +185,41 @@ export default function SellerOrders() {
 
       return true;
     });
-  }, [dateFrom, dateTo, orderItemsMap, orders, searchTerm, statusFilter]);
+  }, [dateFrom, dateTo, orderItemsMap, orders, searchTerm]);
 
-  const summary = useMemo(() => {
-    const countByStatuses = (statuses) =>
-      filteredOrders.filter((order) => statuses.includes(order.status)).length;
+  const filteredOrders = useMemo(() => {
+    return baseFilteredOrders.filter((order) => {
+      if (statusFilter !== 'ALL' && order.status !== statusFilter) {
+        return false;
+      }
 
-    return {
-      action: countByStatuses(['PAID_ESCROW']),
-      transit: countByStatuses(['SHIPPED', 'READY_FOR_PICKUP', 'DELIVERED']),
-      completed: countByStatuses(['COMPLETED']),
-      issues: countByStatuses(['DISPUTED', 'REFUNDED', 'CANCELLED']),
-    };
-  }, [filteredOrders]);
+      return true;
+    });
+  }, [baseFilteredOrders, statusFilter]);
 
-  const hasFilters = Boolean(searchTerm || dateFrom || dateTo || statusFilter !== 'ALL');
-
-  const statusGroups = [
-    {
-      label: 'Need Action',
-      statuses: ['PAID_ESCROW'],
-      icon: Clock,
-      key: 'action',
-    },
-    {
-      label: 'In Transit',
-      statuses: ['SHIPPED', 'READY_FOR_PICKUP', 'DELIVERED'],
-      icon: Truck,
-      key: 'transit',
-    },
-    {
-      label: 'Completed',
-      statuses: ['COMPLETED'],
-      icon: CheckCircle,
-      key: 'done',
-    },
-    {
-      label: 'Disputed',
-      statuses: ['DISPUTED'],
-      icon: XCircle,
-      key: 'dispute',
-    },
-    {
-      label: 'Refunded / Cancelled',
-      statuses: ['REFUNDED', 'CANCELLED'],
-      icon: XCircle,
-      key: 'closed',
-    },
-  ];
+  const statusCounts = useMemo(() => {
+    return SELLER_STATUS_OPTIONS.reduce((accumulator, option) => {
+      accumulator[option.value] =
+        option.value === 'ALL'
+          ? baseFilteredOrders.length
+          : baseFilteredOrders.filter((order) => order.status === option.value).length;
+      return accumulator;
+    }, {});
+  }, [baseFilteredOrders]);
 
   const renderOrderCard = (order) => {
     const items = orderItemsMap[order.id] || [];
     const { displayName, image, itemCount, itemNames } = getOrderDisplayDetails(items);
     const { netEarnings, refundInfo } = getSellerOrderPayout(order, items);
+    const deliveryDeadlineState = getDeliveryDeadlineState(order, now);
 
     let deadlineText = null;
     if (order.status === 'PAID_ESCROW' && order.ship_deadline) {
       deadlineText = `Time to ship: ${formatRemaining(order.ship_deadline)}`;
+    } else if (order.status === 'SHIPPED' && order.delivery_type === 'delivery') {
+      deadlineText = order.delivery_deadline
+        ? `Time to mark delivered: ${formatRemaining(order.delivery_deadline)}`
+        : deliveryDeadlineState.message || 'Delivery deadline missing';
     } else if (order.status === 'READY_FOR_PICKUP' && order.auto_cancel_at) {
       deadlineText = `Pickup deadline: ${formatRemaining(order.auto_cancel_at)}`;
     } else if (order.status === 'DELIVERED' && order.dispute_deadline) {
@@ -263,6 +229,8 @@ export default function SellerOrders() {
     const deadlineSource =
       order.status === 'PAID_ESCROW'
         ? order.ship_deadline
+        : order.status === 'SHIPPED' && order.delivery_type === 'delivery'
+          ? order.delivery_deadline
         : order.status === 'READY_FOR_PICKUP'
           ? order.auto_cancel_at
           : order.dispute_deadline;
@@ -369,9 +337,8 @@ export default function SellerOrders() {
         theme={theme}
         eyebrow="Order controls"
         title="Scan the queue fast"
-        description="Use filters when you need them, but keep the default order view simple enough for daily work."
       >
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto_auto]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
           <div className="relative">
             <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${theme.softText}`} />
             <input
@@ -381,24 +348,6 @@ export default function SellerOrders() {
               onChange={(event) => setSearchTerm(event.target.value)}
               className={`w-full rounded-full py-3 pl-10 pr-4 text-sm ${theme.input}`}
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className={`h-4 w-4 ${theme.softText}`} />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className={`rounded-full px-4 py-3 text-sm ${theme.input}`}
-            >
-              <option value="ALL">All Orders</option>
-              <option value="PAID_ESCROW">Need Action</option>
-              <option value="SHIPPED">Shipped</option>
-              <option value="READY_FOR_PICKUP">Ready for Pickup</option>
-              <option value="DELIVERED">Delivered</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="DISPUTED">Disputed</option>
-              <option value="REFUNDED">Refunded</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -415,6 +364,45 @@ export default function SellerOrders() {
             />
           </div>
         </div>
+
+        <div className="mt-5">
+          <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
+            Choose a status
+          </p>
+          <div className="-mx-1 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex min-w-max gap-2 px-1">
+              {SELLER_STATUS_OPTIONS.map((option) => {
+                const isActive = statusFilter === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setStatusFilter(option.value)}
+                    className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      isActive ? theme.action : theme.actionGhost
+                    }`}
+                  >
+                    <span>{option.label}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        isActive
+                          ? themeState.darkMode
+                            ? 'bg-slate-950/30 text-slate-100'
+                            : 'bg-white/80 text-orange-700'
+                          : themeState.darkMode
+                            ? 'bg-slate-800 text-slate-200'
+                            : 'bg-white text-orange-700'
+                      }`}
+                    >
+                      {statusCounts[option.value] || 0}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </SellerSection>
 
       {filteredOrders.length === 0 ? (
@@ -422,40 +410,17 @@ export default function SellerOrders() {
           theme={theme}
           icon={Package}
           title="No orders found"
-          body="Try adjusting your search or filters. New seller orders will appear here as buyers place them."
+          body="Try another filter."
         />
       ) : (
-        <div className="space-y-8">
-          {statusGroups.map((group) => {
-            const groupOrders = filteredOrders.filter((order) =>
-              group.statuses.includes(order.status)
-            );
-
-            if (groupOrders.length === 0) {
-              return null;
-            }
-
-            const Icon = group.icon;
-
-            return (
-              <SellerSection
-                key={group.label}
-                theme={theme}
-                eyebrow="Order stage"
-                title={group.label}
-                description={`${groupOrders.length} order${groupOrders.length === 1 ? '' : 's'} in this part of the workflow.`}
-              >
-                <div className="mb-5 flex items-center gap-2">
-                  <Icon className={`h-5 w-5 ${getGroupAccent(group.key, themeState.darkMode)}`} />
-                  <span className={`text-sm font-semibold ${getGroupAccent(group.key, themeState.darkMode)}`}>
-                    {group.label}
-                  </span>
-                </div>
-                <div className="space-y-4">{groupOrders.map(renderOrderCard)}</div>
-              </SellerSection>
-            );
-          })}
-        </div>
+        <SellerSection
+          theme={theme}
+          eyebrow="Filtered queue"
+          title={SELLER_STATUS_OPTIONS.find((option) => option.value === statusFilter)?.label || 'Orders'}
+          description={`${filteredOrders.length} order${filteredOrders.length === 1 ? '' : 's'}`}
+        >
+          <div className="space-y-4">{filteredOrders.map(renderOrderCard)}</div>
+        </SellerSection>
       )}
     </SellerShell>
   );

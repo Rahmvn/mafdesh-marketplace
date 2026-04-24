@@ -1,11 +1,25 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Filter, Clock, User, Eye } from "lucide-react";
+import { Search, Clock, User, Eye } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
 import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
+
+const ADMIN_STATUS_OPTIONS = [
+  { value: "ALL", label: "All" },
+  { value: "ADMIN_HOLD", label: "Admin Hold" },
+  { value: "PENDING", label: "Pending Payment" },
+  { value: "PAID_ESCROW", label: "Paid Escrow" },
+  { value: "SHIPPED", label: "Shipped" },
+  { value: "READY_FOR_PICKUP", label: "Ready for Pickup" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "DISPUTED", label: "Disputed" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "REFUNDED", label: "Refunded" },
+];
 
 function AdminPageSkeleton() {
   return (
@@ -50,12 +64,10 @@ export default function AdminOrders() {
   const [now, setNow] = useState(new Date());
 
   const loadOrders = useCallback(
-    async (filter = null, showLoading = true) => {
+    async (showLoading = true) => {
       if (showLoading) {
         setLoading(true);
       }
-
-      const activeFilter = filter !== null ? filter : statusFilter;
 
       let query = supabase
         .from("orders")
@@ -76,10 +88,6 @@ export default function AdminOrders() {
           dispute_deadline
         `)
         .order("created_at", { ascending: false });
-
-      if (activeFilter !== "ALL") {
-        query = query.eq("status", activeFilter);
-      }
 
       const { data, error } = await query;
 
@@ -142,10 +150,38 @@ export default function AdminOrders() {
         };
       });
 
-      setOrders(merged);
+      const orderIds = merged.map((order) => order.id).filter(Boolean);
+      let activeHoldByOrderId = {};
+
+      if (orderIds.length > 0) {
+        const { data: holdRows, error: holdError } = await supabase
+          .from("order_admin_holds")
+          .select("id, order_id, source_type, trigger_action, reason, status, created_at")
+          .in("order_id", orderIds)
+          .eq("status", "active")
+          .order("created_at", { ascending: false });
+
+        if (holdError) {
+          console.error("Admin hold load error:", holdError);
+        } else {
+          activeHoldByOrderId = (holdRows || []).reduce((map, hold) => {
+            if (!map[hold.order_id]) {
+              map[hold.order_id] = hold;
+            }
+            return map;
+          }, {});
+        }
+      }
+
+      setOrders(
+        merged.map((order) => ({
+          ...order,
+          admin_hold: activeHoldByOrderId[order.id] || null,
+        }))
+      );
       setLoading(false);
     },
-    [statusFilter]
+    []
   );
 
   useEffect(() => {
@@ -155,13 +191,17 @@ export default function AdminOrders() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      loadOrders(null, false);
+      loadOrders(false);
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, [loadOrders]);
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status, hasAdminHold = false) => {
+    if (hasAdminHold) {
+      return "bg-amber-100 text-amber-700";
+    }
+
     switch (status) {
       case "PENDING":
       case "PENDING_PAYMENT":
@@ -186,6 +226,14 @@ export default function AdminOrders() {
   };
 
   const filteredOrders = orders.filter((order) => {
+    if (statusFilter === "ADMIN_HOLD") {
+      if (!order.admin_hold) {
+        return false;
+      }
+    } else if (statusFilter !== "ALL" && order.status !== statusFilter) {
+      return false;
+    }
+
     if (!searchTerm) {
       return true;
     }
@@ -201,6 +249,16 @@ export default function AdminOrders() {
     );
   });
 
+  const statusCounts = ADMIN_STATUS_OPTIONS.reduce((accumulator, option) => {
+    accumulator[option.value] =
+      option.value === "ALL"
+        ? orders.length
+        : option.value === "ADMIN_HOLD"
+          ? orders.filter((order) => order.admin_hold).length
+          : orders.filter((order) => order.status === option.value).length;
+    return accumulator;
+  }, {});
+
   if (loading) {
     return <AdminPageSkeleton />;
   }
@@ -214,43 +272,51 @@ export default function AdminOrders() {
           <p className="text-gray-600">Manage and monitor all platform orders</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-wrap gap-4 items-center">
-          <div className="flex-1 min-w-[220px] relative">
-            <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={18}
-            />
-            <input
-              type="text"
-              placeholder="Search by order #, product, buyer, seller..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex-1 min-w-[220px] relative">
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={18}
+              />
+              <input
+                type="text"
+                placeholder="Search by order #, product, buyer, seller..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter size={18} className="text-gray-500" />
-            <select
-              value={statusFilter}
-              onChange={async (event) => {
-                const newFilter = event.target.value;
-                setStatusFilter(newFilter);
-                await loadOrders(newFilter);
-              }}
-              className="border border-gray-300 rounded-lg p-2 text-sm w-full sm:w-auto"
-            >
-              <option value="ALL">All Orders</option>
-              <option value="PENDING">Pending Payment</option>
-              <option value="PAID_ESCROW">Paid Escrow</option>
-              <option value="SHIPPED">Shipped</option>
-              <option value="READY_FOR_PICKUP">Ready for Pickup</option>
-              <option value="DELIVERED">Delivered</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="DISPUTED">Disputed</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="REFUNDED">Refunded</option>
-            </select>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 mb-3">
+                Filter by status
+              </p>
+              <div className="-mx-1 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex min-w-max gap-2 px-1">
+                  {ADMIN_STATUS_OPTIONS.map((option) => {
+                    const isActive = statusFilter === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setStatusFilter(option.value)}
+                        className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          isActive
+                            ? "bg-orange-600 text-white"
+                            : "bg-orange-50 text-orange-700 hover:bg-orange-100"
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? "bg-white/20 text-white" : "bg-white text-orange-700"}`}>
+                          {statusCounts[option.value] || 0}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -302,12 +368,16 @@ export default function AdminOrders() {
                     </div>
                     <span
                       className={`shrink-0 px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                        order.status
+                        order.status,
+                        Boolean(order.admin_hold)
                       )}`}
                     >
-                      {order.status.replaceAll("_", " ")}
+                      {order.admin_hold ? "ADMIN HOLD" : order.status.replaceAll("_", " ")}
                     </span>
                   </div>
+                  {order.admin_hold ? (
+                    <p className="mt-2 text-xs text-amber-700">{order.admin_hold.reason}</p>
+                  ) : null}
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                     <div>
@@ -437,11 +507,17 @@ export default function AdminOrders() {
                       <td className="p-3">
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                            order.status
+                            order.status,
+                            Boolean(order.admin_hold)
                           )}`}
                         >
-                          {order.status.replaceAll("_", " ")}
+                          {order.admin_hold ? "ADMIN HOLD" : order.status.replaceAll("_", " ")}
                         </span>
+                        {order.admin_hold ? (
+                          <p className="mt-2 max-w-xs text-xs text-amber-700">
+                            {order.admin_hold.reason}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="p-3">
                         {deadlineText ? (

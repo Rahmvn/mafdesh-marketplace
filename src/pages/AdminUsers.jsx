@@ -149,9 +149,33 @@ export default function AdminUsers() {
     loadUsers();
   }, [loadUsers]);
 
-  const openStatusAction = (user) => {
+  const openStatusAction = async (user) => {
     const currentStatus = user.status === "suspended" ? "suspended" : "active";
     const willSuspend = currentStatus === "active";
+    let activeOrderCount = 0;
+    let pendingPayoutCount = 0;
+
+    if (willSuspend && user.role === "seller") {
+      try {
+        const [ordersResult, payoutResult] = await Promise.all([
+          supabase
+            .from("orders")
+            .select("id", { count: "exact", head: true })
+            .eq("seller_id", user.id)
+            .not("status", "in", "(COMPLETED,REFUNDED,CANCELLED)"),
+          supabase
+            .from("seller_payouts")
+            .select("id", { count: "exact", head: true })
+            .eq("seller_id", user.id)
+            .neq("status", "PAID"),
+        ]);
+
+        activeOrderCount = Number(ordersResult.count || 0);
+        pendingPayoutCount = Number(payoutResult.count || 0);
+      } catch (error) {
+        console.error("Suspension impact summary error:", error);
+      }
+    }
 
     setPendingAction({
       kind: "status",
@@ -165,7 +189,9 @@ export default function AdminUsers() {
       confirmTone: willSuspend ? "danger" : "success",
       confirmationKeyword: willSuspend ? "SUSPEND" : "",
       riskNotice: willSuspend
-        ? "Suspension immediately blocks account access. This flow now prevents admins from suspending themselves or other admins."
+        ? user.role === "seller"
+          ? `Suspension immediately blocks seller access, hides listings, freezes ${activeOrderCount} active order${activeOrderCount === 1 ? "" : "s"}, and holds ${pendingPayoutCount} pending payout${pendingPayoutCount === 1 ? "" : "s"}.`
+          : "Suspension immediately blocks account access. This flow now prevents admins from suspending themselves or other admins."
         : "",
     });
   };

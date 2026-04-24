@@ -13,6 +13,7 @@ import {
   Menu,
   Moon,
   Package,
+  RotateCcw,
   Search,
   Settings,
   Shield,
@@ -26,6 +27,8 @@ import {
 import { supabase } from '../supabaseClient';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { readCachedCartCount } from '../utils/cartStorage';
+import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
+import NotificationBell from './NotificationBell';
 
 function ThemeToggleButton({ darkMode, onToggle, compact, isDarkTheme }) {
   const buttonClass = isDarkTheme
@@ -58,6 +61,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   );
   const [cartCount, setCartCount] = useState(() => readCachedCartCount());
   const [actionRequiredCount, setActionRequiredCount] = useState(0);
+  const [adminCounts, setAdminCounts] = useState({ refunds: 0 });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -110,6 +114,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     { to: '/admin/dashboard', label: 'Dashboard', icon: Settings },
     { to: '/admin/orders', label: 'Orders', icon: ShoppingCart },
     { to: '/admin/disputes', label: 'Disputes', icon: AlertCircle },
+    { to: '/admin/refund-requests', label: 'Refund Requests', icon: RotateCcw, badgeKey: 'refunds' },
     { to: '/admin/products', label: 'Products', icon: Package },
     { to: '/admin/users', label: 'Users', icon: Users },
     { to: '/admin/constitution', label: 'Constitution', icon: BookOpen },
@@ -187,6 +192,16 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     }
   }
 
+  async function loadAdminCounts() {
+    try {
+      const refundCount = await fetchPendingRefundRequestCount();
+      setAdminCounts({ refunds: refundCount });
+    } catch (error) {
+      console.error('Admin counts error:', error);
+      setAdminCounts({ refunds: 0 });
+    }
+  }
+
   useEffect(() => {
     let timeoutId;
 
@@ -197,6 +212,8 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
           loadBuyerActionCount(storedUser.id);
         } else if (storedUser.role === 'seller') {
           loadSellerActionCount(storedUser.id);
+        } else if (storedUser.role === 'admin') {
+          loadAdminCounts();
         }
       }, 0);
     }
@@ -412,19 +429,22 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               )}
 
               {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAdminNavOpen((current) => !current);
-                    setShowUserMenu(false);
-                  }}
-                  className={adminTriggerClass}
-                  aria-expanded={adminNavOpen}
-                  aria-controls="admin-side-nav"
-                >
-                  {adminNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-                  <span>Admin Menu</span>
-                </button>
+                <>
+                  <NotificationBell user={storedUser} theme={theme} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminNavOpen((current) => !current);
+                      setShowUserMenu(false);
+                    }}
+                    className={adminTriggerClass}
+                    aria-expanded={adminNavOpen}
+                    aria-controls="admin-side-nav"
+                  >
+                    {adminNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                    <span>Admin Menu</span>
+                  </button>
+                </>
               )}
 
               {isBuyer && (
@@ -440,6 +460,10 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                       </span>
                     )}
                   </Link>
+                  <Link to="/buyer/payments" className={buyerIconButtonClass} aria-label="Payments">
+                    <Wallet className="h-5 w-5" />
+                  </Link>
+                  <NotificationBell user={storedUser} theme={theme} />
                   <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
                     <ShoppingCart className="h-5 w-5" />
                     {cartCount > 0 && (
@@ -456,21 +480,24 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
               {!isAdmin && !isBuyer && (
                 <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUserMenu((current) => !current);
-                      setAdminNavOpen(false);
-                    }}
-                    className={isBuyer
-                      ? `inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors ${navLinkClass}`
-                      : `flex items-center space-x-2 transition-colors ${navLinkClass}`}
-                  >
-                    <div className={`rounded-full p-1.5 ${iconBadgeClass}`}>
-                      <User className="h-5 w-5" />
-                    </div>
-                    {!isBuyer && <ChevronDown className="h-4 w-4" />}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <NotificationBell user={storedUser} theme={theme} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu((current) => !current);
+                        setAdminNavOpen(false);
+                      }}
+                      className={isBuyer
+                        ? `inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors ${navLinkClass}`
+                        : `flex items-center space-x-2 transition-colors ${navLinkClass}`}
+                    >
+                      <div className={`rounded-full p-1.5 ${iconBadgeClass}`}>
+                        <User className="h-5 w-5" />
+                      </div>
+                      {!isBuyer && <ChevronDown className="h-4 w-4" />}
+                    </button>
+                  </div>
 
                   {showUserMenu && (
                     <div className={`absolute right-0 z-50 mt-2 w-56 rounded-lg py-1 shadow-lg ${menuPanelClass}`}>
@@ -552,20 +579,24 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
           <div className="flex shrink-0 items-center gap-2 xl:hidden">
             {isBuyer ? (
-              <Link
-                to="/cart"
-                className={buyerIconButtonClass}
-                aria-label="Cart"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                {cartCount > 0 && (
-                  <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                    {cartCount}
-                  </span>
-                )}
-              </Link>
+              <>
+                <NotificationBell user={storedUser} theme={theme} />
+                <Link
+                  to="/cart"
+                  className={buyerIconButtonClass}
+                  aria-label="Cart"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {cartCount > 0 && (
+                    <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                      {cartCount}
+                    </span>
+                  )}
+                </Link>
+              </>
             ) : (
               <>
+            <NotificationBell user={storedUser} theme={theme} />
             {themeToggle && (
               <ThemeToggleButton
                 darkMode={themeToggle.darkMode}
@@ -680,7 +711,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       )}
       {isBuyer && (
         <div className={`fixed inset-x-0 bottom-0 z-40 border-t xl:hidden ${mobilePanelClass}`}>
-          <div className="grid grid-cols-4 gap-1 px-3 py-2">
+          <div className="grid grid-cols-5 gap-1 px-3 py-2">
             <Link to="/marketplace" className={buyerBottomTabClass}>
               <Home className="h-5 w-5" />
               <span>Home</span>
@@ -695,6 +726,10 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 )}
               </div>
               <span>Orders</span>
+            </Link>
+            <Link to="/buyer/payments" className={buyerBottomTabClass}>
+              <Wallet className="h-5 w-5" />
+              <span>Payments</span>
             </Link>
             <Link to="/profile" className={buyerBottomTabClass}>
               <User className="h-5 w-5" />
@@ -744,6 +779,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 {adminLinks.map((item) => {
                   const Icon = item.icon;
                   const isActive = isAdminPathActive(item.to);
+                  const badgeCount = item.badgeKey ? adminCounts[item.badgeKey] || 0 : 0;
 
                   return (
                     <Link
@@ -755,7 +791,12 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                       onClick={closeMenus}
                     >
                       <Icon className="mr-3 h-5 w-5" />
-                      {item.label}
+                      <span>{item.label}</span>
+                      {badgeCount > 0 && (
+                        <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+                          {badgeCount}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

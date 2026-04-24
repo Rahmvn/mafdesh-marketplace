@@ -24,6 +24,7 @@ const SellerPayments = lazy(() => import('./pages/SellerPayments'));
 const SellerAnalytics = lazy(() => import('./pages/SellerAnalytics'));
 const SellerDeliverySettings = lazy(() => import('./pages/SellerDeliverySettings'));
 const AddProduct = lazy(() => import('./pages/AddProduct'));
+const AddProductPreview = lazy(() => import('./pages/seller/AddProductPreview'));
 const EditProduct = lazy(() => import('./pages/EditProduct'));
 const SellerProductReviews = lazy(() => import('./pages/SellerProductReviews'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -38,6 +39,7 @@ const BuyerOrderDetails = lazy(() => import('./pages/BuyerOrderDetails'));
 const AdminOrders = lazy(() => import('./pages/AdminOrders.jsx'));
 const AdminOrderDetails = lazy(() => import('./pages/AdminOrderDetails'));
 const AdminDisputes = lazy(() => import('./pages/AdminDisputes'));
+const AdminRefundRequests = lazy(() => import('./pages/AdminRefundRequests'));
 const BuyerDispute = lazy(() => import('./pages/BuyerDispute.jsx'));
 const AdminConstitution = lazy(() => import('./pages/AdminConstitution'));
 const Policies = lazy(() => import('./pages/policies.jsx'));
@@ -49,6 +51,8 @@ const AdminBankApprovals = lazy(() => import('./pages/AdminBankApprovals'));
 const OrderSuccessMultiple = lazy(() => import('./pages/OrderSuccessMultiple'));
 const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const AdminAuditLog = lazy(() => import('./pages/AdminAuditLog'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const BuyerPayments = lazy(() => import('./pages/BuyerPayments'));
 
 function RouteFallback() {
   return <MarketplaceRouteLoader />;
@@ -90,6 +94,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Support />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <Notifications />
               </ProtectedRoute>
             }
           />
@@ -155,6 +167,22 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['seller']}>
                 <AddProduct />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/seller/products/add"
+            element={
+              <ProtectedRoute allowedRoles={['seller']}>
+                <AddProduct />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/seller/products/add/preview"
+            element={
+              <ProtectedRoute allowedRoles={['seller']}>
+                <AddProductPreview />
               </ProtectedRoute>
             }
           />
@@ -240,6 +268,14 @@ export default function App() {
             }
           />
           <Route
+            path="/admin/refund-requests"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminRefundRequests />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/constitution"
             element={
               <AdminRoute>
@@ -290,13 +326,25 @@ export default function App() {
           />
           <Route
             path="/checkout/multi"
-            element={<MultiCheckout />}
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <MultiCheckout />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/orders"
             element={
               <ProtectedRoute allowedRoles={['buyer']}>
                 <BuyerOrders />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/buyer/payments"
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <BuyerPayments />
               </ProtectedRoute>
             }
           />
@@ -336,7 +384,14 @@ export default function App() {
           <Route path="/policies" element={<Policies />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/order-success/:id" element={<OrderSuccess />} />
-          <Route path="/order-success/multiple" element={<OrderSuccessMultiple />} />
+          <Route
+            path="/order-success/multiple"
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <OrderSuccessMultiple />
+              </ProtectedRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

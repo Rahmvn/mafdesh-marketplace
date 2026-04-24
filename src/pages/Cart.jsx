@@ -12,6 +12,83 @@ import {
 } from "../utils/cartStorage";
 import { getProductPricing } from "../utils/flashSale";
 
+const CART_PRODUCT_BASE_FIELDS = `
+  id,
+  name,
+  price,
+  images,
+  stock_quantity,
+  seller_id,
+  category,
+  description
+`;
+
+const CART_PRODUCT_OPTIONAL_FIELDS = `
+  sale_price,
+  sale_start,
+  sale_end,
+  sale_quantity_limit,
+  sale_quantity_sold,
+  is_flash_sale
+`;
+
+function isMissingColumnError(error, columnNames = []) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42703" &&
+    (columnNames.length === 0 ||
+      columnNames.some((columnName) => message.includes(String(columnName).toLowerCase())))
+  );
+}
+
+async function loadCartItemsWithFallback(cartId) {
+  const { data, error } = await supabase
+    .from("cart_items")
+    .select(`
+      *,
+      products (
+        ${CART_PRODUCT_BASE_FIELDS},
+        ${CART_PRODUCT_OPTIONAL_FIELDS}
+      )
+    `)
+    .eq("cart_id", cartId);
+
+  if (!error) {
+    return data || [];
+  }
+
+  if (!isMissingColumnError(error, ["sale_price", "sale_start", "sale_end", "sale_quantity_limit", "sale_quantity_sold", "is_flash_sale"])) {
+    throw error;
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from("cart_items")
+    .select(`
+      *,
+      products (
+        ${CART_PRODUCT_BASE_FIELDS}
+      )
+    `)
+    .eq("cart_id", cartId);
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+
+  return (fallbackData || []).map((item) => ({
+    ...item,
+    products: {
+      sale_price: null,
+      sale_start: null,
+      sale_end: null,
+      sale_quantity_limit: null,
+      sale_quantity_sold: null,
+      is_flash_sale: false,
+      ...(item.products || {}),
+    },
+  }));
+}
+
 export default function Cart() {
   const navigate = useNavigate();
   const [cartItems, setCartItems] = useState(() => readCachedCartItems());
@@ -60,30 +137,10 @@ export default function Cart() {
       return;
     }
 
-    const { data: items, error } = await supabase
-      .from("cart_items")
-      .select(`
-        *,
-        products (
-          id,
-          name,
-          price,
-          sale_price,
-          sale_start,
-          sale_end,
-          sale_quantity_limit,
-          sale_quantity_sold,
-          is_flash_sale,
-          images,
-          stock_quantity,
-          seller_id,
-          category,
-          description
-        )
-      `)
-      .eq("cart_id", cart.id);
-
-    if (error) {
+    let items = [];
+    try {
+      items = await loadCartItemsWithFallback(cart.id);
+    } catch (error) {
       console.error(error);
       setLoading(false);
       return;

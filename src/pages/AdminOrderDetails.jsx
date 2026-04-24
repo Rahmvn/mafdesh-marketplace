@@ -18,6 +18,13 @@ import {
   getCurrentAdminUser,
   performAdminAction,
 } from "../services/adminActionService";
+import {
+  fetchOrderAdminHolds,
+  getActiveOrderAdminHold,
+  getOrderAdminHoldDescription,
+  getOrderAdminHoldTitle,
+  resolveOrderAdminHold,
+} from "../services/orderAdminHoldService";
 import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
 
 function AdminPageSkeleton() {
@@ -114,6 +121,7 @@ export default function AdminOrderDetails() {
   const [buyer, setBuyer] = useState(null);
   const [seller, setSeller] = useState(null);
   const [evidence, setEvidence] = useState([]);
+  const [adminHolds, setAdminHolds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [buyerHistory, setBuyerHistory] = useState(null);
@@ -124,6 +132,9 @@ export default function AdminOrderDetails() {
   const [notes, setNotes] = useState("");
   const [resolving, setResolving] = useState(false);
   const [resolutionModalOpen, setResolutionModalOpen] = useState(false);
+  const [holdResolutionType, setHoldResolutionType] = useState("continue_order");
+  const [holdResolutionNotes, setHoldResolutionNotes] = useState("");
+  const [resolvingHold, setResolvingHold] = useState(false);
   const { showSuccess, showError, showWarning, ModalComponent } = useModal();
 
   useEffect(() => {
@@ -226,7 +237,7 @@ export default function AdminOrderDetails() {
             .maybeSingle(),
           supabase
             .from("users")
-            .select("id, email, phone_number")
+            .select("id, email, phone_number, status, account_status, business_name")
             .eq("id", orderData.seller_id)
             .maybeSingle(),
           supabase
@@ -255,6 +266,7 @@ export default function AdminOrderDetails() {
       setBuyer({ ...buyerUser, ...buyerProfile });
       setSeller({ ...sellerUser, ...sellerProfile });
       setEvidence(evidenceUrls);
+      setAdminHolds(await fetchOrderAdminHolds(id).catch(() => []));
 
       await Promise.all([
         loadUserHistory(orderData.buyer_id, "buyer"),
@@ -271,6 +283,26 @@ export default function AdminOrderDetails() {
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`admin-order-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${id}` },
+        () => loadOrder()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_admin_holds", filter: `order_id=eq.${id}` },
+        () => loadOrder()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, loadOrder]);
 
   const formatRemaining = (deadline) => {
     if (!deadline) {
@@ -446,6 +478,38 @@ export default function AdminOrderDetails() {
 
   const deliverySnapshot = order.delivery_zone_snapshot || null;
   const pickupSnapshot = order.pickup_location_snapshot || null;
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const sellerAccountActive =
+    String(seller?.account_status || seller?.status || "active").toLowerCase() === "active";
+
+  const handleResolveHeldOrder = async () => {
+    if (!activeAdminHold) {
+      return;
+    }
+
+    if (!holdResolutionType) {
+      showWarning("Resolution Required", "Select how this held order should be resolved.");
+      return;
+    }
+
+    setResolvingHold(true);
+    try {
+      await resolveOrderAdminHold(
+        activeAdminHold.id,
+        holdResolutionType,
+        holdResolutionNotes.trim()
+      );
+      setHoldResolutionType("continue_order");
+      setHoldResolutionNotes("");
+      showSuccess("Hold Resolved", "Moderation hold updated successfully.");
+      await loadOrder();
+    } catch (error) {
+      console.error("Resolve hold error:", error);
+      showError("Resolution Failed", error.message || "Failed to resolve this moderation hold.");
+    } finally {
+      setResolvingHold(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -463,6 +527,67 @@ export default function AdminOrderDetails() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
+          {activeAdminHold ? (
+            <section className="bg-amber-50 border border-amber-200 p-6 rounded-lg md:col-span-2">
+              <h2 className="font-semibold mb-3 text-amber-900 flex items-center gap-2">
+                <AlertCircle size={20} />
+                {getOrderAdminHoldTitle(activeAdminHold)}
+              </h2>
+              <p className="text-sm text-amber-800">
+                {getOrderAdminHoldDescription(activeAdminHold)}
+              </p>
+              <p className="mt-3 text-sm text-amber-900">
+                <strong>Reason:</strong> {activeAdminHold.reason}
+              </p>
+              <p className="mt-1 text-sm text-amber-900">
+                <strong>Triggered by:</strong> {activeAdminHold.trigger_action.replaceAll("_", " ")}
+              </p>
+              <p className="mt-1 text-sm text-amber-900">
+                <strong>Created:</strong> {new Date(activeAdminHold.created_at).toLocaleString()}
+              </p>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <select
+                  value={holdResolutionType}
+                  onChange={(event) => setHoldResolutionType(event.target.value)}
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="continue_order">Continue order</option>
+                  <option value="refund_order">Refund order</option>
+                  <option value="cancel_order">Cancel order</option>
+                </select>
+                <input
+                  type="text"
+                  value={holdResolutionNotes}
+                  onChange={(event) => setHoldResolutionNotes(event.target.value)}
+                  placeholder="Resolution notes"
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleResolveHeldOrder}
+                  disabled={
+                    resolvingHold ||
+                    (holdResolutionType === "continue_order" &&
+                      activeAdminHold.trigger_action === "SUSPEND_USER" &&
+                      !sellerAccountActive)
+                  }
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resolvingHold ? "Saving..." : "Resolve Hold"}
+                </button>
+              </div>
+
+              {holdResolutionType === "continue_order" &&
+              activeAdminHold.trigger_action === "SUSPEND_USER" &&
+              !sellerAccountActive ? (
+                <p className="mt-3 text-sm text-red-700">
+                  Reactivate the seller account before continuing this held order.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
           <section className="bg-white p-6 rounded-lg border">
             <h2 className="font-semibold mb-4 text-blue-900 flex items-center gap-2">
               <DollarSign size={20} className="text-orange-600" />
@@ -596,6 +721,21 @@ export default function AdminOrderDetails() {
               </p>
               <p>
                 <strong>Address:</strong> {pickupSnapshot?.address_text || "N/A"}
+              </p>
+              <p>
+                <strong>LGA:</strong> {pickupSnapshot?.lga_name || pickupSnapshot?.lga || "N/A"}
+              </p>
+              <p>
+                <strong>City:</strong> {pickupSnapshot?.city_name || pickupSnapshot?.city || "N/A"}
+              </p>
+              <p>
+                <strong>Area:</strong> {pickupSnapshot?.area_name || pickupSnapshot?.area || "N/A"}
+              </p>
+              <p>
+                <strong>Landmark:</strong> {pickupSnapshot?.landmark_text || pickupSnapshot?.landmark || "N/A"}
+              </p>
+              <p>
+                <strong>Pickup Instructions:</strong> {pickupSnapshot?.pickup_instructions || "N/A"}
               </p>
               <p>
                 <strong>State:</strong> {pickupSnapshot?.state_name || "N/A"}

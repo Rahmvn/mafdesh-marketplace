@@ -1,55 +1,163 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, CreditCard, Truck } from 'lucide-react';
+import { ArrowLeft, Check, CreditCard, Search, Truck } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import { productService } from '../services/productService';
-import { PRODUCT_CATEGORIES } from '../utils/categories';
-import { supabase } from '../supabaseClient';
 import Footer from '../components/FooterSlim';
 import useModal from '../hooks/useModal';
-import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
-import { v4 as uuidv4 } from 'uuid';
-import ProductPreviewModal from '../components/ProductPreviewModal';
 import {
-  getSellerPickupLocations,
-  PICKUP_MODE,
-} from '../services/deliveryService';
+  formatSellerCurrency,
+  getSellerThemeClasses,
+  useSellerTheme,
+} from '../components/seller/SellerShell';
+import ProductImageGrid from '../components/seller/add-product/ProductImageGrid';
+import ProductAttributeForm from '../components/seller/ProductAttributeForm';
+import { PRODUCT_CATEGORIES } from '../utils/categories';
+import {
+  ADD_PRODUCT_DRAFT_KEY,
+  ADD_PRODUCT_STEPS,
+  calculatePlatformFee,
+  calculateSellingPrice,
+  calculateSellerReceives,
+  clearAddProductPreviewCache,
+  getAddProductPreviewCache,
+  getDraftPayload,
+  getInitialAddProductFormData,
+  hasDraftContent,
+  loadSellerAddProductContext,
+  parseDraftPayload,
+  setAddProductPreviewCache,
+  validateAddProductForm,
+} from '../utils/addProductFlow';
+
+const ADD_PRODUCT_PREVIEW_ROUTE = '/seller/products/add/preview';
+
+function FieldError({ message }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="mt-2 text-sm text-orange-600">{message}</p>;
+}
+
+function BankDetailsRequiredPanel({ theme, navigate }) {
+  return (
+    <div className="flex-1 flex items-center justify-center px-4">
+      <div className={`w-full max-w-md rounded-xl p-8 text-center ${theme.panel}`}>
+        <div className="mb-4 flex justify-center">
+          <CreditCard className="h-16 w-16 text-orange-500" />
+        </div>
+        <h2 className="mb-2 text-2xl font-bold">Bank Details Required</h2>
+        <p className={`mb-6 text-sm leading-7 ${theme.mutedText}`}>
+          Add bank details before listing products. Admin will review them for payouts.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/profile')}
+          className={`rounded-lg px-6 py-3 font-semibold transition-colors ${theme.actionPrimary}`}
+        >
+          Go to Profile to Add Bank Details
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StepIndicator({ currentStep, theme, darkMode }) {
+  return (
+    <div className={`rounded-2xl p-4 sm:p-5 ${theme.panelMuted}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {ADD_PRODUCT_STEPS.map((step, index) => {
+          const isCompleted = step.id < currentStep;
+          const isActive = step.id === currentStep;
+
+          return (
+            <React.Fragment key={step.id}>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold ${
+                    isCompleted
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : isActive
+                        ? 'border-orange-500 bg-orange-500 text-white'
+                        : darkMode
+                          ? 'border-slate-700 bg-slate-900 text-slate-400'
+                          : 'border-slate-200 bg-white text-slate-400'
+                  }`}
+                >
+                  {isCompleted ? <Check className="h-5 w-5" /> : step.id}
+                </span>
+                <div>
+                  <p
+                    className={`text-xs font-semibold uppercase tracking-[0.18em] ${
+                      isActive || isCompleted ? 'text-orange-500' : theme.softText
+                    }`}
+                  >
+                    Step {step.id}
+                  </p>
+                  <p className={`text-sm font-semibold ${isActive ? 'text-orange-600' : ''}`}>
+                    {step.label}
+                  </p>
+                </div>
+              </div>
+
+              {index < ADD_PRODUCT_STEPS.length - 1 ? (
+                <div className={`hidden flex-1 items-center sm:flex ${theme.softText}`}>
+                  <span className="mx-3 text-lg">{'->'}</span>
+                </div>
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function AddProduct() {
   const navigate = useNavigate();
+  const previewCacheRef = useRef();
+
+  if (previewCacheRef.current === undefined) {
+    previewCacheRef.current = getAddProductPreviewCache();
+  }
+
+  const restoredPreviewCache = previewCacheRef.current;
   const [currentUser, setCurrentUser] = useState(() =>
     JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
   );
-  const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
   const [checkingBank, setCheckingBank] = useState(true);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState(null);
+  const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
   const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    category: '',
-    price: '',
-    stock: '',
-    overview: '',
-    features: '',
-    specs: '',
-    images: [null, null, null, null, null],
-    pickupEnabled: false,
-  });
-
+  const [formData, setFormData] = useState(() =>
+    restoredPreviewCache || getInitialAddProductFormData()
+  );
   const [errors, setErrors] = useState({});
-  const [isUploading, setIsUploading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
   const [categorySearch, setCategorySearch] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [savedDraft, setSavedDraft] = useState(null);
+  const [draftPromptVisible, setDraftPromptVisible] = useState(false);
+  const [draftChoiceResolved, setDraftChoiceResolved] = useState(Boolean(restoredPreviewCache));
+  const categoryDropdownRef = useRef(null);
+
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
-  const { showSuccess, showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
+  const { showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 
-  const filteredCategories = PRODUCT_CATEGORIES.filter(cat =>
-    cat.toLowerCase().includes(categorySearch.toLowerCase())
-  );
+  const filteredCategories = useMemo(() => {
+    return PRODUCT_CATEGORIES.filter((category) =>
+      category.toLowerCase().includes(categorySearch.toLowerCase())
+    );
+  }, [categorySearch]);
+  const sellingPrice = calculateSellingPrice(formData.marketPrice, formData.discountPercent);
+  const platformFee = calculatePlatformFee(sellingPrice);
+  const sellerReceives = calculateSellerReceives(sellingPrice);
+
+  useEffect(() => {
+    if (restoredPreviewCache) {
+      clearAddProductPreviewCache();
+    }
+  }, [restoredPreviewCache]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -60,37 +168,22 @@ export default function AddProduct() {
         return;
       }
 
-      const userData = JSON.parse(storedUser);
-      if (userData.role !== 'seller') {
+      const parsedUser = JSON.parse(storedUser);
+      if (parsedUser.role !== 'seller') {
         showError('Access Denied', 'Only sellers can add products.');
         navigate('/login');
         return;
       }
 
-      setCurrentUser(userData);
+      setCurrentUser(parsedUser);
 
-      // Fetch the user's bank details and approval status
       try {
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', userData.id)
-          .single();
-
-        if (error || !user) {
-          throw new Error('User not found');
-        }
-
-        // Determine if bank details exist and are approved
-        setCurrentUser(user);
-        const pickupLocations = await getSellerPickupLocations(user.id).catch(() => []);
-        setSellerPickupLocations(pickupLocations);
-
-        const hasBankDetails = user.bank_name && user.account_number;
-        const isApproved = user.bank_details_approved === true;
-        setBankDetailsApproved(hasBankDetails && isApproved);
-      } catch (err) {
-        console.error('Error fetching bank details approval:', err);
+        const context = await loadSellerAddProductContext(parsedUser.id);
+        setCurrentUser(context.user);
+        setSellerPickupLocations(context.pickupLocations);
+        setBankDetailsApproved(context.bankDetailsApproved);
+      } catch (error) {
+        console.error('Error fetching bank details approval:', error);
         setBankDetailsApproved(false);
       } finally {
         setCheckingBank(false);
@@ -100,132 +193,479 @@ export default function AddProduct() {
     checkAuth();
   }, [navigate, showError]);
 
-  const handleImageChange = (index, file) => {
-    if (!file) return;
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(event.target)
+      ) {
+        setShowCategoryDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restoredPreviewCache) {
+      return;
+    }
+
+    const storedDraft = parseDraftPayload(localStorage.getItem(ADD_PRODUCT_DRAFT_KEY));
+    if (storedDraft && hasDraftContent(storedDraft)) {
+      setSavedDraft(storedDraft);
+      setDraftPromptVisible(true);
+      return;
+    }
+
+    setDraftChoiceResolved(true);
+  }, [restoredPreviewCache]);
+
+  useEffect(() => {
+    if (!draftChoiceResolved) {
+      return;
+    }
+
+    if (hasDraftContent(formData)) {
+      localStorage.setItem(ADD_PRODUCT_DRAFT_KEY, getDraftPayload(formData));
+      return;
+    }
+
+    localStorage.removeItem(ADD_PRODUCT_DRAFT_KEY);
+  }, [draftChoiceResolved, formData]);
+
+  const clearErrorFields = (fieldNames) => {
+    setErrors((previousErrors) => {
+      let hasChange = false;
+      const nextErrors = { ...previousErrors };
+
+      fieldNames.forEach((fieldName) => {
+        if (nextErrors[fieldName]) {
+          delete nextErrors[fieldName];
+          hasChange = true;
+        }
+      });
+
+      return hasChange ? nextErrors : previousErrors;
+    });
+  };
+
+  const updateFormField = (name, value) => {
+    setFormData((previousData) => ({
+      ...previousData,
+      [name]: value,
+    }));
+  };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    updateFormField(name, value);
+    clearErrorFields([name]);
+  };
+
+  const handleImageSelect = (index, file) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      showWarning('Invalid File Type', 'Please upload image files only.');
+      return;
+    }
+
     if (file.size > 3 * 1024 * 1024) {
       showWarning('Image Too Large', 'Each image must be less than 3MB.');
       return;
     }
 
-    const updatedImages = [...formData.images];
-    updatedImages[index] = file;
-    setFormData(prev => ({ ...prev, images: updatedImages }));
-  };
+    setFormData((previousData) => {
+      const nextImages = [...previousData.images];
+      nextImages[index] = file;
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const validate = () => {
-    const newErrors = {};
-    const requiredImages = formData.images.slice(0, 3);
-
-    if (!formData.name.trim() || formData.name.trim().length < 5) {
-      newErrors.name = 'Product name must be at least 5 characters';
-    }
-    if (formData.name.toLowerCase().includes('test')) {
-      newErrors.name = 'Invalid product name';
-    }
-    if (!formData.overview || formData.overview.length < 40) {
-      newErrors.overview = 'Overview must be at least 40 characters';
-    }
-    if (!formData.features || formData.features.split('\n').length < 3) {
-      newErrors.features = 'Add at least 3 key features';
-    }
-    if (!formData.category) {
-      newErrors.category = 'Category is required';
-    }
-    if (!formData.price || isNaN(formData.price) || parseFloat(formData.price) <= 0) {
-      newErrors.price = 'Enter a valid price';
-    }
-    if (!formData.stock || parseInt(formData.stock) < 0) {
-      newErrors.stock = 'Enter valid stock quantity';
-    }
-    if (requiredImages.some(img => img === null)) {
-      newErrors.images = 'At least 3 images are required';
-    }
-    if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
-      newErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const confirmUpload = async () => {
-    try {
-      if (!validate() || !currentUser) return;
-
-      setIsUploading(true);
-
-      const uploadedUrls = [];
-
-      for (let i = 0; i < formData.images.length; i++) {
-        const file = formData.images[i];
-        if (!file) continue;
-
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${currentUser.id}/${uuidv4()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('product-images')
-          .upload(fileName, file, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage
-          .from('product-images')
-          .getPublicUrl(fileName);
-
-        uploadedUrls.push(data.publicUrl);
-      }
-
-      const fullDescription = `
-${formData.overview}
-
-Key Features:
-${formData.features}
-
-Specifications:
-${formData.specs}
-`.trim();
-
-      const productData = {
-        description: fullDescription,
-        seller_id: currentUser.id,
-        name: formData.name.trim(),
-        category: formData.category,
-        price: parseFloat(formData.price),
-        stock_quantity: parseInt(formData.stock),
-        is_approved: false,
-        images: uploadedUrls,
-        delivery_enabled: true,
-        pickup_mode: formData.pickupEnabled ? PICKUP_MODE.SELLER_DEFAULT : PICKUP_MODE.DISABLED,
-        pickup_locations: [],
+      return {
+        ...previousData,
+        images: nextImages,
       };
+    });
+    clearErrorFields(['images']);
+  };
 
-      await productService.createProduct(productData);
-      showSuccess('Product Submitted', 'Product submitted successfully. It is now pending admin approval.');
-      navigate('/seller/products');
-    } catch (err) {
-      console.error(err);
-      showError('Upload Failed', 'Upload failed. Please try again.');
-    } finally {
-      setIsUploading(false);
+  const handleImageRemove = (index) => {
+    setFormData((previousData) => {
+      const nextImages = [...previousData.images];
+      nextImages[index] = null;
+
+      return {
+        ...previousData,
+        images: nextImages,
+      };
+    });
+    clearErrorFields(['images']);
+  };
+
+  const handleResumeDraft = () => {
+    if (!savedDraft) {
+      return;
     }
+
+    setFormData(savedDraft);
+    setCurrentStep(1);
+    setErrors({});
+    setDraftPromptVisible(false);
+    setDraftChoiceResolved(true);
+  };
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(ADD_PRODUCT_DRAFT_KEY);
+    setSavedDraft(null);
+    setDraftPromptVisible(false);
+    setDraftChoiceResolved(true);
+    setFormData(getInitialAddProductFormData());
+    setCurrentStep(1);
+    setErrors({});
+  };
+
+  const validateStep = (step) => {
+    const nextErrors = validateAddProductForm(formData, sellerPickupLocations, step);
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(currentStep)) {
+      return;
+    }
+
+    setCurrentStep((previousStep) => Math.min(previousStep + 1, ADD_PRODUCT_STEPS.length));
   };
 
   const handlePreview = () => {
-    if (!validate()) return;
-    setPreviewData(formData);
-    setShowPreview(true);
+    if (!validateStep('all')) {
+      return;
+    }
+
+    setAddProductPreviewCache(formData);
+    navigate(ADD_PRODUCT_PREVIEW_ROUTE, {
+      state: {
+        formData,
+        previewUrls: [],
+      },
+    });
   };
 
-  // If bank details are not approved, show message and link to profile
+  const renderStepContent = () => {
+    if (currentStep === 1) {
+      return (
+        <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+              Step 1
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Basic Info</h2>
+            <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+              Name, category, pricing, and stock.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Product Name <span className="text-orange-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g., Wireless Headphones"
+                className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                  errors.name ? 'border-orange-500 focus:border-orange-500' : ''
+                }`}
+              />
+              <FieldError message={errors.name} />
+            </div>
+
+            <div ref={categoryDropdownRef} className="relative">
+              <label className="mb-2 block text-sm font-semibold">
+                Category <span className="text-orange-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={showCategoryDropdown ? categorySearch : formData.category}
+                  onChange={(event) => {
+                    setCategorySearch(event.target.value);
+                    setShowCategoryDropdown(true);
+                    clearErrorFields(['category']);
+                  }}
+                  onFocus={() => {
+                    setCategorySearch(formData.category || '');
+                    setShowCategoryDropdown(true);
+                  }}
+                  placeholder="Search categories..."
+                  className={`w-full rounded-xl px-4 py-3 pr-11 text-sm ${theme.input} ${
+                    errors.category ? 'border-orange-500 focus:border-orange-500' : ''
+                  }`}
+                />
+                <Search className={`absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 ${theme.softText}`} />
+              </div>
+
+              {showCategoryDropdown ? (
+                <div className={`absolute z-20 mt-2 w-full overflow-hidden rounded-xl ${theme.panelSoft}`}>
+                  <div className="max-h-60 overflow-auto py-2">
+                    {filteredCategories.length > 0 ? (
+                      filteredCategories.map((category) => (
+                        <button
+                         key={category}
+                          type="button"
+                          onClick={() => {
+                            updateFormField('category', category);
+                            setFormData((previousData) => ({
+                              ...previousData,
+                              category,
+                              attributes: {},
+                            }));
+                            setCategorySearch('');
+                            setShowCategoryDropdown(false);
+                            clearErrorFields(['category']);
+                          }}
+                          className={`w-full px-4 py-3 text-left text-sm transition ${theme.rowHover}`}
+                        >
+                          {category}
+                        </button>
+                      ))
+                    ) : (
+                      <div className={`px-4 py-3 text-sm ${theme.mutedText}`}>No categories found</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              <FieldError message={errors.category} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold">
+                  Market Price (₦) <span className="text-orange-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  name="marketPrice"
+                  value={formData.marketPrice}
+                  onChange={handleChange}
+                  min="1"
+                  step="1"
+                  placeholder="What the product normally costs"
+                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                    errors.marketPrice ? 'border-orange-500 focus:border-orange-500' : ''
+                  }`}
+                />
+                <FieldError message={errors.marketPrice} />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold">
+                  Discount percentage (optional)
+                </label>
+                <input
+                  type="number"
+                  name="discountPercent"
+                  value={formData.discountPercent}
+                  onChange={handleChange}
+                  min="1"
+                  step="1"
+                  max="70"
+                  placeholder="1 - 70"
+                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                    errors.discountPercent ? 'border-orange-500 focus:border-orange-500' : ''
+                  }`}
+                />
+                <FieldError message={errors.discountPercent} />
+              </div>
+            </div>
+
+            <div className={`rounded-xl border p-4 ${theme.panelMuted}`}>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em]">
+                Pricing Summary
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className={theme.softText}>Buyer pays</span>
+                  <span className="font-semibold">
+                    {sellingPrice != null ? formatSellerCurrency(sellingPrice) : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className={theme.softText}>Mafdesh fee (5%)</span>
+                  <span className="font-semibold text-red-500">
+                    {platformFee != null ? `- ${formatSellerCurrency(platformFee)}` : '—'}
+                  </span>
+                </div>
+                <div className={`border-t pt-2 ${theme.softText}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">You receive</span>
+                    <span className="text-lg font-bold text-orange-500">
+                      {sellerReceives != null ? formatSellerCurrency(sellerReceives) : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {formData.discountPercent ? (
+                <div className="mt-3 border-t pt-3">
+                  <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                    {formData.discountPercent}% off market price
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Stock Quantity <span className="text-orange-500">*</span>
+              </label>
+              <input
+                type="number"
+                name="stock"
+                value={formData.stock}
+                onChange={handleChange}
+                min="0"
+                step="1"
+                placeholder="e.g., 50"
+                className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                  errors.stock ? 'border-orange-500 focus:border-orange-500' : ''
+                }`}
+              />
+              <FieldError message={errors.stock} />
+            </div>
+
+            <div>
+              <label className="mb-3 block text-sm font-semibold">Delivery and Pickup</label>
+              <div className={`space-y-4 rounded-2xl border p-4 ${theme.panelMuted}`}>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+                    <Truck className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="font-semibold">Delivery is included automatically</p>
+                    <p className={`mt-1 text-sm leading-6 ${theme.mutedText}`}>
+                      Delivery fee is auto-calculated from your ship-from state to the buyer's
+                      state.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-3 rounded-xl border border-transparent p-1">
+                  <input
+                    type="checkbox"
+                    checked={formData.pickupEnabled}
+                    onChange={(event) => {
+                      updateFormField('pickupEnabled', event.target.checked);
+                      clearErrorFields(['pickupEnabled']);
+                    }}
+                    className="mt-1"
+                  />
+                  <div>
+                    <p className="font-semibold">Enable pickup for this product</p>
+                  </div>
+                </label>
+
+                {formData.pickupEnabled && sellerPickupLocations.length === 0 ? (
+                  <div className={`rounded-xl border border-dashed p-4 ${theme.empty}`}>
+                    <p className="text-sm leading-6">Add a seller pickup location first.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/seller/delivery')}
+                      className="mt-3 text-sm font-semibold text-orange-600 underline underline-offset-2"
+                    >
+                      Open delivery settings
+                    </button>
+                  </div>
+                ) : null}
+
+                {formData.pickupEnabled && sellerPickupLocations.length > 0 ? (
+                  <p className={`text-sm ${theme.mutedText}`}>
+                    Pickup will use {sellerPickupLocations.length} active seller location
+                    {sellerPickupLocations.length === 1 ? '' : 's'}.
+                  </p>
+                ) : null}
+
+                <FieldError message={errors.pickupEnabled} />
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (currentStep === 2) {
+      return (
+        <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+              Step 2
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Images</h2>
+            <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+              First 3 images required. First image is the main photo.
+            </p>
+          </div>
+
+          <ProductImageGrid
+            images={formData.images}
+            darkMode={themeState.darkMode}
+            error={errors.images}
+            onSelect={handleImageSelect}
+            onRemove={handleImageRemove}
+          />
+
+          <div className={`mt-5 rounded-xl border p-4 ${theme.panelMuted}`}>
+            <p className="text-sm font-semibold">Image requirements</p>
+            <ul className={`mt-2 space-y-2 text-sm ${theme.mutedText}`}>
+              <li>Minimum 3 images required</li>
+              <li>Max 3MB per image</li>
+            </ul>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+        <div className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Step 3</p>
+          <h2 className="mt-2 text-2xl font-bold">Product Details</h2>
+          <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+            {formData.category
+              ? `Fill in your ${formData.category} product details.`
+              : 'Select a category in Step 1 to see product fields.'}
+          </p>
+        </div>
+
+        <ProductAttributeForm
+          category={formData.category}
+          values={formData.attributes}
+          onChange={(key, value) => {
+            setFormData((prev) => ({
+              ...prev,
+              attributes: { ...prev.attributes, [key]: value },
+            }));
+            clearErrorFields([`attr_${key}`]);
+          }}
+          errors={Object.fromEntries(
+            Object.entries(errors)
+              .filter(([k]) => k.startsWith('attr_'))
+              .map(([k, v]) => [k.replace('attr_', ''), v])
+          )}
+          darkMode={themeState.darkMode}
+        />
+      </section>
+    );
+  };
+
   if (!checkingBank && !bankDetailsApproved) {
     return (
       <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
@@ -234,30 +674,13 @@ ${formData.specs}
           themeToggle={
             themeState.canToggleTheme
               ? {
-                darkMode: themeState.darkMode,
-                onToggle: themeState.toggleTheme,
-              }
+                  darkMode: themeState.darkMode,
+                  onToggle: themeState.toggleTheme,
+                }
               : null
           }
         />
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className={`rounded-xl p-8 max-w-md w-full text-center ${theme.panel}`}>
-            <div className="flex justify-center mb-4">
-              <CreditCard className="w-16 h-16 text-orange-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-blue-900 mb-2">Bank Details Required</h2>
-            <p className="text-blue-700 mb-6">
-              To list products on Mafdesh, you must first provide your bank account details for payouts.
-              Your details will be reviewed by an admin.
-            </p>
-            <button
-              onClick={() => navigate('/profile')}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              Go to Profile to Add Bank Details
-            </button>
-          </div>
-        </div>
+        <BankDetailsRequiredPanel theme={theme} navigate={navigate} />
         <Footer />
         <ModalComponent />
       </div>
@@ -271,316 +694,131 @@ ${formData.specs}
         themeToggle={
           themeState.canToggleTheme
             ? {
-              darkMode: themeState.darkMode,
-              onToggle: themeState.toggleTheme,
-            }
+                darkMode: themeState.darkMode,
+                onToggle: themeState.toggleTheme,
+              }
             : null
         }
       />
 
-      <div className="flex-1 px-4 py-6 max-w-4xl mx-auto w-full">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
         <button
+          type="button"
           onClick={() => navigate('/seller/products')}
-          className={`flex items-center gap-2 mb-6 font-semibold transition-colors ${theme.actionGhost}`}
+          className={`mb-6 inline-flex items-center gap-2 self-start rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${theme.actionGhost}`}
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="h-5 w-5" />
           Back to Products
         </button>
 
-        {!checkingBank && (
-          <div className={`rounded-lg p-6 ${theme.panel}`}>
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-blue-900 mb-2">Add New Product</h1>
-              <p className="text-sm text-blue-600">Fill in the details below to list your product on the marketplace.</p>
-            </div>
-
-            <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Product Name <span className="text-orange-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="e.g., Wireless Headphones"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.name ? 'border-orange-500' : 'border-blue-200'
-                  }`}
-              />
-              {errors.name && <p className="text-sm text-orange-600 mt-1">{errors.name}</p>}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative">
-                <label className="block text-sm font-semibold text-blue-900 mb-2">
-                  Category <span className="text-orange-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={showCategoryDropdown ? categorySearch : formData.category}
-                    onChange={(e) => {
-                      setCategorySearch(e.target.value);
-                      setShowCategoryDropdown(true);
-                    }}
-                    onFocus={() => setShowCategoryDropdown(true)}
-                    placeholder="Search categories..."
-                    className="w-full px-4 py-2 pr-10 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400" />
-                </div>
-
-                {showCategoryDropdown && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-blue-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {filteredCategories.length > 0 ? (
-                      filteredCategories.map(cat => (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, category: cat }));
-                            setCategorySearch('');
-                            setShowCategoryDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors text-sm text-blue-900"
-                        >
-                          {cat}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-4 py-2 text-sm text-blue-600">No categories found</div>
-                    )}
-                  </div>
-                )}
-                {errors.category && <p className="text-sm text-orange-600 mt-1">{errors.category}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-blue-900 mb-2">
-                  Price (₦) <span className="text-orange-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="price"
-                  value={formData.price}
-                  onChange={handleChange}
-                  placeholder="e.g., 15000 or ₦15,000"
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.price ? 'border-orange-500' : 'border-blue-200'
-                    }`}
-                />
-                {errors.price && <p className="text-sm text-orange-600 mt-1">{errors.price}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Stock Quantity <span className="text-orange-500">*</span>
-              </label>
-              <input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                placeholder="e.g., 50"
-                min="0"
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 ${errors.stock ? 'border-orange-500' : 'border-blue-200'
-                  }`}
-              />
-              {errors.stock && <p className="text-sm text-orange-600 mt-1">{errors.stock}</p>}
-            </div>
-
-            {/* Fulfillment Configuration */}
-            <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-3">
-                Delivery and Pickup
-              </label>
-
-              <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <div>
-                  <div className="flex items-start gap-3">
-                    <div>
-                      <span className="flex items-center gap-2 font-semibold text-blue-900">
-                        <Truck className="h-4 w-4 text-orange-500" />
-                        Delivery is included automatically
-                      </span>
-                      <p className="text-sm text-blue-700">
-                        Buyers can always request delivery. The platform calculates the fee automatically from your ship-from state to their delivery state.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.pickupEnabled}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          pickupEnabled: event.target.checked,
-                        }))
-                      }
-                      className="mt-1"
-                    />
-                    <div>
-                      <span className="font-semibold text-blue-900">
-                        Enable pickup for this product
-                      </span>
-                      <p className="text-sm text-blue-700">
-                        Buyers who choose pickup will see your seller pickup locations.
-                      </p>
-                    </div>
-                  </label>
-                  {formData.pickupEnabled && sellerPickupLocations.length === 0 && (
-                    <div className="mt-3 rounded-lg border border-dashed border-orange-300 bg-white p-4 text-sm text-orange-700">
-                      <p>No active seller pickup locations yet. Add them from the seller delivery page first.</p>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/seller/delivery')}
-                        className="mt-3 font-semibold text-orange-700 underline underline-offset-2"
-                      >
-                        Open delivery settings
-                      </button>
-                    </div>
-                  )}
-                  {formData.pickupEnabled && sellerPickupLocations.length > 0 && (
-                    <p className="mt-3 text-sm text-blue-700">
-                      Pickup will use {sellerPickupLocations.length} active seller location{sellerPickupLocations.length === 1 ? '' : 's'}.
+        {!checkingBank ? (
+          <div className="space-y-6">
+            {draftPromptVisible ? (
+              <div className={`rounded-2xl border p-4 sm:p-5 ${theme.badge}`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">You have an unsaved draft. Resume?</p>
+                    <p className="mt-1 text-sm">
+                      Restore your saved product details and continue where you left off.
                     </p>
-                  )}
-                  {errors.pickupEnabled && (
-                    <p className="text-sm text-orange-600 mt-1">{errors.pickupEnabled}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Product Images <span className="text-orange-500">*</span>
-              </label>
-              <div className="space-y-4">
-                <p className="text-sm text-blue-600">
-                  Upload at least 3 images. First image will be the main display.
-                </p>
-
-                {formData.images.map((img, index) => (
-                  <div key={index}>
-                    <label className="block text-sm font-semibold text-blue-900 mb-1">
-                      {index === 0
-                        ? "Main Image (Required)"
-                        : index < 3
-                          ? `Image ${index + 1} (Required)`
-                          : `Image ${index + 1} (Optional)`}
-                    </label>
-
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleImageChange(index, e.target.files[0])}
-                    />
-                    {img && (
-                      <img
-                        src={URL.createObjectURL(img)}
-                        alt="preview"
-                        className="w-full max-h-[500px] object-contain rounded-lg border bg-white mt-2"
-                      />
-                    )}
                   </div>
-                ))}
-                {errors.images && <p className="text-sm text-orange-600 mt-1">{errors.images}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-blue-900 mb-2">
-                Product Description <span className="text-orange-500">*</span>
-              </label>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-blue-900 mb-2">
-                    Product Overview *
-                  </label>
-                  <textarea
-                    name="overview"
-                    value={formData.overview}
-                    onChange={handleChange}
-                    placeholder="Clearly explain what this product is..."
-                    rows="3"
-                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-                  />
-                  {errors.overview && <p className="text-sm text-orange-600 mt-1">{errors.overview}</p>}
-                  <p className="text-xs text-blue-600 mt-1">{formData.overview.length} characters</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-blue-900 mb-2">
-                    Key Features * (List at least 3)
-                  </label>
-                  <textarea
-                    name="features"
-                    value={formData.features}
-                    onChange={handleChange}
-                    placeholder={`• Feature 1\n• Feature 2\n• Feature 3`}
-                    rows="4"
-                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-                  />
-                  {errors.features && <p className="text-sm text-orange-600 mt-1">{errors.features}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-blue-900 mb-2">
-                    Specifications (Optional)
-                  </label>
-                  <textarea
-                    name="specs"
-                    value={formData.specs}
-                    onChange={handleChange}
-                    placeholder="Size, weight, material, compatibility..."
-                    rows="3"
-                    className="w-full px-4 py-2 border border-blue-200 rounded-lg"
-                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleResumeDraft}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${theme.actionPrimary}`}
+                    >
+                      Resume
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDiscardDraft}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${theme.action}`}
+                    >
+                      Discard
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : null}
 
-            {/* preview modal moved to bottom of page to render outside the form */}
+            <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                    Seller Workspace
+                  </p>
+                  <h1 className="mt-2 text-3xl font-bold tracking-tight">Add New Product</h1>
+                  <p className={`mt-3 max-w-2xl text-sm leading-7 ${theme.mutedText}`}>
+                    Build your listing and preview it before submission.
+                  </p>
+                </div>
+                <div className={`rounded-xl px-4 py-3 text-sm ${theme.panelMuted}`}>
+                  Step {currentStep} of {ADD_PRODUCT_STEPS.length}
+                </div>
+              </div>
+            </section>
 
-            <div className="flex gap-4 pt-4">
-              <button
-                onClick={() => navigate('/seller/products')}
-                disabled={isUploading}
-                className="px-6 py-3 border-2 border-blue-300 text-blue-700 font-semibold rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handlePreview}
-                disabled={isUploading}
-                className="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors shadow-md disabled:opacity-50"
-              >
-                {isUploading ? 'Uploading...' : 'Preview Product'}
-              </button>
-            </div>
+            <StepIndicator
+              currentStep={currentStep}
+              theme={theme}
+              darkMode={themeState.darkMode}
+            />
+
+            {renderStepContent()}
+
+            <div className={`flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:justify-between ${theme.panel}`}>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAddProductPreviewCache();
+                    navigate('/seller/products');
+                  }}
+                  className={`rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${theme.action}`}
+                >
+                  Cancel
+                </button>
+
+                {currentStep > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep((previousStep) => Math.max(previousStep - 1, 1))}
+                    className={`rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${theme.action}`}
+                  >
+                    Back
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="flex gap-3">
+                {currentStep < ADD_PRODUCT_STEPS.length ? (
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${theme.actionPrimary}`}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePreview}
+                    className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${theme.actionPrimary}`}
+                  >
+                    Preview Product
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
-
-      {showPreview && (
-        <ProductPreviewModal
-          previewData={previewData}
-          onClose={() => setShowPreview(false)}
-          onConfirm={confirmUpload}
-          isUploading={isUploading}
-        />
-      )}
 
       <Footer />
       <ModalComponent />
     </div>
   );
 }
+
+

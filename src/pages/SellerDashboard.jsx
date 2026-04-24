@@ -321,19 +321,16 @@ export default function SellerDashboard() {
   const quickActions = [
     {
       label: 'Add product',
-      description: 'Create a new listing or refresh your catalog.',
       href: '/seller/products/new',
       icon: Plus,
     },
     {
       label: 'Review orders',
-      description: 'See orders waiting for shipping, pickup, or delivery follow-up.',
       href: '/seller/orders',
       icon: Truck,
     },
     {
       label: 'Check payouts',
-      description: 'Open payments and see what is pending or already paid.',
       href: '/seller/payments',
       icon: Wallet,
     },
@@ -351,7 +348,7 @@ export default function SellerDashboard() {
       themeState={themeState}
       showHeader
       title="Seller Dashboard"
-      subtitle="Check what needs attention, jump into orders, and keep your listings in shape."
+      subtitle="Orders, products, and payouts at a glance."
       actions={
         <button
           type="button"
@@ -368,7 +365,6 @@ export default function SellerDashboard() {
           theme={theme}
           label="Active listings"
           value={stats.activeListings}
-          note="Products buyers can purchase today."
           icon={Store}
           accentClass="bg-gradient-to-br from-orange-500 to-orange-600"
           indicator={renderStatIndicator(
@@ -382,7 +378,6 @@ export default function SellerDashboard() {
           theme={theme}
           label="Need attention"
           value={stats.needsAttention}
-          note="Orders waiting for your next seller action."
           icon={Clock3}
           accentClass="bg-gradient-to-br from-amber-500 to-orange-500"
           indicator={renderStatIndicator(
@@ -396,7 +391,6 @@ export default function SellerDashboard() {
           theme={theme}
           label="In transit"
           value={stats.inTransit}
-          note="Orders already moving through delivery or pickup."
           icon={Truck}
           accentClass="bg-gradient-to-br from-sky-500 to-blue-600"
           indicator={renderStatIndicator(
@@ -410,7 +404,6 @@ export default function SellerDashboard() {
           theme={theme}
           label="Completed"
           value={stats.completed}
-          note="Orders fully closed out on your side."
           icon={CheckCircle2}
           accentClass="bg-gradient-to-br from-emerald-500 to-green-600"
           indicator={renderStatIndicator(
@@ -427,7 +420,6 @@ export default function SellerDashboard() {
           theme={theme}
           eyebrow="Today"
           title="What needs your attention"
-          description="The dashboard should help you decide what to do next in a few seconds."
         >
           <div className="grid gap-3">
             {priorities.map((item) => {
@@ -480,7 +472,6 @@ export default function SellerDashboard() {
           theme={theme}
           eyebrow="Quick actions"
           title="Get back to work"
-          description="Use the common paths without digging through the rest of the workspace."
         >
           <div className="grid gap-3">
             {!currentUser?.is_verified && (
@@ -506,8 +497,7 @@ export default function SellerDashboard() {
                       </span>
                       <h3 className="mt-4 text-xl font-bold">Become a verified seller</h3>
                       <p className={`mt-2 max-w-md text-sm leading-6 ${theme.mutedText}`}>
-                        Add a stronger trust signal to your storefront, unlock theme control,
-                        and make your workspace feel more complete for repeat selling.
+                        Add a verified badge and theme access.
                       </p>
                     </div>
                     <div
@@ -536,10 +526,7 @@ export default function SellerDashboard() {
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className={`text-sm ${theme.mutedText}`}>
-                      Ready when you want a more trusted storefront presence.
-                    </p>
+                  <div className="flex flex-wrap items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => navigate('/seller/verification')}
@@ -572,9 +559,6 @@ export default function SellerDashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{action.label}</p>
-                    <p className={`mt-1 text-sm leading-6 ${theme.mutedText}`}>
-                      {action.description}
-                    </p>
                   </div>
                   <ArrowRight className={`mt-1 h-4 w-4 flex-shrink-0 ${theme.softText}`} />
                 </button>
@@ -589,7 +573,6 @@ export default function SellerDashboard() {
           theme={theme}
           eyebrow="Recent orders"
           title="Latest order activity"
-          description="The newest orders stay visible here so you can spot movement quickly."
           action={
             <button
               type="button"
@@ -606,7 +589,6 @@ export default function SellerDashboard() {
               theme={theme}
               icon={Package}
               title="No recent orders yet"
-              body="When buyers place orders, the latest ones will appear here."
             />
           ) : (
             <div className="space-y-3">
@@ -662,7 +644,6 @@ export default function SellerDashboard() {
           theme={theme}
           eyebrow="Catalog"
           title="Listings to keep an eye on"
-          description="Your products should be just as easy to scan as your orders."
           action={
             <button
               type="button"
@@ -679,7 +660,6 @@ export default function SellerDashboard() {
               theme={theme}
               icon={Store}
               title="No products listed yet"
-              body="Add your first listing to start selling."
               action={
                 <button
                   type="button"

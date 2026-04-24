@@ -54,3 +54,21 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/submit-product-edit-request/deno.json"
 entrypoint = "./functions/submit-product-edit-request/index.ts"
+
+[functions.finalize-multi-seller-checkout]
+enabled = true
+verify_jwt = true
+import_map = "./functions/finalize-multi-seller-checkout/deno.json"
+entrypoint = "./functions/finalize-multi-seller-checkout/index.ts"
+
+[functions.get-order-counterparty]
+enabled = true
+verify_jwt = false
+import_map = "./functions/get-order-counterparty/deno.json"
+entrypoint = "./functions/get-order-counterparty/index.ts"
+
+[functions.notify-flash-sale-ending]
+enabled = true
+verify_jwt = false
+import_map = "./functions/notify-flash-sale-ending/deno.json"
+entrypoint = "./functions/notify-flash-sale-ending/index.ts"

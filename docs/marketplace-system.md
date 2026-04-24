@@ -75,6 +75,20 @@ Alternate endings:
    - `REFUNDED` with partial refund: seller payout is reduced by the refund amount
    - `CANCELLED`: seller receives `0`
 
+## Product Archive Rules
+
+Seller archive is a seller-controlled pause for a listing. It hides the product from buyers but keeps order history, product snapshots, reviews, and audit history intact.
+
+A seller can archive only their own product, and only when the product has no active orders, no active flash sale, no purchase within the recent-purchase protection window, and no pending product edit review. Sellers cannot hard-delete products or directly update `deleted_at`; archive and unarchive must go through the database RPCs.
+
+Admin archive is a moderation removal. If `deleted_by_admin_id` or `deletion_reason` is set, the seller cannot archive, unarchive, or otherwise restore the listing. Only admin moderation can restore an admin-archived product.
+
+## Pickup Location Rules
+
+Seller pickup locations use standardized location parts. State and LGA must be selected from platform-controlled options; sellers cannot type arbitrary LGA names. Required pickup fields are exact address, state, LGA, city or town, and particular area or neighbourhood. Display name, nearby landmark, and pickup instructions are optional.
+
+The database also enforces standard state/LGA pairs for new or edited pickup locations so client-side bypasses cannot create free-form LGA values.
+
 ## Admin Flow
 
 1. Admin monitors platform activity from admin orders, disputes, users, support, and audit views.
@@ -139,6 +153,7 @@ Alternate endings:
 ## Timers and Rules
 
 - `ship_deadline`: seller gets 48 hours after payment confirmation to ship or prepare the order.
+- `delivery_deadline`: delivery orders get 7 days after the seller marks them shipped to be marked delivered.
 - `auto_cancel_at`: pickup orders get a 48-hour pickup window after the seller marks them ready.
 - `dispute_deadline`: delivery orders get a 72-hour buyer review/dispute window after the seller marks them delivered.
 - Automatic backend processing currently handles:
@@ -152,4 +167,4 @@ Alternate endings:
 - This document follows the implemented app flow first, especially the buyer, seller, admin, and Supabase function behavior.
 - Some older policy or constitution copy mentions `72 hours` for seller shipping or pickup handling, but the active order flow in code uses `48 hours` for seller fulfillment and pickup expiry.
 - The dispute discussion only appears after an order becomes `DISPUTED`. There is no general buyer-seller chat flow outside disputes.
-- Operational fields that matter to this workflow include `ship_deadline`, `auto_cancel_at`, `dispute_deadline`, `dispute_reason`, `dispute_status`, `resolution_type`, and `resolution_amount`.
+- Operational fields that matter to this workflow include `ship_deadline`, `delivery_deadline`, `auto_cancel_at`, `dispute_deadline`, `dispute_reason`, `dispute_status`, `resolution_type`, and `resolution_amount`.

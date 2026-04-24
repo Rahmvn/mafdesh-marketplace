@@ -28,12 +28,27 @@ export default function LandingPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        seller:users!products_seller_id_fkey(
+          id,
+          status,
+          account_status
+        )
+      `)
       .gt('stock_quantity', 0)
+      .eq('is_approved', true)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (!error) {
-      const nextProducts = data || [];
+      const nextProducts = (data || []).filter((product) => {
+        const sellerStatus = String(
+          product?.seller?.account_status || product?.seller?.status || 'active'
+        ).toLowerCase();
+
+        return sellerStatus === 'active';
+      });
       setProducts(nextProducts);
       writeCachedPublicProducts(nextProducts);
     }

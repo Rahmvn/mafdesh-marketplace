@@ -139,7 +139,6 @@ export default function SellerPayments() {
           theme={theme}
           label="Total earned"
           value={formatSellerCurrency(payoutStats.earned)}
-          note="Everything recorded for your seller payouts."
           icon={Wallet}
           accentClass="bg-gradient-to-br from-blue-900 to-slate-700"
         />
@@ -147,7 +146,6 @@ export default function SellerPayments() {
           theme={theme}
           label="Pending payout"
           value={formatSellerCurrency(payoutStats.pending)}
-          note="Funds still waiting to be released."
           icon={Clock3}
           accentClass="bg-gradient-to-br from-orange-500 to-amber-500"
         />
@@ -155,7 +153,6 @@ export default function SellerPayments() {
           theme={theme}
           label="Paid out"
           value={formatSellerCurrency(payoutStats.paid)}
-          note="Funds already sent through your payout flow."
           icon={CreditCard}
           accentClass="bg-gradient-to-br from-emerald-500 to-green-600"
         />
@@ -165,7 +162,6 @@ export default function SellerPayments() {
         theme={theme}
         eyebrow="Payout history"
         title="Track each seller payout"
-        description="Keep a simple timeline of what has been paid and what is still pending."
         action={
           <button
             type="button"
@@ -182,7 +178,6 @@ export default function SellerPayments() {
             theme={theme}
             icon={Wallet}
             title="No earnings yet"
-            body="Once orders move through completion and payout, they will appear here."
           />
         ) : (
           <>

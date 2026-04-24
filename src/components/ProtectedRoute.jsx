@@ -20,7 +20,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
 
       const { data: userData, error } = await supabase
         .from('users')
-        .select('role')
+        .select('role, status, account_status')
         .eq('id', userId)
         .single();
 
@@ -32,6 +32,17 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
       }
 
       setRole(userData.role);
+
+      const accountStatus = String(
+        userData.account_status || userData.status || 'active'
+      ).toLowerCase();
+
+      if (accountStatus !== 'active') {
+        await supabase.auth.signOut();
+        localStorage.removeItem('mafdesh_user');
+        setStatus('unauthenticated');
+        return;
+      }
 
       if (allowedRoles.length && !allowedRoles.includes(userData.role)) {
         setStatus('unauthorized');

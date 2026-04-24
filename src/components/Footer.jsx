@@ -146,7 +146,7 @@ export default function Footer() {
                 <Lock size={20} className="text-orange-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="font-semibold text-white text-sm mb-1">Secure Payments</p>
-                  <p className="text-blue-200 text-xs">Protected by Paystack</p>
+                  <p className="text-blue-200 text-xs">Escrow-ready checkout flow</p>
                 </div>
               </div>
               <div className="flex items-start gap-3 bg-blue-900/50 p-3 rounded-lg border border-blue-800">

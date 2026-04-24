@@ -81,7 +81,7 @@ const FAQS = [
     category: 'Payments',
     question: 'What payment method is currently supported?',
     answer:
-      'Payments are handled through the Paystack checkout flow already built into the app. The options available to the user are shown during payment.',
+      'Checkout is currently running in test mode, so orders can be placed without charging real money. A live Paystack payment flow will be added later.',
   },
   {
     id: 'account-help',

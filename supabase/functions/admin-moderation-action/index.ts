@@ -76,6 +76,31 @@ function previousValuesFor(
   }, {});
 }
 
+async function createNotification(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  payload: {
+    userId: string;
+    type: string;
+    title: string;
+    body: string;
+    link?: string | null;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  const { error } = await supabaseAdmin.rpc("create_notification", {
+    p_user_id: payload.userId,
+    p_type: payload.type,
+    p_title: payload.title,
+    p_body: payload.body,
+    p_link: payload.link || null,
+    p_metadata: payload.metadata || {},
+  });
+
+  if (error) {
+    console.error("create_notification error:", error);
+  }
+}
+
 function normalizeImages(images: unknown) {
   return Array.isArray(images)
     ? images.filter((image) => typeof image === "string" && image.trim().length > 0)
@@ -231,7 +256,7 @@ serve(async (req) => {
       case ADMIN_ACTION_TYPES.UNVERIFY_SELLER: {
         const { data: targetUser, error: targetError } = await supabaseAdmin
           .from("users")
-          .select("id, email, role, status, is_verified, verification_expiry")
+          .select("id, email, role, status, account_status, is_verified, verification_expiry")
           .eq("id", targetId)
           .single();
 
@@ -258,18 +283,22 @@ serve(async (req) => {
           email: targetUser.email,
           role: targetUser.role,
           status: targetUser.status,
+          account_status: targetUser.account_status,
           is_verified: targetUser.is_verified,
           verification_expiry: targetUser.verification_expiry,
         };
 
         const updates: Record<string, unknown> = {};
+        let holdCount = 0;
 
         if (actionType === ADMIN_ACTION_TYPES.SUSPEND_USER) {
           updates.status = "suspended";
+          updates.account_status = "suspended";
         }
 
         if (actionType === ADMIN_ACTION_TYPES.ACTIVATE_USER) {
           updates.status = "active";
+          updates.account_status = "active";
         }
 
         if (
@@ -298,6 +327,26 @@ serve(async (req) => {
 
         const newState = { ...previousState, ...updates };
 
+        if (
+          actionType === ADMIN_ACTION_TYPES.SUSPEND_USER &&
+          targetUser.role === "seller"
+        ) {
+          const { data: holdResponse, error: holdError } = await supabaseAdmin.rpc(
+            "create_seller_order_admin_holds",
+            {
+              p_seller_id: targetUser.id,
+              p_reason: reason,
+              p_created_by: actingAdmin.id,
+            }
+          );
+
+          if (holdError) {
+            throw stagedError("create_seller_order_admin_holds", holdError);
+          }
+
+          holdCount = Number(holdResponse?.hold_count || 0);
+        }
+
         try {
           await recordAdminAction(supabaseAdmin, {
             adminId: actingAdmin.id,
@@ -308,6 +357,7 @@ serve(async (req) => {
             metadata: {
               email: targetUser.email,
               role: targetUser.role,
+              hold_count: holdCount,
             },
             previousState,
             newState,
@@ -321,6 +371,41 @@ serve(async (req) => {
             stage: "user_action",
           });
           throw auditError;
+        }
+
+        if (targetUser.role === "seller") {
+          await createNotification(supabaseAdmin, {
+            userId: targetUser.id,
+            type:
+              actionType === ADMIN_ACTION_TYPES.SUSPEND_USER
+                ? "seller_suspended"
+                : actionType === ADMIN_ACTION_TYPES.ACTIVATE_USER
+                  ? "seller_reactivated"
+                  : actionType === ADMIN_ACTION_TYPES.VERIFY_SELLER
+                    ? "seller_verified"
+                    : "seller_unverified",
+            title:
+              actionType === ADMIN_ACTION_TYPES.SUSPEND_USER
+                ? "Seller account suspended"
+                : actionType === ADMIN_ACTION_TYPES.ACTIVATE_USER
+                  ? "Seller account reactivated"
+                  : actionType === ADMIN_ACTION_TYPES.VERIFY_SELLER
+                    ? "Seller account verified"
+                    : "Seller verification removed",
+            body:
+              actionType === ADMIN_ACTION_TYPES.SUSPEND_USER
+                ? `Your seller account was suspended. ${holdCount > 0 ? `${holdCount} active order${holdCount === 1 ? "" : "s"} and pending payouts were placed on admin hold.` : "Your storefront and seller actions are paused."} Reason: ${reason}`
+                : actionType === ADMIN_ACTION_TYPES.ACTIVATE_USER
+                  ? `Your seller account was reactivated. Held orders still require explicit admin review before they can continue. Reason: ${reason}`
+                  : actionType === ADMIN_ACTION_TYPES.VERIFY_SELLER
+                    ? `Your seller verification was approved. Reason: ${reason}`
+                    : `Your seller verification was removed. Reason: ${reason}`,
+            link: "/seller/dashboard",
+            metadata: {
+              action_type: actionType,
+              hold_count: holdCount,
+            },
+          });
         }
 
         return jsonResponse({ success: true, newState });
@@ -355,6 +440,7 @@ serve(async (req) => {
         };
 
         const updates: Record<string, unknown> = {};
+        let holdCount = 0;
 
         if (actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT) {
           updates.is_approved = true;
@@ -363,6 +449,7 @@ serve(async (req) => {
 
         if (actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT) {
           updates.is_approved = false;
+          updates.reapproval_reason = reason;
         }
 
         if (actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT) {
@@ -389,6 +476,31 @@ serve(async (req) => {
 
         const newState = { ...previousState, ...updates };
 
+        if (
+          actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT ||
+          actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT
+        ) {
+          const rpcName =
+            actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT
+              ? "create_product_order_admin_holds"
+              : "create_product_order_admin_holds";
+          const { data: holdResponse, error: holdError } = await supabaseAdmin.rpc(
+            rpcName,
+            {
+              p_product_id: product.id,
+              p_trigger_action: actionType,
+              p_reason: reason,
+              p_created_by: actingAdmin.id,
+            }
+          );
+
+          if (holdError) {
+            throw stagedError("create_product_order_admin_holds", holdError);
+          }
+
+          holdCount = Number(holdResponse?.hold_count || 0);
+        }
+
         try {
           await recordAdminAction(supabaseAdmin, {
             adminId: actingAdmin.id,
@@ -399,6 +511,7 @@ serve(async (req) => {
             metadata: {
               product_name: product.name,
               seller_id: product.seller_id,
+              hold_count: holdCount,
             },
             previousState,
             newState,
@@ -412,6 +525,33 @@ serve(async (req) => {
             stage: "product_action",
           });
           throw auditError;
+        }
+
+        if (
+          actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT ||
+          actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT
+        ) {
+          await createNotification(supabaseAdmin, {
+            userId: product.seller_id,
+            type:
+              actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT
+                ? "product_archived"
+                : "product_rejected",
+            title:
+              actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT
+                ? "Product archived by admin"
+                : "Product requires review",
+            body:
+              actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT
+                ? `Admin archived "${product.name}". ${holdCount > 0 ? `${holdCount} active order${holdCount === 1 ? "" : "s"} were placed on admin hold.` : "It is now hidden from new buyers."} Reason: ${reason}`
+                : `Admin unapproved "${product.name}" for review. ${holdCount > 0 ? `${holdCount} active order${holdCount === 1 ? "" : "s"} were placed on admin hold.` : "It is now hidden from new buyers."} Reason: ${reason}`,
+            link: `/seller/products/${product.id}/edit`,
+            metadata: {
+              product_id: product.id,
+              action_type: actionType,
+              hold_count: holdCount,
+            },
+          });
         }
 
         return jsonResponse({ success: true, newState });

@@ -54,10 +54,9 @@ export function snapshotToProduct(snapshot, fallbackProduct = null) {
   };
 }
 
-export function getSafeProductImage(product, fallback = '/placeholder.png') {
+export function getSafeProductImage(product, fallback = '/placeholder.svg') {
   const imageUrl = product?.images?.[0];
   return imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/'))
     ? imageUrl
     : fallback;
 }
-

@@ -29,6 +29,10 @@ async function logSystemOrderAction(
   }
 }
 
+function inFilter(values: string[]) {
+  return `(${values.join(',')})`
+}
+
 Deno.serve(async (req) => {
   try {
     // Validate secret (if provided)
@@ -45,15 +49,31 @@ Deno.serve(async (req) => {
 
     const now = new Date().toISOString()
     const results = []
+    const { data: activeHolds, error: activeHoldError } = await supabase
+      .from('order_admin_holds')
+      .select('order_id')
+      .eq('status', 'active')
+
+    if (activeHoldError) {
+      console.error('Error loading active moderation holds:', activeHoldError)
+    }
+
+    const heldOrderIds = [...new Set((activeHolds || []).map((hold) => hold.order_id).filter(Boolean))]
+    const heldFilter = heldOrderIds.length > 0 ? inFilter(heldOrderIds) : null
 
     // 1. Auto‑refund orders not shipped/prepared within 48 hours
-    const { data: refunded, error: err1 } = await supabase
+    let refundQuery = supabase
       .from('orders')
       .update({ status: 'REFUNDED', cancelled_at: now })
       .eq('status', 'PAID_ESCROW')
       .lte('ship_deadline', now)
       .neq('status', 'DISPUTED')
-      .select('id')
+
+    if (heldFilter) {
+      refundQuery = refundQuery.not('id', 'in', heldFilter)
+    }
+
+    const { data: refunded, error: err1 } = await refundQuery.select('id')
     if (err1) console.error('Error in step 1:', err1)
     if (refunded?.length) {
       results.push(`Refunded ${refunded.length} unpaid orders`)
@@ -70,13 +90,18 @@ Deno.serve(async (req) => {
     }
 
     // 2. Auto‑complete orders after delivery window
-    const { data: completed, error: err2 } = await supabase
+    let completeQuery = supabase
       .from('orders')
       .update({ status: 'COMPLETED', completed_at: now })
       .eq('status', 'DELIVERED')
       .lte('dispute_deadline', now)
       .neq('status', 'DISPUTED')
-      .select('id')
+
+    if (heldFilter) {
+      completeQuery = completeQuery.not('id', 'in', heldFilter)
+    }
+
+    const { data: completed, error: err2 } = await completeQuery.select('id')
     if (err2) console.error('Error in step 2:', err2)
     if (completed?.length) {
       results.push(`Completed ${completed.length} orders`)
@@ -93,14 +118,19 @@ Deno.serve(async (req) => {
     }
 
     // 3. Auto‑refund orders not picked up within 48 hours
-    const { data: pickupRefunded, error: err3 } = await supabase
+    let pickupRefundQuery = supabase
       .from('orders')
       .update({ status: 'REFUNDED', cancelled_at: now })
       .eq('status', 'READY_FOR_PICKUP')
       .lte('auto_cancel_at', now)
       .is('picked_up_at', null)
       .neq('status', 'DISPUTED')
-      .select('id')
+
+    if (heldFilter) {
+      pickupRefundQuery = pickupRefundQuery.not('id', 'in', heldFilter)
+    }
+
+    const { data: pickupRefunded, error: err3 } = await pickupRefundQuery.select('id')
     if (err3) console.error('Error in step 3:', err3)
     if (pickupRefunded?.length) {
       results.push(`Refunded ${pickupRefunded.length} unpicked orders`)
@@ -117,13 +147,19 @@ Deno.serve(async (req) => {
     }
 
     // 4. Auto‑refund orders shipped but not delivered within 7 days
-    const { data: undelivered, error: err4 } = await supabase
+    let undeliveredQuery = supabase
       .from('orders')
       .update({ status: 'REFUNDED', cancelled_at: now })
       .eq('status', 'SHIPPED')
+      .eq('delivery_type', 'delivery')
       .lte('delivery_deadline', now)
       .neq('status', 'DISPUTED')
-      .select('id')
+
+    if (heldFilter) {
+      undeliveredQuery = undeliveredQuery.not('id', 'in', heldFilter)
+    }
+
+    const { data: undelivered, error: err4 } = await undeliveredQuery.select('id')
     if (err4) console.error('Error in step 4:', err4)
     if (undelivered?.length) {
       results.push(`Refunded ${undelivered.length} undelivered orders`)

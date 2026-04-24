@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { productService } from '../services/productService';
+import { getProductArchiveActionMessage, productService } from '../services/productService';
 import useModal from '../hooks/useModal';
 import {
   formatSellerCurrency,
@@ -139,6 +139,16 @@ export default function SellerProducts() {
   }, [products]);
 
   const handleArchive = async (productId) => {
+    const product = products.find((item) => item.id === productId);
+
+    if (product?.deleted_by_admin_id || product?.deletion_reason) {
+      showError(
+        'Archive Locked',
+        'This product was archived by admin and cannot be changed by the seller.'
+      );
+      return;
+    }
+
     showConfirm(
       'Archive Product',
       'Are you sure you want to archive this product? It will be hidden from buyers but your order history will be preserved.',
@@ -149,20 +159,30 @@ export default function SellerProducts() {
           showSuccess('Product Archived', 'This product is now hidden from buyers.');
         } catch (error) {
           console.error('Error archiving product:', error);
-          showError('Archive Failed', error?.message || 'Failed to archive product.');
+          showError('Archive Failed', getProductArchiveActionMessage(error));
         }
       }
     );
   };
 
   const handleUnarchive = async (productId) => {
+    const product = products.find((item) => item.id === productId);
+
+    if (product?.deleted_by_admin_id || product?.deletion_reason) {
+      showError(
+        'Restore Locked',
+        'This product was archived by admin and can only be restored by admin.'
+      );
+      return;
+    }
+
     try {
       await productService.unarchiveProduct(productId);
       await loadProducts(currentUser.id);
       showSuccess('Product Unarchived', 'This product is visible in your live catalog again.');
     } catch (error) {
       console.error('Error unarchiving product:', error);
-      showError('Unarchive Failed', error?.message || 'Failed to unarchive product.');
+      showError('Unarchive Failed', getProductArchiveActionMessage(error));
     }
   };
 
@@ -189,6 +209,14 @@ export default function SellerProducts() {
   };
 
   const getLifecycleLabel = (product) => {
+    if (product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)) {
+      return {
+        label: 'Admin archived',
+        className: 'bg-red-100 text-red-700',
+        note: product.deletion_reason || 'This listing can only be restored by admin.',
+      };
+    }
+
     if (product.deleted_at) {
       return {
         label: 'Archived',
@@ -235,7 +263,6 @@ export default function SellerProducts() {
           theme={theme}
           label="All listings"
           value={stats.total}
-          note="Your current seller catalog."
           icon={Package}
           accentClass="bg-gradient-to-br from-blue-900 to-slate-700"
         />
@@ -243,7 +270,6 @@ export default function SellerProducts() {
           theme={theme}
           label="Active"
           value={stats.active}
-          note="Listings buyers can purchase right now."
           icon={Plus}
           accentClass="bg-gradient-to-br from-orange-500 to-orange-600"
         />
@@ -251,7 +277,6 @@ export default function SellerProducts() {
           theme={theme}
           label="Low stock"
           value={stats.lowStock}
-          note="Listings worth restocking soon."
           icon={Search}
           accentClass="bg-gradient-to-br from-amber-500 to-orange-500"
         />
@@ -259,7 +284,6 @@ export default function SellerProducts() {
           theme={theme}
           label="Out of stock"
           value={stats.outOfStock}
-          note="Items that are currently unavailable."
           icon={Trash2}
           accentClass="bg-gradient-to-br from-slate-600 to-slate-700"
         />
@@ -269,7 +293,6 @@ export default function SellerProducts() {
         theme={theme}
         eyebrow="Catalog"
         title="Your catalog"
-        description="Search, filter, and jump straight to the listing that needs work."
         action={
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <div className="relative w-full sm:w-80">
@@ -319,8 +342,8 @@ export default function SellerProducts() {
             title={searchTerm ? 'No matching products' : 'No products yet'}
             body={
               searchTerm
-                ? 'Try a different search term or clear the filter to see the rest of your catalog.'
-                : 'Your first listing will appear here once you add it.'
+                ? 'Try another search term.'
+                : undefined
             }
             action={
               !searchTerm ? (
@@ -340,6 +363,9 @@ export default function SellerProducts() {
             <div className="space-y-4 md:hidden">
               {filteredProducts.map((product) => {
                 const lifecycle = getLifecycleLabel(product);
+                const adminArchived = Boolean(
+                  product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)
+                );
 
                 return (
                   <article key={product.id} className={`rounded-lg p-4 ${theme.panelMuted}`}>
@@ -401,19 +427,25 @@ export default function SellerProducts() {
                       </button>
                       <button
                         type="button"
+                        disabled={adminArchived}
+                        title={
+                          adminArchived
+                            ? 'This product was archived by admin and can only be restored by admin.'
+                            : undefined
+                        }
                         onClick={() =>
                           product.deleted_at
                             ? handleUnarchive(product.id)
                             : handleArchive(product.id)
                         }
-                        className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                        className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action} disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         {product.deleted_at ? (
                           <RotateCcw className="mr-2 inline h-4 w-4 text-slate-500" />
                         ) : (
                           <Archive className="mr-2 inline h-4 w-4 text-orange-500" />
                         )}
-                        {product.deleted_at ? 'Unarchive' : 'Archive'}
+                        {adminArchived ? 'Locked' : product.deleted_at ? 'Unarchive' : 'Archive'}
                       </button>
                     </div>
                   </article>
@@ -437,6 +469,9 @@ export default function SellerProducts() {
                   <tbody>
                     {filteredProducts.map((product) => {
                       const lifecycle = getLifecycleLabel(product);
+                      const adminArchived = Boolean(
+                        product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)
+                      );
 
                       return (
                         <tr key={product.id} className={`border-t transition ${theme.divider} ${theme.rowHover}`}>
@@ -504,19 +539,25 @@ export default function SellerProducts() {
                             </button>
                             <button
                               type="button"
+                              disabled={adminArchived}
+                              title={
+                                adminArchived
+                                  ? 'This product was archived by admin and can only be restored by admin.'
+                                  : undefined
+                              }
                               onClick={() =>
                                 product.deleted_at
                                   ? handleUnarchive(product.id)
                                   : handleArchive(product.id)
                               }
-                              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action} disabled:cursor-not-allowed disabled:opacity-60`}
                             >
                               {product.deleted_at ? (
                                 <RotateCcw className="mr-2 inline h-4 w-4 text-slate-500" />
                               ) : (
                                 <Archive className="mr-2 inline h-4 w-4 text-orange-500" />
                               )}
-                              {product.deleted_at ? 'Unarchive' : 'Archive'}
+                              {adminArchived ? 'Locked' : product.deleted_at ? 'Unarchive' : 'Archive'}
                             </button>
                           </div>
                         </td>

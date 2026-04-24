@@ -1,6 +1,29 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+async function assertSellerIsActive(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  sellerId: string
+) {
+  const { data: sellerRecord, error } = await supabaseAdmin
+    .from('users')
+    .select('id, status, account_status')
+    .eq('id', sellerId)
+    .single();
+
+  if (error || !sellerRecord) {
+    throw new Error('Seller not found');
+  }
+
+  const sellerStatus = String(
+    sellerRecord.account_status || sellerRecord.status || 'active'
+  ).toLowerCase();
+
+  if (sellerStatus !== 'active') {
+    throw new Error('This seller account is not active for marketplace orders.');
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -68,7 +91,7 @@ serve(async (req) => {
     // Check if order exists and is PENDING
     const { data: orderCheck, error: checkError } = await supabaseAdmin
       .from('orders')
-      .select('buyer_id, status')
+      .select('buyer_id, seller_id, status')
       .eq('id', orderId)
       .single();
 
@@ -94,6 +117,8 @@ serve(async (req) => {
         headers: { 'Access-Control-Allow-Origin': '*' },
       })
     }
+
+    await assertSellerIsActive(supabaseAdmin, orderCheck.seller_id)
 
     // Call the RPC
     console.log('Calling deduct_stock_bulk RPC');
@@ -181,6 +206,12 @@ if (order) {
     })
   } catch (err) {
     console.error('Unexpected error in edge function:', err);
+    if (String(err?.message || '').includes('not active for marketplace orders')) {
+      return new Response(JSON.stringify({ error: String(err.message) }), {
+        status: 409,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      })
+    }
     return new Response(JSON.stringify({ error: 'Internal server error: ' + err.message }), {
       status: 500,
       headers: { 'Access-Control-Allow-Origin': '*' },

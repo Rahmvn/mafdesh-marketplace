@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
@@ -14,17 +14,140 @@ import {
   showGlobalWarning,
 } from "../hooks/modalService";
 import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
+import {
+  fetchOrderRefundRequests,
+  formatTimeUntil,
+  getPendingRefundRequest,
+  getRefundReviewDeadline,
+} from "../services/refundRequestService";
+import {
+  fetchOrderAdminHolds,
+  getActiveOrderAdminHold,
+  getOrderAdminHoldDescription,
+  getOrderAdminHoldTitle,
+} from "../services/orderAdminHoldService";
+import {
+  getDeliveryDeadlineState,
+  markSellerOrderDelivered,
+  markSellerOrderShipped,
+} from "../services/sellerOrderTransitionService";
+
+function normalizeDisplayText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getValidPhoneNumber(value, ...disallowedValues) {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (disallowedValues.some((candidate) => normalizeDisplayText(candidate) === normalizeDisplayText(text))) {
+    return "";
+  }
+
+  const digitsOnly = text.replace(/\D/g, "");
+  return digitsOnly.length >= 7 ? text : "";
+}
+
+function shouldShowDistinctPickupAddress(label, address) {
+  return Boolean(
+    normalizeDisplayText(address) &&
+      normalizeDisplayText(address) !== normalizeDisplayText(label)
+  );
+}
+
+function getEmailFallbackDisplayName(email) {
+  const text = String(email || "").trim();
+  if (!text.includes("@")) {
+    return text;
+  }
+
+  return text.split("@")[0].trim();
+}
 
 export default function SellerOrderDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [buyer, setBuyer] = useState(null);
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("mafdesh_user") || "null"));
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+  const [refundRequests, setRefundRequests] = useState([]);
+  const [adminHolds, setAdminHolds] = useState([]);
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
+
+  const loadBuyerDetails = useCallback(async (orderId) => {
+    const invokeCounterparty = async (accessToken) => {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ orderId }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      return { response, payload };
+    };
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    let accessToken = sessionData.session?.access_token;
+
+    if (!accessToken) {
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        console.error("Counterparty session refresh error:", refreshError);
+        return null;
+      }
+
+      accessToken = refreshedSession.session?.access_token;
+    }
+
+    if (!accessToken) {
+      console.error("Counterparty lookup error: Missing access token.");
+      return null;
+    }
+
+    let { response, payload } = await invokeCounterparty(accessToken);
+
+    if (response.status === 401) {
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        console.error("Counterparty session refresh error:", refreshError);
+        return null;
+      }
+
+      const refreshedToken = refreshedSession.session?.access_token;
+
+      if (!refreshedToken) {
+        console.error("Counterparty lookup error: Missing refreshed access token.");
+        return null;
+      }
+
+      ({ response, payload } = await invokeCounterparty(refreshedToken));
+    }
+
+    if (!response.ok) {
+      console.error("Counterparty lookup error:", {
+        status: response.status,
+        payload,
+      });
+      return null;
+    }
+
+    return payload?.counterparty || null;
+  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -60,6 +183,11 @@ export default function SellerOrderDetails() {
     if (error || !orderData) {
       console.error(error);
       setLoading(false);
+      return;
+    }
+
+    if (orderData.status === "PENDING") {
+      navigate("/seller/orders", { replace: true });
       return;
     }
 
@@ -105,34 +233,122 @@ export default function SellerOrderDetails() {
     }
     setItems(finalItems);
 
+    const buyerDetails = sellerId ? await loadBuyerDetails(orderData.id) : null;
+
     // Fetch buyer profile
     const { data: profile } = await supabase
       .from("profiles")
-      .select("full_name, username")
+      .select("*")
       .eq("id", orderData.buyer_id)
       .maybeSingle();
 
     const { data: user } = await supabase
       .from("users")
-      .select("phone_number")
+      .select("email, phone_number")
       .eq("id", orderData.buyer_id)
       .maybeSingle();
 
+    const mergedBuyer = {
+      id: orderData.buyer_id,
+      email: String(buyerDetails?.email || user?.email || "").trim(),
+      full_name: String(buyerDetails?.fullName || profile?.full_name || "").trim(),
+      username: String(buyerDetails?.username || profile?.username || "").trim(),
+      phone_number:
+        getValidPhoneNumber(
+          buyerDetails?.phoneNumber,
+          profile?.username,
+          profile?.full_name,
+          user?.email
+        ) ||
+        getValidPhoneNumber(
+          user?.phone_number,
+          profile?.username,
+          profile?.full_name,
+          user?.email
+        ) ||
+        getValidPhoneNumber(
+          profile?.phone_number,
+          profile?.username,
+          profile?.full_name,
+          user?.email
+        ),
+    };
+
+    const buyerName = String(
+      buyerDetails?.fullName ||
+      mergedBuyer.full_name ||
+      buyerDetails?.displayName ||
+      buyerDetails?.username ||
+      mergedBuyer.username ||
+      getEmailFallbackDisplayName(mergedBuyer.email)
+    ).trim();
+
     setOrder(orderData);
     setBuyer({
-      full_name: profile?.full_name,
-      username: profile?.username,
-      phone: user?.phone_number,
+      ...mergedBuyer,
+      display_name: buyerName || "Unknown buyer",
+      phone: mergedBuyer.phone_number,
     });
+
+    try {
+      const refundRequestRows = await fetchOrderRefundRequests(id);
+      setRefundRequests(refundRequestRows);
+    } catch (refundError) {
+      console.error("Refund requests error:", refundError);
+      setRefundRequests([]);
+    }
+
+    try {
+      setAdminHolds(await fetchOrderAdminHolds(id));
+    } catch (holdError) {
+      console.error("Admin hold fetch failed:", holdError);
+      setAdminHolds([]);
+    }
+
     setLoading(false);
-  }, [id]);
+  }, [id, loadBuyerDetails, navigate]);
 
   useEffect(() => {
     loadOrder();
-  }, [loadOrder]);
+
+    const subscription = supabase
+      .channel(`seller-order-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${id}` },
+        () => loadOrder()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "refund_requests", filter: `order_id=eq.${id}` },
+        () => loadOrder()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_admin_holds", filter: `order_id=eq.${id}` },
+        () => loadOrder()
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(subscription);
+  }, [id, loadOrder]);
 
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
+    if (getActiveOrderAdminHold(adminHolds)) {
+      showGlobalWarning(
+        "Admin Review In Progress",
+        "This order is on admin review hold. Admin must resolve it before fulfillment can continue."
+      );
+      return;
+    }
+    if (pendingRefundRequest) {
+      showGlobalWarning(
+        "Refund Review In Progress",
+        "This order is processing a refund request. Admin must review it before you can ship or mark it ready for pickup."
+      );
+      return;
+    }
     if (order.ship_deadline && new Date(order.ship_deadline) <= now) {
       showGlobalWarning("Deadline Passed", "Cannot mark as shipped because the deadline has passed.");
       return;
@@ -153,12 +369,21 @@ export default function SellerOrderDetails() {
                 shipped_at: new Date().toISOString(),
               };
 
-          const { error } = await supabase.from("orders").update(updates).eq("id", order.id).select();
-          if (error) throw error;
+          if (order.delivery_type === "delivery") {
+            await markSellerOrderShipped(order.id);
+          } else {
+            const { error } = await supabase
+              .from("orders")
+              .update(updates)
+              .eq("id", order.id)
+              .eq("status", "PAID_ESCROW")
+              .select("id");
+            if (error) throw error;
+          }
           loadOrder();
         } catch (err) {
           console.error('Update failed:', err);
-          showGlobalError("Update Failed", "Failed to update order. Please try again.");
+          showGlobalError("Update Failed", err.message || "Failed to update order. Please try again.");
         }
       }
     );
@@ -166,16 +391,29 @@ export default function SellerOrderDetails() {
 
   const handleMarkDelivered = async () => {
     if (order.status !== "SHIPPED") return;
-    const nowDate = new Date();
-    await supabase
-      .from("orders")
-      .update({
-        status: "DELIVERED",
-        delivered_at: nowDate.toISOString(),
-        dispute_deadline: new Date(nowDate.getTime() + 72 * 60 * 60 * 1000).toISOString()
-      })
-      .eq("id", order.id);
-    loadOrder();
+    if (getActiveOrderAdminHold(adminHolds)) {
+      showGlobalWarning(
+        "Admin Review In Progress",
+        "This order is on admin review hold. Admin must resolve it before fulfillment can continue."
+      );
+      return;
+    }
+    const deliveryState = getDeliveryDeadlineState(order, now);
+    if (!deliveryState.canMarkDelivered) {
+      showGlobalWarning(
+        "Delivery Unavailable",
+        deliveryState.message || "This order cannot be marked as delivered right now."
+      );
+      return;
+    }
+
+    try {
+      await markSellerOrderDelivered(order.id);
+      loadOrder();
+    } catch (err) {
+      console.error("Delivery update failed:", err);
+      showGlobalError("Update Failed", err.message || "Failed to update order. Please try again.");
+    }
   };
 
   if (loading) return <MarketplaceDetailSkeleton darkMode={themeState.darkMode} />;
@@ -185,12 +423,35 @@ export default function SellerOrderDetails() {
   const isPickup = order.delivery_type === "pickup";
   const deliverySnapshot = order.delivery_zone_snapshot || null;
   const pickupSnapshot = order.pickup_location_snapshot || null;
+  const pickupAddress = String(pickupSnapshot?.address_text || "").trim();
+  const pickupLabel = String(pickupSnapshot?.label || order.selected_pickup_location || "").trim();
+  const pickupLocationDetails = [
+    pickupSnapshot?.area_name || pickupSnapshot?.area,
+    pickupSnapshot?.city_name || pickupSnapshot?.city,
+    pickupSnapshot?.lga_name || pickupSnapshot?.lga,
+    pickupSnapshot?.state_name,
+    pickupSnapshot?.landmark_text || pickupSnapshot?.landmark,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const showPickupAddressLine = shouldShowDistinctPickupAddress(pickupLabel, pickupAddress);
   const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
   const isSingleItem = order.product_price !== null;
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
-  const shipDeadlineExpired = order.ship_deadline && new Date(order.ship_deadline) <= now;
   const pickupDeadlineExpired = order.auto_cancel_at && new Date(order.auto_cancel_at) <= now;
   const disputeDeadlineExpired = order.dispute_deadline && new Date(order.dispute_deadline) <= now;
+  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
+  const isRefundProcessing = Boolean(pendingRefundRequest && order.status === "PAID_ESCROW");
+  const isAdminHoldProcessing = Boolean(activeAdminHold);
+  const effectiveShipDeadline =
+    isRefundProcessing || isAdminHoldProcessing ? null : order.ship_deadline;
+  const effectiveShipDeadlineExpired =
+    effectiveShipDeadline && new Date(effectiveShipDeadline) <= now;
+  const deliveryDeadlineState = getDeliveryDeadlineState(order, now);
+  const deliveryDeadlineExpired = deliveryDeadlineState.reason === "expired";
 
   const { baseEarnings, netEarnings, refundInfo } = getSellerOrderPayout(order, items);
 
@@ -199,17 +460,17 @@ export default function SellerOrderDetails() {
     { label: "Payment Secured", active: ["PAID_ESCROW", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status), icon: CheckCircle, desc: "Funds are held in escrow." },
     {
       label: isDelivery ? "Processing" : "Prepare Order",
-      active: (order.status === "PAID_ESCROW" && !shipDeadlineExpired) || ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
+      active: (order.status === "PAID_ESCROW" && !effectiveShipDeadlineExpired) || ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: Clock,
       desc: isDelivery ? "You have 48 hours to ship." : "You have 48 hours to prepare for pickup.",
-      expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
+      expired: effectiveShipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
       label: isDelivery ? "Shipped" : "Ready for Pickup",
       active: ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: isDelivery ? Truck : Package,
       desc: isDelivery ? "Order is on its way." : "Buyer can now collect.",
-      expired: (order.status === "READY_FOR_PICKUP" && pickupDeadlineExpired)
+      expired: (order.status === "READY_FOR_PICKUP" && pickupDeadlineExpired) || (order.status === "SHIPPED" && deliveryDeadlineExpired)
     },
     {
       label: isDelivery ? "Delivered" : "Picked Up",
@@ -220,8 +481,34 @@ export default function SellerOrderDetails() {
   ];
 
   let infoBox = null;
-  if (order.status === "PAID_ESCROW") {
-    if (shipDeadlineExpired) {
+  if (isAdminHoldProcessing) {
+    infoBox = (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> {getOrderAdminHoldTitle(activeAdminHold)}
+        </h3>
+        <p className="text-sm text-amber-800">
+          {getOrderAdminHoldDescription(activeAdminHold)}
+        </p>
+        <p className="mt-2 text-sm text-amber-900">
+          <strong>Reason:</strong> {activeAdminHold.reason}
+        </p>
+      </div>
+    );
+  } else if (isRefundProcessing) {
+    infoBox = (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> Refund review in progress
+        </h3>
+        <p className="text-sm text-amber-800">
+          This order is on hold while admin reviews the buyer's refund request.
+          {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
+        </p>
+      </div>
+    );
+  } else if (order.status === "PAID_ESCROW") {
+    if (effectiveShipDeadlineExpired) {
       infoBox = (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
@@ -239,7 +526,7 @@ export default function SellerOrderDetails() {
             <Clock size={18} /> Your next steps
           </h3>
           <p className="text-sm text-blue-700">
-            You have <strong className={getUrgencyClass(order.ship_deadline, now)}>{formatRemaining(order.ship_deadline, now)}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
+            You have <strong className={getUrgencyClass(effectiveShipDeadline, now)}>{formatRemaining(effectiveShipDeadline, now)}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
             If you don't act by then, the order will be automatically cancelled and the buyer will be refunded.
           </p>
         </div>
@@ -266,6 +553,42 @@ export default function SellerOrderDetails() {
           <p className="text-sm text-purple-700">
             The buyer has <strong className={getUrgencyClass(order.auto_cancel_at, now)}>{formatRemaining(order.auto_cancel_at, now)}</strong> to pick up the items.
             If they don't pick up in time, the order will be cancelled and the buyer refunded.
+          </p>
+        </div>
+      );
+    }
+  } else if (order.status === "SHIPPED" && isDelivery) {
+    if (deliveryDeadlineState.reason === "expired") {
+      infoBox = (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+            <AlertCircle size={18} /> Delivery Window Closed
+          </h3>
+          <p className="text-sm text-red-700">
+            The 7-day delivery window has passed. This order will be automatically refunded to the buyer.
+          </p>
+        </div>
+      );
+    } else if (deliveryDeadlineState.reason === "missing_deadline") {
+      infoBox = (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+            <AlertCircle size={18} /> Delivery Deadline Missing
+          </h3>
+          <p className="text-sm text-red-700">
+            Delivery deadline is missing. Please contact support before marking this order delivered.
+          </p>
+        </div>
+      );
+    } else {
+      infoBox = (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+            <Truck size={18} /> Delivery in progress
+          </h3>
+          <p className="text-sm text-blue-700">
+            You have <strong className={getUrgencyClass(order.delivery_deadline, now)}>{formatRemaining(order.delivery_deadline, now)}</strong> to mark this order as delivered.
+            If you do not mark it delivered by then, the buyer will be automatically refunded.
           </p>
         </div>
       );
@@ -313,6 +636,32 @@ export default function SellerOrderDetails() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
         <h1 className="text-3xl font-bold mb-6">Seller Order Details</h1>
 
+        {activeAdminHold ? (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="font-semibold text-amber-900 mb-2">
+              {getOrderAdminHoldTitle(activeAdminHold)}
+            </h2>
+            <p className="text-sm text-amber-800">
+              {getOrderAdminHoldDescription(activeAdminHold)}
+            </p>
+            <p className="mt-2 text-sm text-amber-900">
+              <strong>Reason:</strong> {activeAdminHold.reason}
+            </p>
+          </div>
+        ) : null}
+
+        {pendingRefundRequest && !activeAdminHold && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-5">
+            <h2 className="font-semibold text-red-800 mb-2">
+              This order is processing a refund request.
+            </h2>
+            <p className="text-sm text-red-700">
+              You cannot mark it as shipped or ready for pickup until admin finishes the review.
+              {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
+            </p>
+          </div>
+        )}
+
         {/* Order Summary */}
         <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
           <div className="flex items-center justify-between mb-4">
@@ -355,14 +704,15 @@ export default function SellerOrderDetails() {
         {/* Buyer Info */}
         <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
           <h2 className="font-semibold mb-3">Buyer</h2>
-          <p>{buyer?.full_name || "Customer"}</p>
-          <p className={`text-sm ${theme.softText}`}>@{buyer?.username || "N/A"}</p>
-          {buyer?.phone && (
-            <div className={`flex items-center gap-2 mt-2 ${theme.mutedText}`}>
-              <Phone size={16} className={theme.softText} />
-              <span>{buyer.phone}</span>
-            </div>
-          )}
+          <p>
+            <span className="font-medium">Name:</span>{" "}
+            {buyer?.display_name || "Unknown buyer"}
+          </p>
+          <div className={`flex items-center gap-2 mt-2 ${theme.mutedText}`}>
+            <Phone size={16} className={theme.softText} />
+            <span className="font-medium">Phone:</span>
+            <span>{buyer?.phone || "Unavailable"}</span>
+          </div>
         </div>
 
         {/* Delivery / Pickup Info */}
@@ -387,14 +737,20 @@ export default function SellerOrderDetails() {
               )}
               {isPickup && (
                 <>
-                  <p>Buyer selected:</p>
-                  <p className="font-medium">
-                    {pickupSnapshot?.label || order.selected_pickup_location || "Not specified"}
-                  </p>
-                  {pickupSnapshot?.address_text && (
-                    <p className="text-xs text-gray-500">{pickupSnapshot.address_text}</p>
-                  )}
-                </>
+                <p>Buyer selected:</p>
+                <p className="font-medium">
+                  {pickupLabel || "Not specified"}
+                </p>
+                {showPickupAddressLine && (
+                  <p className="text-xs text-gray-500">{pickupAddress}</p>
+                )}
+                {pickupLocationDetails && (
+                  <p className="text-xs text-gray-500">{pickupLocationDetails}</p>
+                )}
+                {pickupSnapshot?.pickup_instructions && (
+                  <p className="text-xs text-gray-500">{pickupSnapshot.pickup_instructions}</p>
+                )}
+              </>
               )}
             </div>
           </div>
@@ -481,10 +837,11 @@ export default function SellerOrderDetails() {
         {infoBox}
 
         {/* Timers - only show if order is still active */}
-        {!isFinalState && (order.ship_deadline || order.auto_cancel_at || order.auto_complete_at || order.dispute_deadline) && (
+        {!isFinalState && (order.ship_deadline || order.delivery_deadline || order.auto_cancel_at || order.auto_complete_at || order.dispute_deadline) && (
         <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
           <h2 className="font-semibold mb-3">Timers</h2>
-            {order.ship_deadline && <p className={`text-sm ${getUrgencyClass(order.ship_deadline, now)}`}>Ship by: {formatRemaining(order.ship_deadline, now)}</p>}
+            {order.status === "PAID_ESCROW" && effectiveShipDeadline && <p className={`text-sm ${getUrgencyClass(effectiveShipDeadline, now)}`}>Ship by: {formatRemaining(effectiveShipDeadline, now)}</p>}
+            {order.status === "SHIPPED" && isDelivery && order.delivery_deadline && <p className={`text-sm ${getUrgencyClass(order.delivery_deadline, now)}`}>Mark delivered by: {formatRemaining(order.delivery_deadline, now)}</p>}
             {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at, now)}`}>Auto-cancel: {formatRemaining(order.auto_cancel_at, now)}</p>}
             {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>Auto-complete: {formatRemaining(order.auto_complete_at, now)}</p>}
             {order.dispute_deadline && <p className={`text-sm ${getUrgencyClass(order.dispute_deadline, now)}`}>Dispute window: {formatRemaining(order.dispute_deadline, now)}</p>}
@@ -498,9 +855,9 @@ export default function SellerOrderDetails() {
             {steps.map((step, index) => {
               const Icon = step.icon;
               let timerText = null, urgencyClass = '';
-              if (step.label === "Shipped" && order.auto_complete_at && !isFinalState) {
-                timerText = formatRemaining(order.auto_complete_at, now);
-                urgencyClass = getUrgencyClass(order.auto_complete_at, now);
+              if (step.label === "Shipped" && order.delivery_deadline && !isFinalState && order.status === "SHIPPED") {
+                timerText = formatRemaining(order.delivery_deadline, now);
+                urgencyClass = getUrgencyClass(order.delivery_deadline, now);
               } else if (step.label === "Ready for Pickup" && order.auto_cancel_at && !isFinalState) {
                 timerText = formatRemaining(order.auto_cancel_at, now);
                 urgencyClass = getUrgencyClass(order.auto_cancel_at, now);
@@ -531,42 +888,62 @@ export default function SellerOrderDetails() {
         <div className={`rounded-xl p-6 ${theme.panel}`}>
           {order.status === "PAID_ESCROW" && (
             <div>
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
-                <p className="text-sm font-semibold text-blue-800">
-                  Time left to {isDelivery ? "ship" : "mark ready for pickup"}:
-                </p>
-                {order.ship_deadline ? (
-                  <p className={`text-2xl font-bold ${getUrgencyClass(order.ship_deadline, now)}`}>
-                    {formatRemaining(order.ship_deadline, now)}
+              {isRefundProcessing ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Refund review is processing
                   </p>
-                ) : (
-                  <p className="text-red-600 text-sm">Deadline not set. Please contact support.</p>
-                )}
-              </div>
+                  <p className="mt-2 text-sm text-amber-800">
+                    Fulfillment is paused until admin decides this refund request.
+                    {refundReviewDeadline ? ` Decision due ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
+                    <p className="text-sm font-semibold text-blue-800">
+                      Time left to {isDelivery ? "ship" : "mark ready for pickup"}:
+                    </p>
+                    {effectiveShipDeadline ? (
+                      <p className={`text-2xl font-bold ${getUrgencyClass(effectiveShipDeadline, now)}`}>
+                        {formatRemaining(effectiveShipDeadline, now)}
+                      </p>
+                    ) : (
+                      <p className="text-red-600 text-sm">Deadline not set. Please contact support.</p>
+                    )}
+                  </div>
 
-              {shipDeadlineExpired ? (
+                  {effectiveShipDeadlineExpired ? (
                 <p className="text-red-600 text-center font-semibold">Action unavailable - deadline passed.</p>
               ) : (
                 <button onClick={handleMarkShipped} className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold">
                   {isDelivery ? "Mark as Shipped" : "Mark Ready for Pickup"}
                 </button>
               )}
-              {order.ship_deadline && !isFinalState && (
-                <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.ship_deadline, now)}`}>
-                  Must {isDelivery ? "ship" : "mark ready"} by {new Date(order.ship_deadline).toLocaleString()}
+                  {effectiveShipDeadline && !isFinalState && (
+                <p className={`text-sm mt-2 text-center ${getUrgencyClass(effectiveShipDeadline, now)}`}>
+                  Must {isDelivery ? "ship" : "mark ready"} by {new Date(effectiveShipDeadline).toLocaleString()}
                 </p>
+              )}
+                </>
               )}
             </div>
           )}
 
           {order.status === "SHIPPED" && isDelivery && (
             <div>
-              <button onClick={handleMarkDelivered} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">
-                Mark as Delivered
-              </button>
-              {order.auto_complete_at && !isFinalState && (
-                <p className="text-sm text-gray-500 mt-2 text-center">
-                  Auto-completes on {new Date(order.auto_complete_at).toLocaleString()} if no dispute.
+              {deliveryDeadlineState.canMarkDelivered ? (
+                <>
+                  <button onClick={handleMarkDelivered} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">
+                    Mark as Delivered
+                  </button>
+                  <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.delivery_deadline, now)}`}>
+                    Must mark delivered by {new Date(order.delivery_deadline).toLocaleString()}
+                  </p>
+                </>
+              ) : (
+                <p className="text-red-600 text-center font-semibold">
+                  {deliveryDeadlineState.message || "Delivery action unavailable."}
                 </p>
               )}
             </div>

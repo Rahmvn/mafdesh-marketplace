@@ -24,13 +24,18 @@ import {
   SellerShell,
   useSellerTheme,
 } from '../components/seller/SellerShell';
-import { NIGERIAN_STATES } from '../utils/nigeriaStates';
+import { NIGERIAN_STATES, getLgasForState } from '../utils/nigeriaData';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 
 const emptyPickupForm = {
   label: '',
   address_text: '',
   state_name: '',
+  lga_name: '',
+  city_name: '',
+  area_name: '',
+  landmark_text: '',
+  pickup_instructions: '',
 };
 
 const emptyFulfillmentForm = {
@@ -114,6 +119,23 @@ export default function SellerDeliverySettings() {
     () => pickupLocations.filter((location) => location.is_active !== false).length,
     [pickupLocations]
   );
+  const pickupLgaOptions = useMemo(
+    () => getLgasForState(pickupForm.state_name),
+    [pickupForm.state_name]
+  );
+
+  const getPickupLabel = (form) => {
+    const explicitLabel = String(form.label || '').trim();
+
+    if (explicitLabel) {
+      return explicitLabel;
+    }
+
+    return [form.area_name, form.city_name, form.lga_name]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(', ');
+  };
 
   const resetPickupForm = () => {
     setPickupForm(emptyPickupForm);
@@ -161,8 +183,17 @@ export default function SellerDeliverySettings() {
       return;
     }
 
-    if (!pickupForm.label.trim() || !pickupForm.address_text.trim()) {
-      showGlobalWarning('Missing Details', 'Pickup label and address are required.');
+    if (
+      !pickupForm.address_text.trim() ||
+      !pickupForm.state_name ||
+      !pickupForm.lga_name ||
+      !pickupForm.city_name.trim() ||
+      !pickupForm.area_name.trim()
+    ) {
+      showGlobalWarning(
+        'Missing Details',
+        'Exact address, state, local government, city, and particular area are required.'
+      );
       return;
     }
 
@@ -171,9 +202,14 @@ export default function SellerDeliverySettings() {
     try {
       const payload = {
         seller_id: currentUser.id,
-        label: pickupForm.label.trim(),
+        label: getPickupLabel(pickupForm),
         address_text: pickupForm.address_text.trim(),
         state_name: pickupForm.state_name || null,
+        lga_name: pickupForm.lga_name,
+        city_name: pickupForm.city_name.trim(),
+        area_name: pickupForm.area_name.trim(),
+        landmark_text: pickupForm.landmark_text.trim() || null,
+        pickup_instructions: pickupForm.pickup_instructions.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -233,9 +269,6 @@ export default function SellerDeliverySettings() {
               <p className="mt-1 text-3xl font-bold">Always on</p>
             </div>
           </div>
-          <p className={`mt-3 text-sm ${theme.mutedText}`}>
-            Delivery is mandatory for every seller, and fees are auto-calculated from your location to the buyer&apos;s location.
-          </p>
         </article>
 
         <article className={`rounded-lg p-5 ${theme.panel}`}>
@@ -250,9 +283,6 @@ export default function SellerDeliverySettings() {
               <p className="mt-1 text-3xl font-bold">{fulfillmentForm.shipFromState || 'Unset'}</p>
             </div>
           </div>
-          <p className={`mt-3 text-sm ${theme.mutedText}`}>
-            This state is what the platform uses to calculate delivery.
-          </p>
         </article>
 
         <article className={`rounded-lg p-5 ${theme.panel}`}>
@@ -267,9 +297,6 @@ export default function SellerDeliverySettings() {
               <p className="mt-1 text-3xl font-bold">{activePickupCount}</p>
             </div>
           </div>
-          <p className={`mt-3 text-sm ${theme.mutedText}`}>
-            Only add pickup locations if you want buyers to pick up items themselves.
-          </p>
         </article>
       </section>
 
@@ -286,21 +313,17 @@ export default function SellerDeliverySettings() {
         theme={theme}
         eyebrow="Delivery"
         title="Seller delivery settings"
-        description="Delivery is compulsory for every seller. You only tell the platform where you ship from, and it calculates the delivery fee automatically for buyers."
       >
         <form onSubmit={handleSaveFulfillment} className="space-y-6">
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="font-semibold">Delivery is enabled automatically</p>
             <p className={`mt-1 text-sm ${theme.mutedText}`}>
-              Sellers do not need to turn delivery on. Set your ship-from location below so the platform can calculate delivery fees correctly.
+              Set your ship-from location below.
             </p>
           </div>
 
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="text-sm font-semibold">Your ship-from location</p>
-            <p className={`mt-1 text-sm ${theme.mutedText}`}>
-              The platform compares your ship-from state with the buyer&apos;s delivery state to calculate the fee.
-            </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <select
@@ -337,9 +360,6 @@ export default function SellerDeliverySettings() {
                 className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
               />
             </div>
-            <p className={`mt-2 text-xs ${theme.softText}`}>
-              Address or landmark is optional. Delivery pricing uses your selected state.
-            </p>
           </div>
 
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
@@ -374,21 +394,72 @@ export default function SellerDeliverySettings() {
         theme={theme}
         eyebrow="Pickup"
         title="Pickup locations"
-        description="Only add pickup locations if you want buyers to pick up orders instead of requesting delivery."
       >
-        <form onSubmit={handleSavePickup} className="grid gap-3 lg:grid-cols-4">
-          <input
-            type="text"
-            placeholder="Label"
-            value={pickupForm.label}
-            disabled={!schemaInstalled}
-            onChange={(event) => setPickupForm((current) => ({ ...current, label: event.target.value }))}
-            className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-          />
+        <form onSubmit={handleSavePickup} className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <select
+              value={pickupForm.state_name}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({
+                  ...current,
+                  state_name: event.target.value,
+                  lga_name: '',
+                }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            >
+              <option value="">Select state</option>
+              {NIGERIAN_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={pickupForm.lga_name}
+              disabled={!schemaInstalled || !pickupForm.state_name}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, lga_name: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
+            >
+              <option value="">
+                {pickupForm.state_name ? 'Select LGA' : 'Select state first'}
+              </option>
+              {pickupLgaOptions.map((lgaName) => (
+                <option key={lgaName} value={lgaName}>
+                  {lgaName}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              placeholder="City or town"
+              value={pickupForm.city_name}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, city_name: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
+
+            <input
+              type="text"
+              placeholder="Particular area / neighbourhood"
+              value={pickupForm.area_name}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, area_name: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
 
           <input
             type="text"
-            placeholder="Full address or landmark"
+              placeholder="Exact pickup address"
             value={pickupForm.address_text}
             disabled={!schemaInstalled}
             onChange={(event) =>
@@ -397,27 +468,48 @@ export default function SellerDeliverySettings() {
             className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
           />
 
-          <select
-            value={pickupForm.state_name}
+            <input
+              type="text"
+              placeholder="Display name (optional)"
+              value={pickupForm.label}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, label: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
+
+            <input
+              type="text"
+              placeholder="Nearby landmark (optional)"
+              value={pickupForm.landmark_text}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, landmark_text: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
+          </div>
+
+          <textarea
+            rows={3}
+            placeholder="Pickup instructions (optional)"
+            value={pickupForm.pickup_instructions}
             disabled={!schemaInstalled}
             onChange={(event) =>
-              setPickupForm((current) => ({ ...current, state_name: event.target.value }))
+              setPickupForm((current) => ({
+                ...current,
+                pickup_instructions: event.target.value,
+              }))
             }
-            className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-          >
-            <option value="">State (optional)</option>
-            {NIGERIAN_STATES.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
+            className={`w-full rounded-lg px-4 py-3 text-sm ${theme.input}`}
+          />
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button
               type="submit"
               disabled={savingPickup || !schemaInstalled}
-              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition ${theme.actionPrimary}`}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition ${theme.actionPrimary}`}
             >
               {editingPickupId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {savingPickup ? 'Saving...' : editingPickupId ? 'Update point' : 'Add point'}
@@ -434,11 +526,10 @@ export default function SellerDeliverySettings() {
             )}
           </div>
         </form>
-
         <div className="mt-6 space-y-3">
           {pickupLocations.length === 0 ? (
             <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
-              No pickup locations yet. Add at least one if you want buyers to collect items themselves.
+              No pickup locations yet.
             </div>
           ) : (
             pickupLocations.map((location) => (
@@ -458,8 +549,26 @@ export default function SellerDeliverySettings() {
                       </span>
                     </div>
                     <p className={`mt-1 text-sm ${theme.mutedText}`}>{location.address_text}</p>
-                    {location.state_name && (
-                      <p className={`mt-1 text-xs ${theme.softText}`}>{location.state_name}</p>
+                    {(location.area_name ||
+                      location.city_name ||
+                      location.lga_name ||
+                      location.state_name) && (
+                      <p className={`mt-1 text-xs ${theme.softText}`}>
+                        {[
+                          location.area_name,
+                          location.city_name,
+                          location.lga_name,
+                          location.state_name,
+                          location.landmark_text,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    )}
+                    {location.pickup_instructions && (
+                      <p className={`mt-1 text-xs ${theme.softText}`}>
+                        {location.pickup_instructions}
+                      </p>
                     )}
                   </div>
 
@@ -473,6 +582,11 @@ export default function SellerDeliverySettings() {
                           label: location.label || '',
                           address_text: location.address_text || '',
                           state_name: location.state_name || '',
+                          lga_name: location.lga_name || '',
+                          city_name: location.city_name || '',
+                          area_name: location.area_name || '',
+                          landmark_text: location.landmark_text || '',
+                          pickup_instructions: location.pickup_instructions || '',
                         });
                       }}
                       className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}

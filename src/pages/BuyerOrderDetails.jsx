@@ -8,7 +8,52 @@ import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Phone } from "
 import VerificationBadge from "../components/VerificationBadge";
 import DisputeThread from "../components/DisputeThread";
 import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
+import useModal from "../hooks/useModal";
+import AdminActionModal from "../components/AdminActionModal";
 import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
+import {
+  cancelRefundRequest,
+  createRefundRequest,
+  fetchOrderRefundRequests,
+  formatTimeUntil,
+  getLatestRefundRequest,
+  getPendingRefundRequest,
+  getRefundEligibility,
+  getRefundReviewDeadline,
+  REFUND_REQUEST_STATUS,
+} from "../services/refundRequestService";
+import {
+  fetchOrderAdminHolds,
+  getActiveOrderAdminHold,
+  getOrderAdminHoldDescription,
+  getOrderAdminHoldTitle,
+} from "../services/orderAdminHoldService";
+
+function normalizeDisplayText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getValidPhoneNumber(value, ...disallowedValues) {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (disallowedValues.some((candidate) => normalizeDisplayText(candidate) === normalizeDisplayText(text))) {
+    return "";
+  }
+
+  const digitsOnly = text.replace(/\D/g, "");
+  return digitsOnly.length >= 7 ? text : "";
+}
+
+function shouldShowDistinctPickupAddress(label, address) {
+  return Boolean(
+    normalizeDisplayText(address) &&
+      normalizeDisplayText(address) !== normalizeDisplayText(label)
+  );
+}
 
 export default function BuyerOrderDetails() {
   const { id } = useParams();
@@ -27,6 +72,80 @@ export default function BuyerOrderDetails() {
   const [disputeMessage, setDisputeMessage] = useState('');
   const [disputeImages, setDisputeImages] = useState([]);
   const [uploadingDispute, setUploadingDispute] = useState(false);
+  const [refundRequests, setRefundRequests] = useState([]);
+  const [adminHolds, setAdminHolds] = useState([]);
+  const [refundRequestModalOpen, setRefundRequestModalOpen] = useState(false);
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [cancelingRefund, setCancelingRefund] = useState(false);
+  const { showConfirm, showError, showSuccess, showWarning, ModalComponent } = useModal();
+
+  const loadSellerDetails = useCallback(async (orderId) => {
+    const invokeCounterparty = async (accessToken) => {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ orderId }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      return { response, payload };
+    };
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    let accessToken = sessionData.session?.access_token;
+
+    if (!accessToken) {
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        console.error("Counterparty session refresh error:", refreshError);
+        return null;
+      }
+
+      accessToken = refreshedSession.session?.access_token;
+    }
+
+    if (!accessToken) {
+      console.error("Counterparty lookup error: Missing access token.");
+      return null;
+    }
+
+    let { response, payload } = await invokeCounterparty(accessToken);
+
+    if (response.status === 401) {
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        console.error("Counterparty session refresh error:", refreshError);
+        return null;
+      }
+
+      const refreshedToken = refreshedSession.session?.access_token;
+
+      if (!refreshedToken) {
+        console.error("Counterparty lookup error: Missing refreshed access token.");
+        return null;
+      }
+
+      ({ response, payload } = await invokeCounterparty(refreshedToken));
+    }
+
+    if (!response.ok) {
+      console.error("Counterparty lookup error:", {
+        status: response.status,
+        payload,
+      });
+      return null;
+    }
+
+    return payload?.counterparty || null;
+  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -44,6 +163,11 @@ export default function BuyerOrderDetails() {
     if (error || !orderData) {
       console.error(error);
       setLoading(false);
+      return;
+    }
+
+    if (orderData.status === "PENDING") {
+      navigate(`/pay/${id}`, { replace: true });
       return;
     }
 
@@ -100,27 +224,64 @@ export default function BuyerOrderDetails() {
       setExistingReviews(reviewedProductIds);
     }
 
-    // Fetch seller info
-    const { data: user } = await supabase
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+
+    const sellerDetails = authUser ? await loadSellerDetails(orderData.id) : null;
+
+    const { data: user, error: userError } = await supabase
       .from("users")
       .select("business_name, phone_number, is_verified")
       .eq("id", orderData.seller_id)
       .maybeSingle();
 
+    if (userError) console.error("User fetch error:", userError);
+
     const { data: profile } = await supabase
       .from("profiles")
-      .select("full_name")
+      .select("*")
       .eq("id", orderData.seller_id)
       .maybeSingle();
 
+    const businessName = String(sellerDetails?.businessName || user?.business_name || "").trim();
+    const contactName = String(sellerDetails?.fullName || profile?.full_name || "").trim();
+    const username = String(sellerDetails?.username || profile?.username || "").trim();
+
+    const sellerPhone =
+      getValidPhoneNumber(
+        sellerDetails?.phoneNumber,
+        username,
+        contactName,
+        businessName
+      ) ||
+      getValidPhoneNumber(user?.phone_number, username, contactName, businessName) ||
+      getValidPhoneNumber(profile?.phone_number, username, contactName, businessName);
+
     setOrder(orderData);
     setSeller({
-      name: user?.business_name || profile?.full_name || "Seller",
-      phone: user?.phone_number,
-      is_verified: user?.is_verified || false,
+      name: businessName || contactName || username || "Seller",
+      businessName,
+      contactName,
+      username,
+      phone: sellerPhone,
+      is_verified: Boolean(sellerDetails?.isVerified || user?.is_verified),
     });
+    try {
+      const refundRequestRows = await fetchOrderRefundRequests(id);
+      setRefundRequests(refundRequestRows);
+    } catch (refundError) {
+      console.error("Refund requests error:", refundError);
+      setRefundRequests([]);
+    }
+    try {
+      setAdminHolds(await fetchOrderAdminHolds(id));
+    } catch (holdError) {
+      console.error("Admin holds error:", holdError);
+      setAdminHolds([]);
+    }
     setLoading(false);
-  }, [id]);
+  }, [id, loadSellerDetails, navigate]);
 
   useEffect(() => {
     loadOrder();
@@ -130,6 +291,16 @@ export default function BuyerOrderDetails() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
+        () => loadOrder()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'refund_requests', filter: `order_id=eq.${id}` },
+        () => loadOrder()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_admin_holds', filter: `order_id=eq.${id}` },
         () => loadOrder()
       )
       .subscribe();
@@ -144,24 +315,72 @@ export default function BuyerOrderDetails() {
   };
 
   const confirmDelivery = async () => {
+    if (getActiveOrderAdminHold(adminHolds)) {
+      showGlobalWarning(
+        "Admin Review In Progress",
+        "This order is on admin review hold. Please wait for admin to resolve it."
+      );
+      return;
+    }
+
+    if (order.status !== "DELIVERED") {
+      showGlobalWarning(
+        "Confirmation Not Available",
+        "You can only confirm delivery after the seller marks this order as delivered."
+      );
+      return;
+    }
+
     showGlobalConfirm(
       "Confirm Delivery",
       "Confirm you received all items? This will release payment to the seller.",
       async () => {
-        await supabase
+        const { data, error } = await supabase
           .from("orders")
           .update({
             status: "COMPLETED",
-            delivered_at: new Date().toISOString(),
             completed_at: new Date().toISOString()
           })
-          .eq("id", order.id);
+          .eq("id", order.id)
+          .eq("status", "DELIVERED")
+          .select("id");
+
+        if (error) {
+          console.error(error);
+          showGlobalError("Confirmation Failed", "Failed to confirm delivery.");
+          return;
+        }
+
+        if (!data?.length) {
+          showGlobalError(
+            "Confirmation Failed",
+            "You can only confirm delivery after the seller marks this order as delivered."
+          );
+          return;
+        }
+
         loadOrder();
       }
     );
   };
 
   const confirmPickup = async () => {
+    if (getActiveOrderAdminHold(adminHolds)) {
+      showGlobalWarning(
+        "Admin Review In Progress",
+        "This order is on admin review hold. Please wait for admin to resolve it."
+      );
+      return;
+    }
+
+    if (order.status !== "READY_FOR_PICKUP") {
+      showGlobalWarning(
+        "Confirmation Not Available",
+        "You can only confirm pickup after the seller marks this order as ready for pickup."
+      );
+      return;
+    }
+
     if (order.auto_cancel_at && new Date(order.auto_cancel_at) <= now) {
       showGlobalWarning(
         "Pickup Deadline Passed",
@@ -173,14 +392,31 @@ export default function BuyerOrderDetails() {
       "Confirm Pickup",
       "Please inspect all items before confirming. Once you confirm pickup, the transaction is final and you will not be able to request a refund or open a dispute. If anything is wrong, use Report a Problem instead. Have you inspected and received all items in good condition?",
       async () => {
-        await supabase
+        const { data, error } = await supabase
           .from("orders")
           .update({
             status: "COMPLETED",
             picked_up_at: new Date().toISOString(),
             completed_at: new Date().toISOString()
           })
-          .eq("id", order.id);
+          .eq("id", order.id)
+          .eq("status", "READY_FOR_PICKUP")
+          .select("id");
+
+        if (error) {
+          console.error(error);
+          showGlobalError("Confirmation Failed", "Failed to confirm pickup.");
+          return;
+        }
+
+        if (!data?.length) {
+          showGlobalError(
+            "Confirmation Failed",
+            "You can only confirm pickup after the seller marks this order as ready for pickup."
+          );
+          return;
+        }
+
         loadOrder();
       }
     );
@@ -204,6 +440,14 @@ export default function BuyerOrderDetails() {
   };
 
   const submitDispute = async () => {
+    if (getActiveOrderAdminHold(adminHolds)) {
+      showGlobalWarning(
+        "Admin Review In Progress",
+        "This order is on admin review hold. Admin will resolve the order first."
+      );
+      return;
+    }
+
     if (!disputeMessage.trim()) {
       showGlobalWarning('Issue Required', 'Please describe the issue.');
       return;
@@ -244,13 +488,6 @@ export default function BuyerOrderDetails() {
     } finally {
       setUploadingDispute(false);
     }
-  };
-
-  const cancelOrder = async () => {
-    showGlobalConfirm("Cancel Order", "Cancel this order?", async () => {
-      await supabase.from("orders").update({ status: "CANCELLED" }).eq("id", order.id);
-      navigate("/buyer/orders");
-    });
   };
 
   const formatRemaining = (deadline) => {
@@ -322,9 +559,33 @@ export default function BuyerOrderDetails() {
   const isPickup = order.delivery_type === "pickup";
   const deliverySnapshot = order.delivery_zone_snapshot || null;
   const pickupSnapshot = order.pickup_location_snapshot || null;
+  const pickupAddress = String(pickupSnapshot?.address_text || "").trim();
+  const pickupLabel = String(pickupSnapshot?.label || order.selected_pickup_location || "").trim();
+  const pickupLocationDetails = [
+    pickupSnapshot?.area_name || pickupSnapshot?.area,
+    pickupSnapshot?.city_name || pickupSnapshot?.city,
+    pickupSnapshot?.lga_name || pickupSnapshot?.lga,
+    pickupSnapshot?.state_name,
+    pickupSnapshot?.landmark_text || pickupSnapshot?.landmark,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const showPickupAddressLine = shouldShowDistinctPickupAddress(pickupLabel, pickupAddress);
   const isSingleItem = order.product_price !== null && items.length === 1;
   const subtotal = items.reduce((sum, i) => sum + i.price_at_time * i.quantity, 0);
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
+  const latestRefundRequest = getLatestRefundRequest(refundRequests);
+  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
+  const latestRejectedRefundRequest =
+    latestRefundRequest?.status === REFUND_REQUEST_STATUS.REJECTED
+      ? latestRefundRequest
+      : null;
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const refundEligibility = getRefundEligibility(order, refundRequests, now);
+  const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
+  const isRefundProcessing = Boolean(pendingRefundRequest);
+  const isAdminHoldProcessing = Boolean(activeAdminHold);
 
   const shipDeadlineExpired = isExpired(order.ship_deadline);
   const pickupDeadlineExpired = isExpired(order.auto_cancel_at);
@@ -357,9 +618,10 @@ export default function BuyerOrderDetails() {
 
   let actionMessage = "";
   let actionButton = null;
-  if (order.status === "PENDING") {
-    actionMessage = "Please complete payment to secure your order.";
-    actionButton = <button onClick={() => navigate(`/pay/${order.id}`)} className="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold">Pay Now</button>;
+  if (isAdminHoldProcessing) {
+    actionMessage = "This order is paused while admin reviews it. Order actions are disabled until review is resolved.";
+  } else if (isRefundProcessing) {
+    actionMessage = "Your refund request is processing. The seller cannot ship or mark this order ready for pickup until admin reviews it.";
   } else if (order.status === "PAID_ESCROW") {
     actionMessage = "Seller is preparing your order. You'll be notified when it's ready.";
     if (order.ship_deadline) {
@@ -406,7 +668,33 @@ export default function BuyerOrderDetails() {
   }
 
   let infoBox = null;
-  if (order.status === "PAID_ESCROW") {
+  if (isAdminHoldProcessing) {
+    infoBox = (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> {getOrderAdminHoldTitle(activeAdminHold)}
+        </h3>
+        <p className="text-sm text-amber-800">
+          {getOrderAdminHoldDescription(activeAdminHold)}
+        </p>
+        <p className="mt-2 text-sm text-amber-900">
+          <strong>Reason:</strong> {activeAdminHold.reason}
+        </p>
+      </div>
+    );
+  } else if (isRefundProcessing) {
+    infoBox = (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+          <AlertCircle size={18} /> Refund review in progress
+        </h3>
+        <p className="text-sm text-amber-800">
+          This order is temporarily on hold while admin reviews the refund request.
+          {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
+        </p>
+      </div>
+    );
+  } else if (order.status === "PAID_ESCROW") {
     if (shipDeadlineExpired) {
       infoBox = (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -496,6 +784,123 @@ export default function BuyerOrderDetails() {
     );
   }
 
+  const submitRefundRequest = async ({ reason }) => {
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length < 20) {
+      showWarning(
+        "Reason Too Short",
+        "Please provide at least 20 characters so the review team has enough context."
+      );
+      return;
+    }
+
+    setSubmittingRefund(true);
+    try {
+      await createRefundRequest(order.id, trimmedReason);
+      setRefundRequestModalOpen(false);
+      showSuccess(
+        "Refund Request Submitted",
+        "Refund request submitted. Our team will review within 24 hours."
+      );
+      await loadOrder();
+    } catch (error) {
+      console.error("Refund request failed:", error);
+      showError(
+        "Refund Request Failed",
+        error.message || "Failed to submit the refund request."
+      );
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
+
+  const handleCancelRefundRequest = () => {
+    if (!pendingRefundRequest) {
+      return;
+    }
+
+    showConfirm(
+      "Cancel Refund Request",
+      "Cancel your processing refund request for this order?",
+      async () => {
+        setCancelingRefund(true);
+        try {
+          await cancelRefundRequest(pendingRefundRequest.id);
+          showSuccess("Refund Request Cancelled", "Your refund request has been cancelled.");
+          await loadOrder();
+        } catch (error) {
+          console.error("Cancel refund request failed:", error);
+          showError(
+            "Cancel Failed",
+            error.message || "Failed to cancel the refund request."
+          );
+        } finally {
+          setCancelingRefund(false);
+        }
+      }
+    );
+  };
+
+  const refundInfoBox = (
+    <>
+      {pendingRefundRequest && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-amber-900 mb-1">Refund request is processing</h3>
+              <p className="text-sm text-amber-800">
+                Admin is now reviewing this order. The seller cannot ship or mark it ready for pickup until a decision is made.
+                {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelRefundRequest}
+              disabled={cancelingRefund}
+              className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {cancelingRefund ? "Cancelling..." : "Cancel Request"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!pendingRefundRequest && latestRejectedRefundRequest && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+            <AlertCircle size={18} />
+            Refund request rejected
+          </h3>
+          <p className="text-sm text-red-700">
+            Refund request rejected: {latestRejectedRefundRequest.admin_notes || "No reason provided."}
+          </p>
+        </div>
+      )}
+
+      {!activeAdminHold && !pendingRefundRequest && refundEligibility.eligible && order.status === "PAID_ESCROW" && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-yellow-900 mb-1">
+                Your seller hasn't shipped yet. You can request a refund.
+              </h3>
+              <p className="text-sm text-yellow-800">
+                Payment is still in escrow. You can request a refund any time before the seller marks this order as shipped or ready for pickup.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRefundRequestModalOpen(true)}
+              className="rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-yellow-400"
+            >
+              Request Refund
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
@@ -571,21 +976,24 @@ export default function BuyerOrderDetails() {
         </div>
 
         {/* Seller Info */}
-        {seller && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-gray-700">{seller.name}</p>
-              {seller.is_verified && <VerificationBadge />}
-            </div>
-            {isPickup && seller.phone && (
-              <div className="flex items-center gap-2 mt-2 text-gray-700">
-                <Phone size={16} className="text-gray-500" />
-                <span>{seller.phone}</span>
-              </div>
-            )}
-          </div>
-        )}
+    {seller && (
+  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+    <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="text-gray-900 font-medium">
+        {seller.businessName || seller.contactName || seller.username || "Seller"}
+      </p>
+      {seller.is_verified && <VerificationBadge />}
+    </div>
+    {seller.phone && (
+      <div className="flex items-center gap-2 mt-2 text-gray-700">
+        <Phone size={16} className="text-gray-500" />
+        <span className="font-medium">Phone:</span>
+        <span>{seller.phone}</span>
+      </div>
+    )}
+  </div>
+)}
 
         {/* Pickup / Delivery Info */}
         {isPickup && (
@@ -597,13 +1005,18 @@ export default function BuyerOrderDetails() {
             {pickupSnapshot?.label || order.selected_pickup_location ? (
               <>
                 <p className="text-lg font-bold text-gray-800">
-                  {pickupSnapshot?.label || order.selected_pickup_location}
+                  {pickupLabel}
                 </p>
-                {pickupSnapshot?.address_text && (
-                  <p className="text-gray-700 mt-1">{pickupSnapshot.address_text}</p>
+                {showPickupAddressLine && (
+                  <p className="text-gray-700 mt-1">{pickupAddress}</p>
                 )}
-                {pickupSnapshot?.state_name && (
-                  <p className="text-sm text-gray-500 mt-1">{pickupSnapshot.state_name}</p>
+                {pickupLocationDetails && (
+                  <p className="text-sm text-gray-500 mt-1">{pickupLocationDetails}</p>
+                )}
+                {pickupSnapshot?.pickup_instructions && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {pickupSnapshot.pickup_instructions}
+                  </p>
                 )}
               </>
             ) : (
@@ -637,6 +1050,7 @@ export default function BuyerOrderDetails() {
           </div>
         )}
 
+        {refundInfoBox}
         {infoBox}
 
         {/* Dispute Thread */}
@@ -727,9 +1141,6 @@ export default function BuyerOrderDetails() {
           <p className="text-gray-700 mb-4">{actionMessage}</p>
           <div className="space-y-3">
             {actionButton}
-            {order.status === "PENDING" && (
-              <button onClick={cancelOrder} className="w-full bg-gray-500 text-white py-3 rounded-lg font-semibold">Cancel Order</button>
-            )}
           </div>
         </div>
       </main>
@@ -782,6 +1193,27 @@ export default function BuyerOrderDetails() {
         </div>
       )}
 
+      <AdminActionModal
+        isOpen={refundRequestModalOpen}
+        title="Request Refund"
+        description="Tell us why this order should be refunded. Your reason will be reviewed by an admin."
+        actionLabel="Submit Request"
+        reasonLabel="Refund reason"
+        reasonPlaceholder="Explain what has not happened yet and why a refund should be granted."
+        confirmTone="warning"
+        loading={submittingRefund}
+        onClose={() => {
+          if (!submittingRefund) {
+            setRefundRequestModalOpen(false);
+          }
+        }}
+        onConfirm={submitRefundRequest}
+      >
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+          Include enough detail for review. The reason must be at least 20 characters.
+        </div>
+      </AdminActionModal>
+
       {/* Review Modal */}
       {reviewModal.open && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4 py-6">
@@ -830,7 +1262,7 @@ export default function BuyerOrderDetails() {
       )}
 
       <Footer />
+      <ModalComponent />
     </div>
   );
 }
-

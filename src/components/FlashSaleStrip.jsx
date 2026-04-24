@@ -16,7 +16,7 @@ export default function FlashSaleStrip({ products, onOpen, nearestExpiry }) {
     <section className="mb-8 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 via-white to-amber-50 p-3 shadow-sm sm:p-4">
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-bold text-orange-700 sm:text-lg">{'\u26A1 Flash Sales'}</h2>
+          <h2 className="text-base font-bold text-blue-900 sm:text-lg">Flash Deals</h2>
           <p className="text-xs text-slate-600 sm:text-sm">Ending soonest first. Limited-time prices move fast.</p>
         </div>
         {!countdown.expired && (

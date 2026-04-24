@@ -21,6 +21,14 @@ function formatPrice(value) {
   return `\u20A6${Number(value).toLocaleString()}`;
 }
 
+function getCategoryPreviewLimit(width) {
+  if (width >= 1024) return 12;
+  if (width >= 768) return 10;
+  if (width >= 640) return 8;
+  if (width >= 475) return 6;
+  return 4;
+}
+
 function readCachedProducts() {
   try {
     const cachedProducts = localStorage.getItem(CACHED_PRODUCTS_KEY);
@@ -80,11 +88,11 @@ function ProductCard({ product, onOpen, featured = false }) {
           </div>
         )}
       </div>
-      <div className="p-1.5 md:p-2">
-        <h3 className="line-clamp-2 text-[11px] font-semibold leading-4 min-h-[32px] text-blue-900 xs:text-xs md:text-xs lg:text-sm">
+      <div className="p-1.5 md:px-2 md:pb-1.5 md:pt-1.5">
+        <h3 className="line-clamp-2 min-h-[30px] text-[11px] font-semibold leading-4 text-blue-900 xs:text-xs md:text-xs lg:text-sm">
           {product.name}
         </h3>
-        <div className="mt-1">
+        <div className="mt-0.5 space-y-0.5">
           {hasDiscount && (
             <p className="text-[9px] font-medium text-slate-400 line-through md:text-xs lg:text-sm">
               {formatPrice(product.original_price)}
@@ -126,6 +134,9 @@ export default function BuyerDashboard() {
   const [now, setNow] = useState(() => new Date());
   const [recentlyViewedIds, setRecentlyViewedIds] = useState(() => readRecentlyViewedIds());
   const [isLoading, setIsLoading] = useState(() => readCachedProducts().length === 0);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === 'undefined' ? 1280 : window.innerWidth
+  );
   const { showConfirm, ModalComponent } = useModal();
 
   const availableCategories = ['All', ...PRODUCT_CATEGORIES];
@@ -141,7 +152,9 @@ export default function BuyerDashboard() {
             id,
             email,
             business_name,
-            is_verified
+            is_verified,
+            status,
+            account_status
           )
         `
         )
@@ -152,7 +165,13 @@ export default function BuyerDashboard() {
 
       if (error) throw error;
 
-      const nextProducts = data || [];
+      const nextProducts = (data || []).filter((product) => {
+        const sellerStatus = String(
+          product?.seller?.account_status || product?.seller?.status || 'active'
+        ).toLowerCase();
+
+        return sellerStatus === 'active';
+      });
       setProducts(nextProducts);
 
       try {
@@ -175,6 +194,12 @@ export default function BuyerDashboard() {
     const handleScroll = () => setShowScrollTop(window.scrollY > 300);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -224,6 +249,10 @@ export default function BuyerDashboard() {
   );
 
   const isDefaultCategoryView = selectedCategory === 'All' && !searchQuery.trim();
+  const categoryPreviewLimit = useMemo(
+    () => getCategoryPreviewLimit(viewportWidth),
+    [viewportWidth]
+  );
 
   const categorySections = useMemo(() => {
     if (!isDefaultCategoryView) {
@@ -244,10 +273,10 @@ export default function BuyerDashboard() {
       .sort(([, leftProducts], [, rightProducts]) => rightProducts.length - leftProducts.length)
       .map(([category, categoryProducts]) => ({
         category,
-        products: categoryProducts.slice(0, 6),
+        products: categoryProducts.slice(0, categoryPreviewLimit),
         totalCount: categoryProducts.length,
       }));
-  }, [isDefaultCategoryView, marketplaceProducts]);
+  }, [categoryPreviewLimit, isDefaultCategoryView, marketplaceProducts]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -314,7 +343,7 @@ export default function BuyerDashboard() {
         {featuredProducts.length > 0 && (
           <section className="mb-8">
             <div className="mb-3 flex items-center gap-2">
-              <h2 className="text-base font-bold text-orange-600">⚡ Featured</h2>
+              <h2 className="text-base font-bold text-blue-900">Featured Products</h2>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {featuredProducts.map((product) => (
@@ -339,19 +368,9 @@ export default function BuyerDashboard() {
             </p>
           </div>
         ) : isDefaultCategoryView ? (
-          <div>
+          <div className="space-y-3">
             {categorySections.map((section) => (
-              <section key={section.category} className="mb-8">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-base font-bold text-blue-900">{section.category}</h2>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory(section.category)}
-                    className="text-sm font-medium text-orange-600"
-                  >
-                    See all →
-                  </button>
-                </div>
+              <section key={section.category}>
                 <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6">
                   {section.products.map((product) => (
                     <ProductCard
@@ -361,6 +380,17 @@ export default function BuyerDashboard() {
                     />
                   ))}
                 </div>
+                {section.totalCount > section.products.length ? (
+                  <div className="mt-1.5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory(section.category)}
+                      className="text-sm font-medium text-orange-600"
+                    >
+                      See more
+                    </button>
+                  </div>
+                ) : null}
               </section>
             ))}
           </div>
@@ -404,4 +434,3 @@ export default function BuyerDashboard() {
     </div>
   );
 }
-
