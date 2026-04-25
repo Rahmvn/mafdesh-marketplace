@@ -15,6 +15,25 @@ function getHandlingCopy(order) {
   return 'Seller prepares this delivery order within 2 business days.';
 }
 
+function toAmount(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function getProductsTotal(order, items = []) {
+  const explicitSubtotal = toAmount(order?.subtotal);
+
+  if (explicitSubtotal > 0) {
+    return explicitSubtotal;
+  }
+
+  return (items || []).reduce((sum, item) => {
+    const quantity = Math.max(toAmount(item?.quantity), 1);
+    const unitPrice = toAmount(item?.price_at_time);
+    return sum + quantity * unitPrice;
+  }, 0);
+}
+
 export default function OrderSuccessMultiple() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -147,6 +166,9 @@ export default function OrderSuccessMultiple() {
             {orders.map((order) => {
               const items = itemsByOrderId[order.id] || [];
               const sellerName = sellerNames[order.seller_id] || 'Seller';
+              const productsTotal = getProductsTotal(order, items);
+              const deliveryFee = toAmount(order.delivery_fee);
+              const totalPaid = toAmount(order.total_amount) || productsTotal + deliveryFee;
 
               return (
                 <div
@@ -218,9 +240,19 @@ export default function OrderSuccessMultiple() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex justify-between text-sm font-semibold text-slate-900">
-                    <span>Total</span>
-                    <span>{formatNaira(order.total_amount)}</span>
+                  <div className="mt-4 rounded-xl border border-white bg-white p-3">
+                    <div className="flex justify-between gap-4 text-sm text-slate-700">
+                      <span>Total products price</span>
+                      <span className="font-semibold text-slate-900">{formatNaira(productsTotal)}</span>
+                    </div>
+                    <div className="mt-2 flex justify-between gap-4 text-sm text-slate-700">
+                      <span>Delivery fee</span>
+                      <span className="font-semibold text-slate-900">{formatNaira(deliveryFee)}</span>
+                    </div>
+                    <div className="mt-3 flex justify-between gap-4 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                      <span>Total paid</span>
+                      <span>{formatNaira(totalPaid)}</span>
+                    </div>
                   </div>
                 </div>
               );
