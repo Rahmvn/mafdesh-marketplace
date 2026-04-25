@@ -51,3 +51,16 @@ export function showGlobalConfirm(title, message, onConfirm) {
     onConfirm,
   });
 }
+
+export function showGlobalLoginRequired(message, onConfirm, onCancel) {
+  emit({
+    variant: 'warning',
+    title: 'Login Required',
+    message,
+    isConfirm: true,
+    confirmLabel: 'Log In',
+    cancelLabel: 'Not Now',
+    onConfirm,
+    onCancel,
+  });
+}

@@ -65,6 +65,10 @@ export default function Modal({
   const secondaryButtonClass = darkMode
     ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
     : 'bg-slate-100 text-slate-700 hover:bg-slate-200';
+  const confirmButtonClass =
+    variant === 'warning'
+      ? 'bg-orange-600 text-white hover:bg-orange-700'
+      : 'bg-red-600 text-white hover:bg-red-700';
 
   return (
     <div
@@ -98,7 +102,7 @@ export default function Modal({
               <button
                 type="button"
                 onClick={onConfirm}
-                className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${confirmButtonClass}`}
               >
                 {confirmLabel}
               </button>

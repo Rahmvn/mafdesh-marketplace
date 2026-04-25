@@ -28,6 +28,7 @@ import { supabase } from '../supabaseClient';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { readCachedCartCount } from '../utils/cartStorage';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
+import { showGlobalLoginRequired } from '../hooks/modalService';
 import NotificationBell from './NotificationBell';
 
 function ThemeToggleButton({ darkMode, onToggle, compact, isDarkTheme }) {
@@ -70,6 +71,8 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   const isDarkTheme = theme === 'dark';
   const isBuyer = userRole === 'buyer';
   const isSeller = userRole === 'seller';
+  const isGuest = !userRole;
+  const isBuyerLike = isBuyer || isGuest;
 
   const navShellClass = isDarkTheme
     ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
@@ -243,11 +246,15 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   const getHomePath = () => {
     if (userRole === 'seller') return '/seller/dashboard';
     if (userRole === 'admin') return '/admin/dashboard';
-    return '/marketplace';
+    return '/';
   };
+  const homePath = getHomePath();
 
   useEffect(() => {
-    if (userRole !== 'buyer' || location.pathname !== '/marketplace') {
+    if (
+      !isBuyerLike ||
+      !['/', '/marketplace'].includes(location.pathname)
+    ) {
       return;
     }
 
@@ -262,7 +269,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       } else {
         params.delete('search');
       }
-      navigate({ pathname: '/marketplace', search: params.toString() }, { replace: true });
+      navigate({ pathname: homePath, search: params.toString() }, { replace: true });
     }, 300);
 
     return () => {
@@ -270,7 +277,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [location.pathname, location.search, navigate, searchQuery, userRole]);
+  }, [homePath, isBuyerLike, location.pathname, location.search, navigate, searchQuery]);
 
   useEffect(() => {
     setMobileMenu(false);
@@ -291,7 +298,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       params.delete('search');
     }
 
-    navigate({ pathname: '/marketplace', search: params.toString() });
+    navigate({ pathname: homePath, search: params.toString() });
     setMobileMenu(false);
   };
 
@@ -301,7 +308,11 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     setShowUserMenu(false);
   };
 
-  const homePath = getHomePath();
+  const promptLogin = (path) => {
+    showGlobalLoginRequired('Please log in to continue.', () => {
+      navigate(`/login?returnUrl=${encodeURIComponent(path)}`);
+    });
+  };
 
   const navBase = `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${navLinkClass}`;
   const highlightedNavBase = `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${highlightedNavLinkClass}`;
@@ -331,7 +342,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             <Link
               to={homePath}
               className={
-                isBuyer
+                isBuyerLike
                   ? 'hidden xl:flex flex-shrink-0 items-center'
                   : 'flex flex-shrink-0 items-center'
               }
@@ -341,14 +352,14 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 src={landscapeLogo}
                 alt="Mafdesh"
                 className={
-                  isBuyer
+                  isBuyerLike
                     ? 'h-6 w-6 object-contain sm:h-8 sm:w-auto'
                     : 'h-8 w-auto object-contain'
                 }
               />
             </Link>
 
-            {isBuyer && (
+            {isBuyerLike && (
               <div className="min-w-0 flex-1 xl:hidden">
                 <form onSubmit={handleSearchSubmit} className="min-w-0 flex-1">
                   <div className="relative">
@@ -404,7 +415,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               </div>
             )}
 
-            {isBuyer && (
+            {isBuyerLike && (
               <div className="hidden min-w-0 flex-1 items-center justify-center px-6 xl:flex">
                 <form onSubmit={handleSearchSubmit} className="relative w-full max-w-md">
                   <input
@@ -420,7 +431,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             )}
 
             <div className="hidden shrink-0 items-center gap-3 xl:flex">
-              {themeToggle && !isBuyer && (
+              {themeToggle && !isBuyerLike && (
                 <ThemeToggleButton
                   darkMode={themeToggle.darkMode}
                   onToggle={themeToggle.onToggle}
@@ -447,38 +458,62 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 </>
               )}
 
-              {isBuyer && (
+              {isBuyerLike && (
                 <>
-                  <Link to="/marketplace" className={buyerIconButtonClass} aria-label="Home">
+                  <Link to={homePath} className={buyerIconButtonClass} aria-label="Home">
                     <Home className="h-5 w-5" />
                   </Link>
-                  <Link to="/orders" className={buyerIconButtonClass} aria-label="Orders">
-                    <Package className="h-5 w-5" />
-                    {actionRequiredCount > 0 && (
-                      <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                        {actionRequiredCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link to="/buyer/payments" className={buyerIconButtonClass} aria-label="Payments">
-                    <Wallet className="h-5 w-5" />
-                  </Link>
-                  <NotificationBell user={storedUser} theme={theme} />
-                  <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
-                    <ShoppingCart className="h-5 w-5" />
-                    {cartCount > 0 && (
-                      <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                        {cartCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link to="/profile" className={buyerIconButtonClass} aria-label="Profile">
-                    <User className="h-5 w-5" />
-                  </Link>
+                  {isBuyer ? (
+                    <Link to="/orders" className={buyerIconButtonClass} aria-label="Orders">
+                      <Package className="h-5 w-5" />
+                      {actionRequiredCount > 0 && (
+                        <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                          {actionRequiredCount}
+                        </span>
+                      )}
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => promptLogin('/orders')} className={buyerIconButtonClass} aria-label="Orders">
+                      <Package className="h-5 w-5" />
+                    </button>
+                  )}
+                  {isBuyer ? (
+                    <Link to="/buyer/payments" className={buyerIconButtonClass} aria-label="Payments">
+                      <Wallet className="h-5 w-5" />
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => promptLogin('/buyer/payments')} className={buyerIconButtonClass} aria-label="Payments">
+                      <Wallet className="h-5 w-5" />
+                    </button>
+                  )}
+                  {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
+                  {isBuyer ? (
+                    <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
+                      <ShoppingCart className="h-5 w-5" />
+                      {cartCount > 0 && (
+                        <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                          {cartCount}
+                        </span>
+                      )}
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => promptLogin('/cart')} className={buyerIconButtonClass} aria-label="Cart">
+                      <ShoppingCart className="h-5 w-5" />
+                    </button>
+                  )}
+                  {isBuyer ? (
+                    <Link to="/profile" className={buyerIconButtonClass} aria-label="Profile">
+                      <User className="h-5 w-5" />
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={() => promptLogin('/profile')} className={buyerIconButtonClass} aria-label="Profile">
+                      <User className="h-5 w-5" />
+                    </button>
+                  )}
                 </>
               )}
 
-              {!isAdmin && !isBuyer && (
+              {!isAdmin && !isBuyerLike && (
                 <div className="relative">
                   <div className="flex items-center gap-3">
                     <NotificationBell user={storedUser} theme={theme} />
@@ -578,21 +613,27 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             </div>
 
           <div className="flex shrink-0 items-center gap-2 xl:hidden">
-            {isBuyer ? (
+            {isBuyerLike ? (
               <>
-                <NotificationBell user={storedUser} theme={theme} />
-                <Link
-                  to="/cart"
-                  className={buyerIconButtonClass}
-                  aria-label="Cart"
-                >
-                  <ShoppingCart className="h-5 w-5" />
-                  {cartCount > 0 && (
-                    <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                      {cartCount}
-                    </span>
-                  )}
-                </Link>
+                {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
+                {isBuyer ? (
+                  <Link
+                    to="/cart"
+                    className={buyerIconButtonClass}
+                    aria-label="Cart"
+                  >
+                    <ShoppingCart className="h-5 w-5" />
+                    {cartCount > 0 && (
+                      <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                        {cartCount}
+                      </span>
+                    )}
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => promptLogin('/cart')} className={buyerIconButtonClass} aria-label="Cart">
+                    <ShoppingCart className="h-5 w-5" />
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -709,36 +750,64 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
           </div>
         </div>
       )}
-      {isBuyer && (
+      {isBuyerLike && (
         <div className={`fixed inset-x-0 bottom-0 z-40 border-t xl:hidden ${mobilePanelClass}`}>
           <div className="grid grid-cols-5 gap-1 px-3 py-2">
-            <Link to="/marketplace" className={buyerBottomTabClass}>
+            <Link to={homePath} className={buyerBottomTabClass}>
               <Home className="h-5 w-5" />
               <span>Home</span>
             </Link>
-            <Link to="/orders" className={buyerBottomTabClass}>
-              <div className="relative">
+            {isBuyer ? (
+              <Link to="/orders" className={buyerBottomTabClass}>
+                <div className="relative">
+                  <Package className="h-5 w-5" />
+                  {actionRequiredCount > 0 && (
+                    <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {actionRequiredCount}
+                    </span>
+                  )}
+                </div>
+                <span>Orders</span>
+              </Link>
+            ) : (
+              <button type="button" onClick={() => promptLogin('/orders')} className={buyerBottomTabClass}>
                 <Package className="h-5 w-5" />
-                {actionRequiredCount > 0 && (
-                  <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {actionRequiredCount}
-                  </span>
-                )}
-              </div>
-              <span>Orders</span>
-            </Link>
-            <Link to="/buyer/payments" className={buyerBottomTabClass}>
-              <Wallet className="h-5 w-5" />
-              <span>Payments</span>
-            </Link>
-            <Link to="/profile" className={buyerBottomTabClass}>
-              <User className="h-5 w-5" />
-              <span>Profile</span>
-            </Link>
-            <Link to="/support" className={buyerBottomTabClass}>
-              <HelpCircle className="h-5 w-5" />
-              <span>Help</span>
-            </Link>
+                <span>Orders</span>
+              </button>
+            )}
+            {isBuyer ? (
+              <Link to="/buyer/payments" className={buyerBottomTabClass}>
+                <Wallet className="h-5 w-5" />
+                <span>Payments</span>
+              </Link>
+            ) : (
+              <button type="button" onClick={() => promptLogin('/buyer/payments')} className={buyerBottomTabClass}>
+                <Wallet className="h-5 w-5" />
+                <span>Payments</span>
+              </button>
+            )}
+            {isBuyer ? (
+              <Link to="/profile" className={buyerBottomTabClass}>
+                <User className="h-5 w-5" />
+                <span>Profile</span>
+              </Link>
+            ) : (
+              <button type="button" onClick={() => promptLogin('/profile')} className={buyerBottomTabClass}>
+                <User className="h-5 w-5" />
+                <span>Profile</span>
+              </button>
+            )}
+            {isBuyer ? (
+              <Link to="/support" className={buyerBottomTabClass}>
+                <HelpCircle className="h-5 w-5" />
+                <span>Help</span>
+              </Link>
+            ) : (
+              <button type="button" onClick={() => promptLogin('/support')} className={buyerBottomTabClass}>
+                <HelpCircle className="h-5 w-5" />
+                <span>Help</span>
+              </button>
+            )}
           </div>
         </div>
       )}

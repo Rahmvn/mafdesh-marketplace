@@ -19,17 +19,21 @@ test.describe('Smoke Routes', () => {
     await expect(page.getByText(/acceptance of terms/i)).toBeVisible();
   });
 
-  test('redirects unauthenticated users away from support', async ({ page }) => {
+  test('shows the login-required modal for unauthenticated support access', async ({ page }) => {
     await gotoApp(page, '/support');
 
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText(/please login to continue/i)).toBeVisible();
+    await page.getByRole('button', { name: /log in/i }).click();
+    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fsupport$/);
     await expect(page.getByRole('button', { name: /login to mafdesh/i })).toBeVisible();
   });
 
-  test('redirects unauthenticated users away from admin users', async ({ page }) => {
+  test('shows the login-required modal for unauthenticated admin access', async ({ page }) => {
     await gotoApp(page, '/admin/users');
 
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText(/please login to continue/i)).toBeVisible();
+    await page.getByRole('button', { name: /log in/i }).click();
+    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fadmin%2Fusers$/);
     await expect(page.getByRole('button', { name: /login to mafdesh/i })).toBeVisible();
   });
 });

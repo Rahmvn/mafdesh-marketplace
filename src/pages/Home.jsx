@@ -20,11 +20,6 @@ export default function Home() {
       return;
     }
 
-    if (storedUser?.role === 'buyer') {
-      navigate('/marketplace', { replace: true });
-      return;
-    }
-
     const checkAuth = async () => {
       const { data } = await supabase.auth.getSession();
 
@@ -48,8 +43,6 @@ export default function Home() {
         navigate('/seller/dashboard', { replace: true });
       } else if (userData.role === 'admin') {
         navigate('/admin/dashboard', { replace: true });
-      } else if (userData.role === 'buyer') {
-        navigate('/marketplace', { replace: true });
       }
     };
 

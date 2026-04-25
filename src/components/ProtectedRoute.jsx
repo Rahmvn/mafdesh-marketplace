@@ -1,7 +1,32 @@
-import React, { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { supabase } from '../supabaseClient';
+import { showGlobalLoginRequired } from '../hooks/modalService';
+
+function LoginRequiredFallback({ returnUrl }) {
+  const navigate = useNavigate();
+  const hasPromptedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasPromptedRef.current) {
+      return;
+    }
+
+    hasPromptedRef.current = true;
+    showGlobalLoginRequired(
+      'Please login to continue.',
+      () => {
+        navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`, { replace: true });
+      },
+      () => {
+        navigate('/', { replace: true });
+      }
+    );
+  }, [navigate, returnUrl]);
+
+  return <MarketplaceRouteLoader />;
+}
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
   const [status, setStatus] = useState('loading');
@@ -61,7 +86,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
 
   if (status === 'unauthenticated') {
     const returnUrl = `${location.pathname}${location.search}${location.hash}`;
-    return <Navigate to={`/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
+    return <LoginRequiredFallback returnUrl={returnUrl} />;
   }
 
   if (status === 'unauthorized') {

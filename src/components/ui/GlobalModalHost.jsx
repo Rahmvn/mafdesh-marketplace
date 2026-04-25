@@ -46,7 +46,13 @@ export default function GlobalModalHost() {
       dismissLabel={modalState.dismissLabel}
       confirmLabel={modalState.confirmLabel}
       cancelLabel={modalState.cancelLabel}
-      onClose={() => setModalState(null)}
+      onClose={async () => {
+        const handler = modalState.onCancel;
+        setModalState(null);
+        if (handler) {
+          await handler();
+        }
+      }}
       onConfirm={async () => {
         const handler = modalState.onConfirm;
         setModalState(null);

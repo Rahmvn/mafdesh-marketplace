@@ -1,6 +1,5 @@
 import React from "react";
 import { useEffect, useState } from "react";
-import GuestNavbar from "./GuestNavbar";
 import Navbar from "./Navbar";
 import { supabase } from "../supabaseClient";
 
@@ -31,6 +30,5 @@ export default function AuthNavbarWrapper() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  if (user) return <Navbar />;
-  return <GuestNavbar />;
+  return <Navbar />;
 }

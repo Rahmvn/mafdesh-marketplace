@@ -23,6 +23,7 @@ import { getProductFulfillmentOptions } from "../services/deliveryService";
 import {
   showGlobalError,
   showGlobalSuccess,
+  showGlobalLoginRequired,
   showGlobalWarning,
 } from "../hooks/modalService";
 import { getProductPricing } from "../utils/flashSale";
@@ -660,7 +661,9 @@ export default function ProductDetail() {
   const requireLogin = async (returnUrl) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      redirectToLogin(returnUrl);
+      showGlobalLoginRequired('Please log in to continue.', () => {
+        redirectToLogin(returnUrl);
+      });
       return false;
     }
     return true;
