@@ -466,7 +466,7 @@ set search_path = public
 as $$
 declare
   v_order_number text;
-  v_deadline timestamptz := new.created_at + interval '5 days';
+  v_deadline timestamptz := new.created_at + interval '10 days';
   v_remaining_seconds integer;
   v_seller_link text := format('/seller/orders/%s', new.order_id);
   v_buyer_link text := format('/buyer/orders/%s', new.order_id);

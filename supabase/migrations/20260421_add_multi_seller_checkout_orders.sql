@@ -50,6 +50,8 @@ declare
   v_product public.products%rowtype;
   v_now timestamptz := timezone('utc', now());
   v_order_total_check numeric;
+  v_ship_deadline timestamptz;
+  v_added_business_days integer;
 begin
   if p_checkout_session_id is null then
     raise exception 'checkout_session_id is required.';
@@ -271,10 +273,21 @@ begin
       end if;
     end loop;
 
+    v_ship_deadline := v_now;
+    v_added_business_days := 0;
+
+    while v_added_business_days < 2 loop
+      v_ship_deadline := v_ship_deadline + interval '1 day';
+
+      if extract(isodow from v_ship_deadline) < 6 then
+        v_added_business_days := v_added_business_days + 1;
+      end if;
+    end loop;
+
     update public.orders
     set
       status = 'PAID_ESCROW',
-      ship_deadline = v_now + interval '48 hours'
+      ship_deadline = v_ship_deadline
     where id = v_order_id;
 
     v_created_order_ids := v_created_order_ids || to_jsonb(v_order_id);

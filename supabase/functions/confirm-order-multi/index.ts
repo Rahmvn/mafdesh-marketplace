@@ -184,22 +184,6 @@ serve(async (req) => {
       }
     }
 
-// Always set ship_deadline for all orders (48h)
-const { data: order } = await supabaseAdmin
-  .from('orders')
-  .select('delivery_type')
-  .eq('id', orderId)
-  .single()
-
-if (order) {
-  await supabaseAdmin
-    .from('orders')
-    .update({
-      ship_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-    })
-    .eq('id', orderId)
-}
-
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Access-Control-Allow-Origin': '*' },

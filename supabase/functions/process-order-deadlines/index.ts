@@ -2,6 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SYSTEM_SOURCE = 'system_cron'
 const CRON_SCHEDULE = '*/5 * * * *'
+const DELIVERY_REVIEW_ACTION = 'DELIVERY_DEADLINE_REVIEW'
+const DELIVERY_REVIEW_BUFFER_MS = 24 * 60 * 60 * 1000
 
 type SupabaseClient = ReturnType<typeof createClient>
 
@@ -43,8 +45,30 @@ function createSupabaseClient() {
   )
 }
 
+async function notifyAdmins(
+  supabase: SupabaseClient,
+  type: string,
+  title: string,
+  body: string,
+  link: string,
+  metadata: Record<string, unknown>
+) {
+  const { error } = await supabase.rpc('create_admin_notifications', {
+    p_type: type,
+    p_title: title,
+    p_body: body,
+    p_link: link,
+    p_metadata: metadata,
+  })
+
+  if (error) {
+    console.error(`Failed to notify admins for ${type}:`, error)
+  }
+}
+
 async function processOrderDeadlines(supabase: SupabaseClient) {
-  const now = new Date().toISOString()
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
   const results: string[] = []
 
   const refundFields = {
@@ -94,6 +118,34 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
   const pendingRefundFilter =
     pendingRefundOrderIds.length > 0 ? inFilter(pendingRefundOrderIds) : null
 
+  const { data: deliveryReviewActions, error: deliveryReviewError } = await supabase
+    .from('admin_actions')
+    .select('target_id, created_at')
+    .eq('target_type', 'order')
+    .eq('action_type', DELIVERY_REVIEW_ACTION)
+    .eq('source', SYSTEM_SOURCE)
+    .eq('automated', true)
+
+  if (deliveryReviewError) {
+    console.error('Error loading delivery review actions:', deliveryReviewError)
+  }
+
+  const deliveryReviewMap = new Map<string, string>()
+
+  for (const action of deliveryReviewActions || []) {
+    const orderId = String(action.target_id || '').trim()
+
+    if (!orderId) {
+      continue
+    }
+
+    const existingCreatedAt = deliveryReviewMap.get(orderId)
+
+    if (!existingCreatedAt || new Date(action.created_at).getTime() > new Date(existingCreatedAt).getTime()) {
+      deliveryReviewMap.set(orderId, action.created_at)
+    }
+  }
+
   const { data: overdueRefundApprovals, error: overdueRefundError } = await supabase.rpc(
     'auto_approve_overdue_refund_requests'
   )
@@ -106,7 +158,7 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
     )
   }
 
-  // 1. Auto-refund orders not shipped or prepared within 48 hours.
+  // 1. Auto-refund orders not shipped or prepared within 2 business days.
   let refundQuery = supabase
     .from('orders')
     .update(refundFields)
@@ -133,14 +185,14 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
         supabase,
         order.id,
         'AUTO_REFUND',
-        'Seller did not prepare order within 48 hours',
+        'Seller did not prepare order within 2 business days',
         { cancelled_at: now, trigger: 'ship_deadline_expired' },
         refundFields
       )
     }
   }
 
-  // 2. Auto-complete delivered orders after the dispute window closes.
+  // 2. Auto-complete delivered orders after the 5-day dispute window closes.
   let completeQuery = supabase
     .from('orders')
     .update(completeFields)
@@ -163,14 +215,14 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
         supabase,
         order.id,
         'AUTO_COMPLETE',
-        'Buyer did not dispute within 72 hours of delivery',
+        'Buyer did not dispute within 5 days of delivery',
         { completed_at: now, trigger: 'dispute_deadline_expired' },
         completeFields
       )
     }
   }
 
-  // 3. Auto-refund pickup orders the buyer never collected within 48 hours.
+  // 3. Auto-refund pickup orders the buyer never collected within 2 business days.
   let pickupRefundQuery = supabase
     .from('orders')
     .update(refundFields)
@@ -194,42 +246,120 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
         supabase,
         order.id,
         'AUTO_REFUND',
-        'Buyer did not pick up within 48 hours',
+        'Buyer did not pick up within 2 business days',
         { cancelled_at: now, trigger: 'pickup_window_expired' },
         refundFields
       )
     }
   }
 
-  // 4. Auto-refund delivery orders that missed the delivery deadline.
-  let undeliveredQuery = supabase
+  // 4. Flag delivery orders that missed the 14-day delivery target for admin review.
+  let overdueDeliveryQuery = supabase
     .from('orders')
-    .update(refundFields)
+    .select('id, order_number, delivery_deadline')
     .eq('status', 'SHIPPED')
     .eq('delivery_type', 'delivery')
     .lte('delivery_deadline', now)
     .neq('status', 'DISPUTED')
 
   if (heldFilter) {
-    undeliveredQuery = undeliveredQuery.not('id', 'in', heldFilter)
+    overdueDeliveryQuery = overdueDeliveryQuery.not('id', 'in', heldFilter)
   }
 
-  const { data: undelivered, error: err4 } = await undeliveredQuery.select('id')
+  const { data: overdueDeliveryOrders, error: err4 } = await overdueDeliveryQuery
   if (err4) {
     console.error('Error in step 4:', err4)
   }
-  if (undelivered?.length) {
-    results.push(`Refunded ${undelivered.length} delivery orders that missed the delivery deadline`)
-    for (const order of undelivered) {
+
+  let flaggedForReviewCount = 0
+  let refundedAfterReviewCount = 0
+
+  for (const order of overdueDeliveryOrders || []) {
+    const reviewOpenedAt = deliveryReviewMap.get(order.id)
+
+    if (!reviewOpenedAt) {
+      const reviewDeadline = new Date(nowDate.getTime() + DELIVERY_REVIEW_BUFFER_MS).toISOString()
+      const orderNumber = String(order.order_number || order.id.slice(0, 8))
+
       await logSystemOrderAction(
         supabase,
         order.id,
-        'AUTO_REFUND',
-        'Seller did not mark order as delivered within 7 days of shipping',
-        { cancelled_at: now, trigger: 'delivery_deadline_expired' },
-        refundFields
+        DELIVERY_REVIEW_ACTION,
+        'Seller missed the 14-day delivery deadline. Admin review window opened for 24 hours.',
+        {
+          delivery_deadline: order.delivery_deadline,
+          review_deadline_at: reviewDeadline,
+          trigger: 'delivery_deadline_expired',
+        },
+        {
+          status: 'SHIPPED',
+          review_required: true,
+          review_deadline_at: reviewDeadline,
+        }
       )
+
+      await notifyAdmins(
+        supabase,
+        'delivery_deadline_review',
+        'Delivery deadline needs review',
+        `Order ${orderNumber} missed the 14-day delivery target. Review it within 24 hours before the buyer is refunded automatically.`,
+        '/admin/orders',
+        {
+          order_id: order.id,
+          order_number: order.order_number,
+          delivery_deadline: order.delivery_deadline,
+          review_deadline_at: reviewDeadline,
+        }
+      )
+
+      deliveryReviewMap.set(order.id, now)
+      flaggedForReviewCount += 1
+      continue
     }
+
+    if (new Date(reviewOpenedAt).getTime() > nowDate.getTime() - DELIVERY_REVIEW_BUFFER_MS) {
+      continue
+    }
+
+    const { data: refundedOrder, error: refundError } = await supabase
+      .from('orders')
+      .update(refundFields)
+      .eq('id', order.id)
+      .eq('status', 'SHIPPED')
+      .eq('delivery_type', 'delivery')
+      .select('id')
+
+    if (refundError) {
+      console.error(`Error refunding overdue delivery order ${order.id}:`, refundError)
+      continue
+    }
+
+    if (!refundedOrder?.length) {
+      continue
+    }
+
+    refundedAfterReviewCount += 1
+
+    await logSystemOrderAction(
+      supabase,
+      order.id,
+      'AUTO_REFUND',
+      'Seller did not mark order as delivered within 14 days of shipping, and the 24-hour admin review buffer expired.',
+      { cancelled_at: now, trigger: 'delivery_deadline_review_expired' },
+      refundFields
+    )
+  }
+
+  if (flaggedForReviewCount > 0) {
+    results.push(
+      `Flagged ${flaggedForReviewCount} delivery orders for admin review after the delivery deadline passed`
+    )
+  }
+
+  if (refundedAfterReviewCount > 0) {
+    results.push(
+      `Refunded ${refundedAfterReviewCount} delivery orders after the 24-hour review buffer expired`
+    )
   }
 
   return results

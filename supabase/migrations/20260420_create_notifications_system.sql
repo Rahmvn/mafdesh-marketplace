@@ -199,7 +199,7 @@ begin
         'buyer_title', 'Payment received',
         'buyer_message', format('Payment for order %s is confirmed and held in escrow while the seller prepares it.', v_order_number),
         'seller_title', 'New order placed',
-        'seller_message', format('Order %s has been paid. Please prepare it within 48 hours.', v_order_number)
+        'seller_message', format('Order %s has been paid. Please prepare it within 2 business days.', v_order_number)
       );
     when 'SHIPPED' then
       return jsonb_build_object(

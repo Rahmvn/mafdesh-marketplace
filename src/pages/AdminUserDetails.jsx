@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
-import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, CheckCircle } from "lucide-react";
+import { User, Mail, Phone, MapPin, Calendar, Shield, AlertCircle, CheckCircle, XCircle } from "lucide-react";
 
 function AdminPageSkeleton() {
   return (
@@ -183,6 +183,32 @@ export default function AdminUserDetails() {
                 )}
               </p>
             </div>
+            {user.role === "seller" && (
+              <div className="col-span-2">
+                <p className="text-sm text-gray-500">Seller Agreement</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {user.seller_agreement_accepted ? (
+                    <>
+                      <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                        <CheckCircle size={16} />
+                        Accepted ✓ on{" "}
+                        {user.seller_agreement_accepted_at
+                          ? new Date(user.seller_agreement_accepted_at).toLocaleDateString()
+                          : "—"}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+                        Version {user.seller_agreement_version || "—"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700">
+                      <XCircle size={16} />
+                      Not accepted ✗
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             <div>
               <p className="text-sm text-gray-500">Joined</p>
               <p className="font-medium">{new Date(user.created_at).toLocaleDateString()}</p>

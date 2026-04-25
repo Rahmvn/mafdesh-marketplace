@@ -616,8 +616,8 @@ export default function BuyerOrderDetails() {
       desc: isRefundProcessing
         ? "Refund request is processing. Fulfillment is paused during admin review."
         : isDelivery
-          ? "Seller has 48 hours to ship."
-          : "Seller has 48 hours to prepare for pickup.",
+          ? "Seller has 2 business days to ship."
+          : "Seller has 2 business days to prepare for pickup.",
       expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
@@ -773,7 +773,7 @@ export default function BuyerOrderDetails() {
       infoBox = (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Dispute window closed</h3>
-          <p className="text-sm text-gray-700">You did not confirm or dispute in time. The order will auto-complete and payment will be released.</p>
+          <p className="text-sm text-gray-700">You did not confirm or dispute within 5 days. The order will auto-complete and payment will be released.</p>
         </div>
       );
     } else {
@@ -1089,15 +1089,12 @@ export default function BuyerOrderDetails() {
               let timerText = null;
               let urgencyClass = '';
               if (!isFinalState) {
-                if (step.label === "Shipped" && order.auto_complete_at) {
-                  timerText = formatRemaining(order.auto_complete_at);
-                  urgencyClass = getUrgencyClass(order.auto_complete_at);
-                } else if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
+                if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
                   timerText = formatRemaining(order.auto_cancel_at);
                   urgencyClass = getUrgencyClass(order.auto_cancel_at);
-                } else if (step.label === "Delivered" && order.dispute_deadline && order.status === "DELIVERED") {
-                  timerText = formatRemaining(order.dispute_deadline);
-                  urgencyClass = getUrgencyClass(order.dispute_deadline);
+                } else if (step.label === "Delivered" && order.auto_complete_at && order.status === "DELIVERED") {
+                  timerText = formatRemaining(order.auto_complete_at);
+                  urgencyClass = getUrgencyClass(order.auto_complete_at);
                 }
               }
               return (

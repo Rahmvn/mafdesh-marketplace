@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Clock3,
@@ -360,6 +361,26 @@ export default function SellerDashboard() {
         </button>
       }
     >
+      {!currentUser?.seller_agreement_accepted && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-orange-800">
+              You must accept the Seller Agreement before listing products
+            </p>
+            <p className="mt-1 text-sm text-orange-700">
+              Read and accept our seller agreement to start listing products on Mafdesh.
+            </p>
+            <button
+              onClick={() => navigate('/seller/agreement')}
+              className="mt-3 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+            >
+              Read and Accept Agreement →
+            </button>
+          </div>
+        </div>
+      )}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SellerStatCard
           theme={theme}

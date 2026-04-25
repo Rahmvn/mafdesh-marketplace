@@ -25,6 +25,7 @@ const SellerAnalytics = lazy(() => import('./pages/SellerAnalytics'));
 const SellerDeliverySettings = lazy(() => import('./pages/SellerDeliverySettings'));
 const AddProduct = lazy(() => import('./pages/AddProduct'));
 const AddProductPreview = lazy(() => import('./pages/seller/AddProductPreview'));
+const SellerAgreement = lazy(() => import('./pages/seller/SellerAgreement'));
 const EditProduct = lazy(() => import('./pages/EditProduct'));
 const SellerProductReviews = lazy(() => import('./pages/SellerProductReviews'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -161,6 +162,10 @@ export default function App() {
                 <SellerAnalytics />
               </ProtectedRoute>
             }
+          />
+          <Route
+            path="/seller/agreement"
+            element={<SellerAgreement />}
           />
           <Route
             path="/seller/products/new"

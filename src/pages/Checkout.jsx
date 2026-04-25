@@ -413,7 +413,7 @@ export default function Checkout() {
                     ))}
                   </select>
                   <p className="text-sm text-gray-500 mt-2">
-                    Seller has 48 hours to prepare. You'll be notified when ready.
+                    Seller has 2 business days to prepare. You'll be notified when ready.
                   </p>
                 </div>
               )}

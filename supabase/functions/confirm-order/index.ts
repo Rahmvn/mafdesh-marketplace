@@ -22,13 +22,29 @@ function isMockModeEnabled() {
   return mockFlag === 'true' || !paystackSecret
 }
 
+function addBusinessDays(date: Date, days: number): Date {
+  const result = new Date(date)
+  let added = 0
+
+  while (added < days) {
+    result.setDate(result.getDate() + 1)
+    const dayOfWeek = result.getDay()
+
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      added += 1
+    }
+  }
+
+  return result
+}
+
 async function finalizePaidOrder(
   supabaseAdmin: ReturnType<typeof createClient>,
   orderId: string,
   paymentReference?: string | null
 ) {
   const paidAt = new Date().toISOString()
-  const shipDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+  const shipDeadline = addBusinessDays(new Date(), 2).toISOString()
   const normalizedReference = String(paymentReference || '').trim()
 
   const { error } = await supabaseAdmin

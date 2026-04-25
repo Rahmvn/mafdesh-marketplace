@@ -119,7 +119,7 @@ set search_path = public
 as $$
 declare
   v_order_number text;
-  v_deadline timestamptz := new.created_at + interval '5 days';
+  v_deadline timestamptz := new.created_at + interval '10 days';
   v_remaining_seconds integer;
 begin
   select coalesce(order_number, left(id::text, 8))

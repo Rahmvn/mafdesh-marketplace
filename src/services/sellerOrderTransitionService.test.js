@@ -35,7 +35,7 @@ describe("getDeliveryDeadlineState", () => {
     });
   });
 
-  it("blocks a shipped delivery order after the delivery deadline", () => {
+  it("still allows a shipped delivery order after the delivery deadline while review is pending", () => {
     const result = getDeliveryDeadlineState(
       {
         status: "SHIPPED",
@@ -46,7 +46,7 @@ describe("getDeliveryDeadlineState", () => {
     );
 
     expect(result).toMatchObject({
-      canMarkDelivered: false,
+      canMarkDelivered: true,
       reason: SELLER_DELIVERY_DEADLINE_REASONS.EXPIRED,
     });
   });
@@ -99,7 +99,7 @@ describe("seller order transition RPCs", () => {
     });
 
     await expect(markSellerOrderDelivered("order-3")).rejects.toThrow(
-      "The 7-day delivery window has passed. This order will be refunded automatically."
+      "The 14-day delivery target has passed. You can still mark this order delivered while admin review is pending."
     );
   });
 });

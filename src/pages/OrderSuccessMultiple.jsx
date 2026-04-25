@@ -9,10 +9,10 @@ import { formatNaira } from '../utils/multiSellerCheckout';
 
 function getHandlingCopy(order) {
   if (order.delivery_type === 'pickup') {
-    return 'Seller prepares this pickup order within 48 hours.';
+    return 'Seller prepares this pickup order within 2 business days.';
   }
 
-  return 'Seller prepares this delivery order within 48 hours.';
+  return 'Seller prepares this delivery order within 2 business days.';
 }
 
 export default function OrderSuccessMultiple() {

@@ -217,9 +217,13 @@ export default function SellerOrders() {
     if (order.status === 'PAID_ESCROW' && order.ship_deadline) {
       deadlineText = `Time to ship: ${formatRemaining(order.ship_deadline)}`;
     } else if (order.status === 'SHIPPED' && order.delivery_type === 'delivery') {
-      deadlineText = order.delivery_deadline
-        ? `Time to mark delivered: ${formatRemaining(order.delivery_deadline)}`
-        : deliveryDeadlineState.message || 'Delivery deadline missing';
+      deadlineText = deliveryDeadlineState.reason === 'expired'
+        ? deliveryDeadlineState.message
+        : (
+            order.delivery_deadline
+              ? `Time to mark delivered: ${formatRemaining(order.delivery_deadline)}`
+              : deliveryDeadlineState.message || 'Delivery deadline missing'
+          );
     } else if (order.status === 'READY_FOR_PICKUP' && order.auto_cancel_at) {
       deadlineText = `Pickup deadline: ${formatRemaining(order.auto_cancel_at)}`;
     } else if (order.status === 'DELIVERED' && order.dispute_deadline) {

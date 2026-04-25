@@ -35,10 +35,10 @@ export function getDeliveryDeadlineState(order, now = new Date()) {
 
   if (deadline <= now) {
     return {
-      canMarkDelivered: false,
+      canMarkDelivered: true,
       reason: SELLER_DELIVERY_DEADLINE_REASONS.EXPIRED,
       message:
-        "The 7-day delivery window has passed. This order will be refunded automatically.",
+        "The 14-day delivery target has passed. You can still mark this order delivered while admin review is pending.",
     };
   }
 
@@ -53,7 +53,7 @@ export function getSellerOrderTransitionMessage(error) {
   const message = String(error?.message || error || "").toLowerCase();
 
   if (message.includes("delivery deadline has passed")) {
-    return "The 7-day delivery window has passed. This order will be refunded automatically.";
+    return "The 14-day delivery target has passed. You can still mark this order delivered while admin review is pending.";
   }
 
   if (message.includes("delivery deadline is missing")) {

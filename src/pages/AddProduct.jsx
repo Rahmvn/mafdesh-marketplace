@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, CreditCard, Search, Truck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
@@ -115,6 +115,7 @@ function StepIndicator({ currentStep, theme, darkMode }) {
 
 export default function AddProduct() {
   const navigate = useNavigate();
+  const location = useLocation();
   const previewCacheRef = useRef();
 
   if (previewCacheRef.current === undefined) {
@@ -180,8 +181,14 @@ export default function AddProduct() {
       try {
         const context = await loadSellerAddProductContext(parsedUser.id);
         setCurrentUser(context.user);
+        localStorage.setItem('mafdesh_user', JSON.stringify(context.user));
         setSellerPickupLocations(context.pickupLocations);
         setBankDetailsApproved(context.bankDetailsApproved);
+
+        if (!context.user.seller_agreement_accepted) {
+          navigate('/seller/agreement', { state: { from: location.pathname } });
+          return;
+        }
       } catch (error) {
         console.error('Error fetching bank details approval:', error);
         setBankDetailsApproved(false);
@@ -191,7 +198,7 @@ export default function AddProduct() {
     };
 
     checkAuth();
-  }, [navigate, showError]);
+  }, [location.pathname, navigate, showError]);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {

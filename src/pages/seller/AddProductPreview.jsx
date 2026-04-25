@@ -132,8 +132,14 @@ export default function AddProductPreview() {
       try {
         const context = await loadSellerAddProductContext(parsedUser.id);
         setCurrentUser(context.user);
+        localStorage.setItem('mafdesh_user', JSON.stringify(context.user));
         setSellerPickupLocations(context.pickupLocations);
         setBankDetailsApproved(context.bankDetailsApproved);
+
+        if (!context.user.seller_agreement_accepted) {
+          navigate('/seller/agreement', { state: { from: location.pathname } });
+          return;
+        }
       } catch (error) {
         console.error('Error fetching bank details approval:', error);
         setBankDetailsApproved(false);

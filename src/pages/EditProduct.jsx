@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Lock, Truck, Zap } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
@@ -256,6 +256,7 @@ function didSaveTriggerReapproval(previousProduct, updatedProduct) {
 
 export default function EditProduct() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const [currentUser, setCurrentUser] = useState(() =>
     JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
@@ -379,6 +380,12 @@ export default function EditProduct() {
       const nextUser = sellerData || userData;
       setCurrentUser(nextUser);
       localStorage.setItem('mafdesh_user', JSON.stringify(nextUser));
+
+      if (!nextUser.seller_agreement_accepted) {
+        navigate('/seller/agreement', { state: { from: location.pathname } });
+        return;
+      }
+
       const pickupLocations = await getSellerPickupLocations(nextUser.id).catch(() => []);
       setSellerPickupLocations(pickupLocations);
 
@@ -386,7 +393,7 @@ export default function EditProduct() {
     };
 
     checkAuth();
-  }, [loadProduct, navigate, showError]);
+  }, [loadProduct, location.pathname, navigate, showError]);
 
   const handleImageChange = (index, file) => {
     if (!file) {

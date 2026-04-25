@@ -358,26 +358,12 @@ export default function SellerOrderDetails() {
       order.delivery_type === "pickup" ? "Mark this order as ready for pickup?" : "Mark this order as shipped?",
       async () => {
         try {
-          const updates = order.delivery_type === "pickup"
-            ? {
-                status: "READY_FOR_PICKUP",
-                ready_for_pickup_at: new Date().toISOString(),
-                auto_cancel_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-              }
-            : {
-                status: "SHIPPED",
-                shipped_at: new Date().toISOString(),
-              };
-
           if (order.delivery_type === "delivery") {
             await markSellerOrderShipped(order.id);
           } else {
-            const { error } = await supabase
-              .from("orders")
-              .update(updates)
-              .eq("id", order.id)
-              .eq("status", "PAID_ESCROW")
-              .select("id");
+            const { error } = await supabase.rpc("seller_mark_order_ready_for_pickup", {
+              p_order_id: order.id,
+            });
             if (error) throw error;
           }
           loadOrder();
@@ -471,8 +457,8 @@ export default function SellerOrderDetails() {
       desc: isRefundProcessing
         ? "Refund request is processing. Fulfillment is paused during admin review."
         : isDelivery
-          ? "You have 48 hours to ship."
-          : "You have 48 hours to prepare for pickup.",
+          ? "You have 2 business days to ship."
+          : "You have 2 business days to prepare for pickup.",
       expired: effectiveShipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
@@ -550,7 +536,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Pickup Window Closed
           </h3>
           <p className="text-sm text-red-700">
-            The buyer did not pick up within 48 hours. The order will be cancelled and the buyer refunded.
+            The buyer did not pick up within 2 business days. The order will be cancelled and the buyer refunded.
           </p>
         </div>
       );
@@ -572,10 +558,10 @@ export default function SellerOrderDetails() {
       infoBox = (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
-            <AlertCircle size={18} /> Delivery Window Closed
+            <AlertCircle size={18} /> Delivery Deadline Passed
           </h3>
           <p className="text-sm text-red-700">
-            The 7-day delivery window has passed. This order will be automatically refunded to the buyer.
+            The 14-day delivery target has passed. Admin has 24 hours to review before the order is automatically refunded, and you can still mark it delivered during that buffer.
           </p>
         </div>
       );
@@ -598,7 +584,7 @@ export default function SellerOrderDetails() {
           </h3>
           <p className="text-sm text-blue-700">
             You have <strong className={getUrgencyClass(order.delivery_deadline, now)}>{formatRemaining(order.delivery_deadline, now)}</strong> to mark this order as delivered.
-            If you do not mark it delivered by then, the buyer will be automatically refunded.
+            If you do not mark it delivered within 14 days, admin will get a 24-hour review window before the buyer is automatically refunded.
           </p>
         </div>
       );
@@ -611,7 +597,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Dispute Window Closed
           </h3>
           <p className="text-sm text-gray-700">
-            The buyer did not confirm or dispute within 72 hours. The order will auto-complete and funds will be released to you.
+            The buyer did not confirm or dispute within 5 days. The order will auto-complete and funds will be released to you.
           </p>
         </div>
       );
@@ -947,9 +933,15 @@ export default function SellerOrderDetails() {
                   <button onClick={handleMarkDelivered} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">
                     Mark as Delivered
                   </button>
-                  <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.delivery_deadline, now)}`}>
-                    Must mark delivered by {new Date(order.delivery_deadline).toLocaleString()}
-                  </p>
+                  {deliveryDeadlineState.reason === "expired" ? (
+                    <p className="text-sm mt-2 text-center text-red-600">
+                      Delivery target passed. Admin review is now pending for up to 24 hours.
+                    </p>
+                  ) : (
+                    <p className={`text-sm mt-2 text-center ${getUrgencyClass(order.delivery_deadline, now)}`}>
+                      Must mark delivered by {new Date(order.delivery_deadline).toLocaleString()}
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-red-600 text-center font-semibold">
