@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { getOrderItemsMap } from './orderItems';
 import { getBuyerOrderAmounts } from './orderAmounts';
+import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-NG', {
@@ -79,7 +80,17 @@ function getPartyName(user, profile, fallback) {
   );
 }
 
-function getLandscapeLogoMarkup() {
+function getLandscapeLogoMarkup(logoSrc) {
+  if (logoSrc) {
+    return `
+      <img
+        src="${escapeHtml(logoSrc)}"
+        alt="Mafdesh"
+        class="brand-logo"
+      />
+    `;
+  }
+
   return `
     <svg width="180" height="40" viewBox="0 0 180 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mafdesh logo">
       <rect width="180" height="40" rx="8" fill="transparent" />
@@ -97,6 +108,7 @@ function buildReceiptHtml({
   sellerProfile,
   buyerUser,
   buyerProfile,
+  logoSrc,
 }) {
   const sellerName = getPartyName(sellerUser, sellerProfile, 'Seller');
   const buyerName = getPartyName(buyerUser, buyerProfile, 'Buyer');
@@ -185,6 +197,13 @@ function buildReceiptHtml({
             display: flex;
             flex-direction: column;
             gap: 14px;
+          }
+          .brand-logo {
+            display: block;
+            width: 220px;
+            max-width: 100%;
+            height: auto;
+            object-fit: contain;
           }
           .brand-copy {
             max-width: 420px;
@@ -411,7 +430,7 @@ function buildReceiptHtml({
             <header class="header">
               <div class="brand-row">
                 <div class="brand-block">
-                  ${getLandscapeLogoMarkup()}
+                  ${getLandscapeLogoMarkup(logoSrc)}
                   <div class="brand-copy">
                     <div class="eyebrow">Marketplace Receipt</div>
                     <h1>Official payment receipt</h1>
@@ -502,6 +521,34 @@ function buildReceiptHtml({
       </body>
     </html>
   `;
+}
+
+async function getReceiptLogoSrc() {
+  try {
+    const response = await fetch(landscapeLogo)
+
+    if (!response.ok) {
+      throw new Error('Logo request failed.')
+    }
+
+    const logoBlob = await response.blob()
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+
+      reader.onloadend = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('Logo conversion failed.'))
+      reader.readAsDataURL(logoBlob)
+    })
+  } catch (error) {
+    console.error('Receipt logo embedding failed:', error)
+
+    try {
+      return new URL(landscapeLogo, window.location.origin).href
+    } catch {
+      return landscapeLogo
+    }
+  }
 }
 
 function buildLoadingHtml() {
@@ -644,6 +691,8 @@ export async function generateReceipt(orderId, receiptWindow = null) {
   }
 
   try {
+    const logoSrc = await getReceiptLogoSrc();
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('*')
@@ -694,6 +743,7 @@ export async function generateReceipt(orderId, receiptWindow = null) {
         sellerProfile,
         buyerUser,
         buyerProfile,
+        logoSrc,
       })
     );
   } catch (error) {
