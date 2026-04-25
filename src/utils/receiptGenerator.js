@@ -147,6 +147,9 @@ function buildReceiptHtml({
           :root {
             color-scheme: light;
           }
+          * {
+            box-sizing: border-box;
+          }
           body {
             margin: 0;
             background: #eef3f8;
@@ -192,11 +195,14 @@ function buildReceiptHtml({
             align-items: flex-start;
             justify-content: space-between;
             gap: 20px;
+            flex-wrap: wrap;
           }
           .brand-block {
             display: flex;
             flex-direction: column;
             gap: 14px;
+            flex: 1 1 420px;
+            min-width: 0;
           }
           .brand-logo {
             display: block;
@@ -206,7 +212,8 @@ function buildReceiptHtml({
             object-fit: contain;
           }
           .brand-copy {
-            max-width: 420px;
+            max-width: min(420px, 100%);
+            min-width: 0;
           }
           .eyebrow {
             display: inline-flex;
@@ -235,7 +242,8 @@ function buildReceiptHtml({
             line-height: 1.6;
           }
           .header-meta {
-            min-width: 250px;
+            width: min(100%, 280px);
+            min-width: min(250px, 100%);
             border: 1px solid #dbe7f3;
             border-radius: 20px;
             background: rgba(255, 255, 255, 0.92);
@@ -253,6 +261,8 @@ function buildReceiptHtml({
             font-size: 15px;
             font-weight: 700;
             color: #0f172a;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .status-pill {
             display: inline-flex;
@@ -292,11 +302,15 @@ function buildReceiptHtml({
           .value {
             font-size: 18px;
             font-weight: 700;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .sub-value {
             margin-top: 6px;
             font-size: 14px;
             color: #475569;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .section-title {
             margin: 32px 0 14px;
@@ -306,14 +320,17 @@ function buildReceiptHtml({
             text-transform: uppercase;
             color: #64748b;
           }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            overflow: hidden;
-            margin-top: 0;
+          .table-shell {
+            overflow-x: auto;
             border: 1px solid #dbe7f3;
             border-radius: 18px;
             background: #fff;
+          }
+          table {
+            width: 100%;
+            min-width: 560px;
+            border-collapse: collapse;
+            margin-top: 0;
           }
           thead {
             background: #f8fafc;
@@ -341,10 +358,16 @@ function buildReceiptHtml({
           tbody tr:last-child td {
             border-bottom: none;
           }
+          td:first-child {
+            min-width: 200px;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+          }
           .summary {
             margin-top: 28px;
             margin-left: auto;
-            max-width: 380px;
+            width: min(100%, 380px);
             border: 1px solid #dbe7f3;
             border-radius: 20px;
             background: #fbfdff;
@@ -369,6 +392,8 @@ function buildReceiptHtml({
             padding: 18px;
             color: #1e3a8a;
             border: 1px solid #dbeafe;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           .footer {
             display: flex;
@@ -382,6 +407,11 @@ function buildReceiptHtml({
           }
           .footer strong {
             color: #0f172a;
+          }
+          .footer > div {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            word-break: break-word;
           }
           @media print {
             body {
@@ -410,6 +440,10 @@ function buildReceiptHtml({
             .footer {
               flex-direction: column;
             }
+            .header-meta {
+              width: 100%;
+              min-width: 0;
+            }
             .meta-grid {
               grid-template-columns: 1fr;
             }
@@ -417,6 +451,9 @@ function buildReceiptHtml({
             td {
               padding-left: 12px;
               padding-right: 12px;
+            }
+            .summary {
+              width: 100%;
             }
           }
         </style>
@@ -478,28 +515,26 @@ function buildReceiptHtml({
               </div>
 
               <div class="section-title">Purchased Items</div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Qty</th>
-                    <th>Unit price</th>
-                    <th>Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemRows || '<tr><td colspan="4">No order items found.</td></tr>'}
-                </tbody>
-              </table>
+              <div class="table-shell">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty</th>
+                      <th>Unit price</th>
+                      <th>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${itemRows || '<tr><td colspan="4">No order items found.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
 
               <div class="summary">
               <div class="summary-row">
                 <span>Delivery fee</span>
                 <strong>${formatCurrency(orderAmounts.deliveryFee)}</strong>
-              </div>
-              <div class="summary-row">
-                <span>Platform fee</span>
-                <strong>${formatCurrency(orderAmounts.platformFee)}</strong>
               </div>
               <div class="summary-row total">
                 <span>Total paid</span>
