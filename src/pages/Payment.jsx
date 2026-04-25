@@ -138,7 +138,7 @@ export default function Payment() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md rounded-xl border border-blue-100 bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-xl font-bold text-blue-900">Simulate Payment</h1>
+          <h1 className="mb-6 text-xl font-bold text-blue-900">Complete Payment</h1>
 
           <div className="mb-6 space-y-2">
             <div className="flex justify-between">
@@ -156,7 +156,7 @@ export default function Payment() {
           </div>
 
           <p className="mb-6 text-sm text-blue-700">
-            Test mode only. This confirms the order without charging real money.
+            Review your order total and continue to complete payment securely.
           </p>
 
           <button
@@ -164,7 +164,7 @@ export default function Payment() {
             disabled={processing}
             className="w-full rounded-lg bg-orange-600 py-3 text-white hover:bg-orange-700 disabled:opacity-50"
           >
-            {processing ? "Processing..." : "Simulate Payment"}
+            {processing ? "Processing..." : `Pay ${formatPrice(orderAmounts.total)}`}
           </button>
         </div>
       </main>

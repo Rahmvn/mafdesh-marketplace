@@ -496,10 +496,10 @@ export default function Checkout() {
               disabled={isSubmitting || !hasAvailableMethod}
               className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
             >
-              {isSubmitting ? 'Preparing...' : 'Continue to Test Payment'}
+              {isSubmitting ? 'Preparing...' : 'Continue to Payment'}
             </button>
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Test mode only. Your order stays pending until you complete the payment step.
+              Your order will be confirmed after you complete payment.
             </p>
           </div>
         </div>

@@ -81,7 +81,7 @@ const FAQS = [
     category: 'Payments',
     question: 'What payment method is currently supported?',
     answer:
-      'Checkout is currently running in test mode, so orders can be placed without charging real money. A live Paystack payment flow will be added later.',
+      'Payments go through the checkout flow and orders are confirmed after payment is completed. If you run into a payment issue, contact support with your order number and payment reference.',
   },
   {
     id: 'account-help',

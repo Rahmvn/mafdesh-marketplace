@@ -37,11 +37,34 @@ type PaystackVerificationData = {
   status?: string | null
 }
 
-function isMockModeEnabled() {
-  const mockFlag = String(Deno.env.get('MOCK_PAYMENT') || '').toLowerCase()
-  const paystackSecret = String(Deno.env.get('PAYSTACK_SECRET_KEY') || '').trim()
+function getPaystackSecretKey() {
+  const candidateNames = ['PAYSTACK_SECRET_KEY', 'PAYSTACK_SECRET']
 
-  return mockFlag === 'true' || !paystackSecret
+  for (const candidateName of candidateNames) {
+    const candidateValue = String(Deno.env.get(candidateName) || '').trim()
+
+    if (candidateValue) {
+      return candidateValue
+    }
+  }
+
+  return ''
+}
+
+function isTruthyFlag(value: unknown) {
+  if (value === true) {
+    return true
+  }
+
+  const normalizedValue = String(value || '').trim().toLowerCase()
+  return normalizedValue === 'true' || normalizedValue === '1' || normalizedValue === 'yes'
+}
+
+function isMockModeEnabled() {
+  const mockFlag = String(Deno.env.get('MOCK_PAYMENT') || '').trim().toLowerCase()
+  const paystackSecret = getPaystackSecretKey()
+
+  return isTruthyFlag(mockFlag) || !paystackSecret
 }
 
 async function assertSellersAreActive(
@@ -152,7 +175,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const paystackSecretKey = Deno.env.get('PAYSTACK_SECRET_KEY')
+    const paystackSecretKey = getPaystackSecretKey()
 
     if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
       return jsonResponse({ error: 'Supabase environment is not configured.' }, 500)
@@ -177,7 +200,7 @@ serve(async (req) => {
       return jsonResponse({ error: 'Invalid request body.' }, 400)
     }
 
-    const mockMode = Boolean(body.mockPayment === true) || isMockModeEnabled()
+    const mockMode = isTruthyFlag(body.mockPayment) || isMockModeEnabled()
     const checkoutSessionId = String(body.checkoutSessionId || '').trim()
     const paymentReference = String(body.paymentReference || '').trim()
     const expectedAmountKobo = Number(body.expectedAmountKobo || 0)
@@ -234,7 +257,13 @@ serve(async (req) => {
 
     if (!mockMode) {
       if (!paystackSecretKey) {
-        return jsonResponse({ error: 'Paystack secret key is not configured.' }, 500)
+        return jsonResponse(
+          {
+            error:
+              'Paystack secret key is not configured. Set PAYSTACK_SECRET_KEY (or PAYSTACK_SECRET) for live checkout, or enable MOCK_PAYMENT=true for test mode.',
+          },
+          500
+        )
       }
 
       const paymentData = await verifyPaystackTransaction(paymentReference, paystackSecretKey)

@@ -15,11 +15,34 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   })
 }
 
-function isMockModeEnabled() {
-  const mockFlag = String(Deno.env.get('MOCK_PAYMENT') || '').toLowerCase()
-  const paystackSecret = String(Deno.env.get('PAYSTACK_SECRET_KEY') || '').trim()
+function getPaystackSecretKey() {
+  const candidateNames = ['PAYSTACK_SECRET_KEY', 'PAYSTACK_SECRET']
 
-  return mockFlag === 'true' || !paystackSecret
+  for (const candidateName of candidateNames) {
+    const candidateValue = String(Deno.env.get(candidateName) || '').trim()
+
+    if (candidateValue) {
+      return candidateValue
+    }
+  }
+
+  return ''
+}
+
+function isTruthyFlag(value: unknown) {
+  if (value === true) {
+    return true
+  }
+
+  const normalizedValue = String(value || '').trim().toLowerCase()
+  return normalizedValue === 'true' || normalizedValue === '1' || normalizedValue === 'yes'
+}
+
+function isMockModeEnabled() {
+  const mockFlag = String(Deno.env.get('MOCK_PAYMENT') || '').trim().toLowerCase()
+  const paystackSecret = getPaystackSecretKey()
+
+  return isTruthyFlag(mockFlag) || !paystackSecret
 }
 
 function addBusinessDays(date: Date, days: number): Date {
@@ -90,17 +113,17 @@ async function finalizePaidOrder(
 
 async function maybeVerifyPayment({
   mockMode,
-  explicitMockPayment,
+  explicitMockPaymentRequested,
   orderId,
   paymentReference,
 }: {
   mockMode: boolean
-  explicitMockPayment: boolean
+  explicitMockPaymentRequested: boolean
   orderId: string
   paymentReference?: string
 }) {
   if (mockMode) {
-    if (!explicitMockPayment) {
+    if (!explicitMockPaymentRequested) {
       throw new Error('Order payment has not been completed yet.')
     }
 
@@ -329,10 +352,11 @@ serve(async (req) => {
     await assertSellerIsActive(supabaseAdmin, orderRecord.seller_id)
 
     const mockMode = isMockModeEnabled()
+    const explicitMockPaymentRequested = isTruthyFlag(mockPayment)
 
     await maybeVerifyPayment({
       mockMode,
-      explicitMockPayment: Boolean(mockPayment),
+      explicitMockPaymentRequested,
       orderId,
       paymentReference: String(paymentReference || '').trim(),
     })

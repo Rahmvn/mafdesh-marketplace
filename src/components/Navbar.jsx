@@ -376,37 +376,35 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               </div>
             )}
 
-            {!isAdmin && !isBuyer && (
+            {isSeller && (
               <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 xl:flex">
-                {isSeller && (
-                  <>
-                    <Link to="/seller/dashboard" className={navBase}>
-                      <LayoutDashboard className="mr-1.5 h-4 w-4" />
-                      Dashboard
-                    </Link>
-                    <Link to="/seller/products" className={navBase}>
-                      <Package className="mr-1.5 h-4 w-4" />
-                      Products
-                    </Link>
-                    <Link to="/seller/orders" className={`${navBase} relative`}>
-                      <ShoppingCart className="mr-1.5 h-4 w-4" />
-                      Orders
-                      {actionRequiredCount > 0 && (
-                        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                          {actionRequiredCount}
-                        </span>
-                      )}
-                    </Link>
-                    <Link to="/seller/payments" className={navBase}>
-                      <Wallet className="mr-1.5 h-4 w-4" />
-                      Payments
-                    </Link>
-                    <Link to="/seller/delivery" className={navBase}>
-                      <MapPin className="mr-1.5 h-4 w-4" />
-                      Delivery
-                    </Link>
-                  </>
-                )}
+                <>
+                  <Link to="/seller/dashboard" className={navBase}>
+                    <LayoutDashboard className="mr-1.5 h-4 w-4" />
+                    Dashboard
+                  </Link>
+                  <Link to="/seller/products" className={navBase}>
+                    <Package className="mr-1.5 h-4 w-4" />
+                    Products
+                  </Link>
+                  <Link to="/seller/orders" className={`${navBase} relative`}>
+                    <ShoppingCart className="mr-1.5 h-4 w-4" />
+                    Orders
+                    {actionRequiredCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                        {actionRequiredCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link to="/seller/payments" className={navBase}>
+                    <Wallet className="mr-1.5 h-4 w-4" />
+                    Payments
+                  </Link>
+                  <Link to="/seller/delivery" className={navBase}>
+                    <MapPin className="mr-1.5 h-4 w-4" />
+                    Delivery
+                  </Link>
+                </>
 
                 <Link to="/support" className={userRole === 'seller' ? highlightedNavBase : navBase}>
                   <HelpCircle className="mr-1.5 h-4 w-4" />
@@ -416,8 +414,8 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             )}
 
             {isBuyerLike && (
-              <div className="hidden min-w-0 flex-1 items-center justify-center px-6 xl:flex">
-                <form onSubmit={handleSearchSubmit} className="relative w-full max-w-md">
+              <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 xl:flex">
+                <form onSubmit={handleSearchSubmit} className="relative w-full max-w-2xl">
                   <input
                     type="text"
                     placeholder="Search products..."

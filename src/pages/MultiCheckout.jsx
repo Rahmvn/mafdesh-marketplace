@@ -1139,15 +1139,15 @@ export default function MultiCheckout() {
               {launchingPayment || finalizingPayment ? (
                 <span className="inline-flex items-center gap-2">
                   <LoaderCircle size={18} className="animate-spin" />
-                  {finalizingPayment ? 'Finalizing your orders...' : 'Simulating payment...'}
+                  {finalizingPayment ? 'Finalizing your orders...' : 'Processing payment...'}
                 </span>
               ) : (
-                `Simulate payment of ${formatNaira(checkoutSummary.grandTotal)}`
+                `Pay ${formatNaira(checkoutSummary.grandTotal)}`
               )}
             </button>
 
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Test mode only. No real money is charged in this checkout yet.
+              Your orders will be confirmed after payment is completed.
             </p>
           </aside>
         </div>

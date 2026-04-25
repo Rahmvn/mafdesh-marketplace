@@ -83,8 +83,8 @@ export default function GuestNavbar() {
               </form>
             </div>
 
-            <div className="hidden min-w-0 flex-1 items-center justify-center px-6 xl:flex">
-              <form onSubmit={handleSearchSubmit} className="relative w-full max-w-md">
+            <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 xl:flex">
+              <form onSubmit={handleSearchSubmit} className="relative w-full max-w-2xl">
                 <input
                   type="text"
                   placeholder="Search products..."
