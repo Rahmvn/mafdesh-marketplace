@@ -522,7 +522,7 @@ function buildReceiptHtml({
                       <th>Item</th>
                       <th>Qty</th>
                       <th>Unit price</th>
-                      <th>Subtotal</th>
+                      <th>Line total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -532,6 +532,10 @@ function buildReceiptHtml({
               </div>
 
               <div class="summary">
+              <div class="summary-row">
+                <span>Total products price</span>
+                <strong>${formatCurrency(orderAmounts.subtotal)}</strong>
+              </div>
               <div class="summary-row">
                 <span>Delivery fee</span>
                 <strong>${formatCurrency(orderAmounts.deliveryFee)}</strong>
