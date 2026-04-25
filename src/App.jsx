@@ -4,6 +4,7 @@ import { MarketplaceRouteLoader } from './components/MarketplaceLoading';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import GlobalModalHost from './components/ui/GlobalModalHost';
+import RouteChunkBoundary from './components/RouteChunkBoundary';
 
 const Home = lazy(() => import('./pages/Home'));
 const PublicProducts = lazy(() => import('./pages/PublicProducts'));
@@ -62,8 +63,9 @@ function RouteFallback() {
 export default function App() {
   return (
     <Router>
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
+      <RouteChunkBoundary>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/products" element={<PublicProducts />} />
           <Route path="/product/:id" element={<ProductDetail />} />
@@ -407,8 +409,9 @@ export default function App() {
           />
 
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </RouteChunkBoundary>
       <GlobalModalHost />
     </Router>
   );
