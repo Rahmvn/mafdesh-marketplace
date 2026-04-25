@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import LandingPage from './LandingPage';
+import Marketplace from './Marketplace';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -56,5 +56,5 @@ export default function Home() {
     checkAuth();
   }, [navigate, storedUser]);
 
-  return <LandingPage />;
+  return <Marketplace />;
 }

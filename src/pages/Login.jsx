@@ -17,46 +17,51 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const signupMessage = location.state?.message;
+  const returnUrl = new URLSearchParams(location.search).get('returnUrl') || '';
   const { showError, showWarning, ModalComponent } = useModal();
 
   useEffect(() => {
-   const checkExistingSession = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
+  const checkExistingSession = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  if (!session) {
-    localStorage.removeItem('mafdesh_user');
-    return;
-  }
+    if (!session) {
+      localStorage.removeItem('mafdesh_user');
+      return;
+    }
 
-  const userId = session.user.id;
+    const userId = session.user.id;
 
-  // Fetch role fresh from database
-  const { data: userData, error } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', userId)
-    .single();
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
 
-  if (error || !userData) {
-    localStorage.removeItem('mafdesh_user');
-    return;
-  }
+    if (error || !userData) {
+      localStorage.removeItem('mafdesh_user');
+      return;
+    }
 
-  // Store minimal trusted data
-  localStorage.setItem('mafdesh_user', JSON.stringify({
-    id: userId,
-    role: userData.role
-  }));
+    localStorage.setItem('mafdesh_user', JSON.stringify({
+      id: userId,
+      role: userData.role
+    }));
 
-  // Redirect based on DB role
-  if (userData.role === 'buyer') {
-    navigate('/marketplace');
-  } else if (userData.role === 'seller') {
-    navigate('/seller/dashboard');
-  } else if (userData.role === 'admin') {
-    navigate('/admin/dashboard');
-  }
-};
+    if (returnUrl && returnUrl.startsWith('/')) {
+      navigate(returnUrl);
+      return;
+    }
+
+    if (userData.role === 'buyer') {
+      navigate('/marketplace');
+    } else if (userData.role === 'seller') {
+      navigate('/seller/dashboard');
+    } else if (userData.role === 'admin') {
+      navigate('/admin/dashboard');
+    }
+  };
 
     const handleSignupSuccess = () => {
       if (signupMessage) {
@@ -67,7 +72,7 @@ export default function Login() {
 
     checkExistingSession();
     handleSignupSuccess();
-  }, [navigate, signupMessage]);
+  }, [navigate, returnUrl, signupMessage]);
 
   const handleSubmit = async (e) => {
   e.preventDefault();
@@ -125,7 +130,9 @@ export default function Login() {
     }));
 
     // 4. Redirect
-    if (role === "buyer") {
+    if (returnUrl && returnUrl.startsWith('/')) {
+      navigate(returnUrl);
+    } else if (role === "buyer") {
       navigate('/marketplace');
     } else if (role === "seller") {
       navigate('/seller/dashboard');
@@ -138,7 +145,7 @@ export default function Login() {
     showError('Login Failed', error.message || 'Login failed. Please check your credentials.');
     setIsLoading(false);
   }
-};
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -160,6 +167,14 @@ export default function Login() {
         {verificationMessage && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
             <p className="text-green-800 font-semibold text-center">{verificationMessage}</p>
+          </div>
+        )}
+
+        {returnUrl && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+            <p className="text-blue-800 font-semibold text-center">
+              Please log in to continue to that page.
+            </p>
           </div>
         )}
 

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { supabase } from '../supabaseClient';
 
 export default function ProtectedRoute({ children, allowedRoles = [] }) {
   const [status, setStatus] = useState('loading');
   const [role, setRole] = useState(null);
+  const location = useLocation();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -59,7 +60,8 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
   }
 
   if (status === 'unauthenticated') {
-    return <Navigate to="/login" replace />;
+    const returnUrl = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?returnUrl=${encodeURIComponent(returnUrl)}`} replace />;
   }
 
   if (status === 'unauthorized') {

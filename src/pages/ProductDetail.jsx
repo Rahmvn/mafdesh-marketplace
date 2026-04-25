@@ -653,17 +653,22 @@ export default function ProductDetail() {
     [galleryImages.length, hasMultipleImages]
   );
 
-  const requireLogin = async () => {
+  const redirectToLogin = (returnUrl) => {
+    navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
+  };
+
+  const requireLogin = async (returnUrl) => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      navigate("/login");
+      redirectToLogin(returnUrl);
       return false;
     }
     return true;
   };
 
   const handleAddToCart = async () => {
-    if (!(await requireLogin())) return;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (!(await requireLogin(currentUrl))) return;
 
     try {
       setAdding(true);
@@ -688,7 +693,7 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = async () => {
-    if (!(await requireLogin())) return;
+    if (!(await requireLogin(`/checkout/${product.id}`))) return;
     navigate(`/checkout/${product.id}`, { state: { product, quantity: 1 } });
   };
 
