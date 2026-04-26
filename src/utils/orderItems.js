@@ -1,35 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getSafeProductImage, snapshotToProduct } from './productSnapshots';
 
-const PRODUCT_BASE_FIELDS = 'id, name, images, category, description, seller_id, price';
-const PRODUCT_OPTIONAL_FIELDS = 'id, original_price, is_flash_sale, sale_price';
-
-function isMissingColumnError(error, columnNames = []) {
-  const code = String(error?.code || '').toUpperCase();
-  const message = String(error?.message || '').toLowerCase();
-  const details = String(error?.details || '').toLowerCase();
-  const hint = String(error?.hint || '').toLowerCase();
-  const combinedText = `${message} ${details} ${hint}`;
-  const isMissingColumnCode =
-    code === '42703' ||
-    code === 'PGRST204' ||
-    code === 'PGRST205';
-  const mentionsMissingColumn =
-    combinedText.includes('does not exist') ||
-    combinedText.includes('could not find') ||
-    combinedText.includes('schema cache') ||
-    combinedText.includes('column');
-
-  return (
-    isMissingColumnCode &&
-    mentionsMissingColumn &&
-    (columnNames.length === 0 ||
-      columnNames.some((columnName) =>
-        combinedText.includes(String(columnName).toLowerCase())
-      ))
-  );
-}
-
 export async function getOrderItemsMap(ordersData) {
   const orderIds = (ordersData || []).map((order) => order.id);
   const itemsMap = {};
@@ -38,7 +9,7 @@ export async function getOrderItemsMap(ordersData) {
     return itemsMap;
   }
 
-  const { data: itemsData, error: itemsError } = await supabase
+  let { data: itemsData, error: itemsError } = await supabase
     .from('order_items')
     .select(
       `
@@ -46,13 +17,17 @@ export async function getOrderItemsMap(ordersData) {
       quantity,
       price_at_time,
       product_snapshot,
-      product:products (${PRODUCT_BASE_FIELDS})
+      product:products (id, name, images, category, description, seller_id)
     `
     )
     .in('order_id', orderIds);
 
+  // If the DB does not have the product_snapshot column (e.g., migrations not applied),
+  // supabase will return an error with code '42703' (undefined column). In that case,
+  // retry the query without selecting product_snapshot so the frontend can continue to work.
   if (itemsError) {
-    if (isMissingColumnError(itemsError, ['product_snapshot'])) {
+    // check for undefined column error
+    if (itemsError.code === '42703' || String(itemsError.message || '').toLowerCase().includes('product_snapshot')) {
       const { data: fallbackItems, error: fallbackError } = await supabase
         .from('order_items')
         .select(
@@ -60,7 +35,7 @@ export async function getOrderItemsMap(ordersData) {
           order_id,
           quantity,
           price_at_time,
-          product:products (${PRODUCT_BASE_FIELDS})
+          product:products (id, name, images, category, description, seller_id)
         `
         )
         .in('order_id', orderIds);
@@ -69,32 +44,23 @@ export async function getOrderItemsMap(ordersData) {
         throw fallbackError;
       }
 
-      (fallbackItems || []).forEach((item) => {
-        if (!itemsMap[item.order_id]) {
-          itemsMap[item.order_id] = [];
-        }
-
-        itemsMap[item.order_id].push({
-          ...item,
-          product_snapshot: null,
-          product: snapshotToProduct(null, item.product),
-        });
-      });
+      // mark product_snapshot as null on each item for downstream logic
+      itemsData = (fallbackItems || []).map((it) => ({ ...it, product_snapshot: null }));
     } else {
       throw itemsError;
     }
-  } else {
-    (itemsData || []).forEach((item) => {
-      if (!itemsMap[item.order_id]) {
-        itemsMap[item.order_id] = [];
-      }
-
-      itemsMap[item.order_id].push({
-        ...item,
-        product: snapshotToProduct(item.product_snapshot, item.product),
-      });
-    });
   }
+
+  (itemsData || []).forEach((item) => {
+    if (!itemsMap[item.order_id]) {
+      itemsMap[item.order_id] = [];
+    }
+
+    itemsMap[item.order_id].push({
+      ...item,
+      product: snapshotToProduct(item.product_snapshot, item.product),
+    });
+  });
 
   const legacyOrders = (ordersData || []).filter((order) => order.product_id && !itemsMap[order.id]);
 
@@ -105,7 +71,7 @@ export async function getOrderItemsMap(ordersData) {
   const legacyProductIds = legacyOrders.map((order) => order.product_id);
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select(PRODUCT_BASE_FIELDS)
+    .select('id, name, images, category, description, seller_id')
     .in('id', legacyProductIds);
 
   if (productsError) {
@@ -132,47 +98,6 @@ export async function getOrderItemsMap(ordersData) {
       },
     ];
   });
-
-  const loadedProducts = Object.values(itemsMap)
-    .flat()
-    .map((item) => item.product)
-    .filter((product) => product?.id);
-
-  const uniqueProductIds = [...new Set(loadedProducts.map((product) => product.id))];
-
-  if (uniqueProductIds.length > 0) {
-    const { data: optionalProducts, error: optionalError } = await supabase
-      .from('products')
-      .select(PRODUCT_OPTIONAL_FIELDS)
-      .in('id', uniqueProductIds);
-
-    if (!optionalError) {
-      const optionalMap = {};
-      (optionalProducts || []).forEach((product) => {
-        optionalMap[product.id] = product;
-      });
-
-      Object.keys(itemsMap).forEach((orderId) => {
-        itemsMap[orderId] = itemsMap[orderId].map((item) => {
-          const optionalFields = optionalMap[item.product?.id] || null;
-
-          if (!optionalFields) {
-            return item;
-          }
-
-          return {
-            ...item,
-            product: {
-              ...item.product,
-              ...optionalFields,
-            },
-          };
-        });
-      });
-    } else if (!isMissingColumnError(optionalError, ['original_price', 'is_flash_sale', 'sale_price'])) {
-      throw optionalError;
-    }
-  }
 
   return itemsMap;
 }

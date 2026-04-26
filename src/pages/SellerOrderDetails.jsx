@@ -676,21 +676,25 @@ export default function SellerOrderDetails() {
                 const safeImageUrl = getSafeProductImage(item.product);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
-                    <img
-                      src={safeImageUrl}
-                      alt={item.product?.name}
-                      className="w-16 h-16 object-contain border rounded"
-                      onError={(e) => { e.target.src = '/placeholder.png'; }}
-                    />
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
-                      <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
-                      <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                      <p className="text-orange-600 font-medium">
-                        ₦{Number(item.price_at_time).toLocaleString()} each
-                      </p>
-                    </div>
-                  </div>
+  <img
+    src={safeImageUrl}
+    alt={item.product?.name}
+    className="w-16 h-16 object-contain border rounded"
+    onError={(e) => { e.target.src = '/placeholder.png'; }}
+  />
+  <div className="flex-1 min-w-0">
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+      <div className="min-w-0">
+        <h3 className="font-semibold text-gray-900 break-words">{item.product?.name}</h3>
+        <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
+        <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+      </div>
+      <p className="text-orange-600 font-medium whitespace-nowrap sm:ml-4">
+        ₦{Number(item.price_at_time).toLocaleString()} each
+      </p>
+    </div>
+  </div>
+</div>
                 );
               })
             )}
