@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowUp } from 'lucide-react';
 import Fuse from 'fuse.js';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
@@ -114,7 +113,6 @@ export default function Marketplace() {
   const location = useLocation();
   const searchQuery = new URLSearchParams(location.search).get('search') || '';
 
-  const [showScrollTop, setShowScrollTop] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [products, setProducts] = useState(() => readCachedProducts());
   const [now, setNow] = useState(() => new Date());
@@ -173,12 +171,6 @@ export default function Marketplace() {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
-
-  useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 300);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -261,10 +253,6 @@ export default function Marketplace() {
         totalCount: categoryProducts.length,
       }));
   }, [categoryPreviewLimit, isDefaultCategoryView, marketplaceProducts]);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const handleProductOpen = useCallback(
     (product) => {
@@ -397,16 +385,6 @@ export default function Marketplace() {
           </>
         )}
       </main>
-
-      {showScrollTop && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-5 right-4 z-50 rounded-full bg-orange-600 p-2.5 text-white shadow-2xl transition-all duration-300 hover:scale-110 hover:bg-orange-700 sm:bottom-8 sm:right-8 sm:p-3"
-          aria-label="Scroll to top"
-        >
-          <ArrowUp size={24} />
-        </button>
-      )}
 
       <Footer />
     </div>

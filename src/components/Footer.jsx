@@ -98,6 +98,14 @@ export default function Footer() {
                   Help Center
                 </Link>
               </li>
+              {isBuyer && (
+                <li>
+                  <Link to="/policies" className="text-blue-200 hover:text-orange-400 transition-colors inline-flex items-center gap-2 group">
+                    <span className="w-0 group-hover:w-2 h-0.5 bg-orange-400 transition-all"></span>
+                    Buyer Policies
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
 
@@ -156,6 +164,20 @@ export default function Footer() {
                   <p className="text-blue-200 text-xs">Escrow system included</p>
                 </div>
               </div>
+              {isBuyer && (
+                <Link
+                  to="/policies"
+                  className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 transition-colors hover:border-orange-400 hover:bg-orange-500/15"
+                >
+                  <Shield size={20} className="text-orange-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-white text-sm mb-1">Read Our Policies</p>
+                    <p className="text-blue-200 text-xs">
+                      Learn how payments, refunds, disputes, and buyer protection work.
+                    </p>
+                  </div>
+                </Link>
+              )}
             </div>
           </div>
         </div>

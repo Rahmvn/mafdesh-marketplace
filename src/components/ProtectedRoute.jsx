@@ -4,7 +4,7 @@ import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { supabase } from '../supabaseClient';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 
-function LoginRequiredFallback({ returnUrl }) {
+function LoginRequiredFallback({ returnUrl, loginPrompt = null }) {
   const navigate = useNavigate();
   const hasPromptedRef = useRef(false);
 
@@ -14,21 +14,28 @@ function LoginRequiredFallback({ returnUrl }) {
     }
 
     hasPromptedRef.current = true;
+    const confirmPath = loginPrompt?.confirmRedirectPath || `/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+    const cancelPath = loginPrompt?.cancelRedirectPath || '/';
     showGlobalLoginRequired(
-      'Please login to continue.',
+      loginPrompt?.message || 'Please login to continue.',
       () => {
-        navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`, { replace: true });
+        navigate(confirmPath, { replace: true });
       },
       () => {
-        navigate('/', { replace: true });
+        navigate(cancelPath, { replace: true });
+      },
+      {
+        title: loginPrompt?.title,
+        confirmLabel: loginPrompt?.confirmLabel,
+        cancelLabel: loginPrompt?.cancelLabel,
       }
     );
-  }, [navigate, returnUrl]);
+  }, [loginPrompt, navigate, returnUrl]);
 
   return <MarketplaceRouteLoader />;
 }
 
-export default function ProtectedRoute({ children, allowedRoles = [] }) {
+export default function ProtectedRoute({ children, allowedRoles = [], loginPrompt = null }) {
   const [status, setStatus] = useState('loading');
   const [role, setRole] = useState(null);
   const location = useLocation();
@@ -86,7 +93,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
 
   if (status === 'unauthenticated') {
     const returnUrl = `${location.pathname}${location.search}${location.hash}`;
-    return <LoginRequiredFallback returnUrl={returnUrl} />;
+    return <LoginRequiredFallback returnUrl={returnUrl} loginPrompt={loginPrompt} />;
   }
 
   if (status === 'unauthorized') {

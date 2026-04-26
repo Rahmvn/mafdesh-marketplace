@@ -11,6 +11,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
+import { readCachedCartCount } from '../utils/cartStorage';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 
 export default function GuestNavbar() {
@@ -19,6 +20,7 @@ export default function GuestNavbar() {
   const [searchQuery, setSearchQuery] = useState(
     () => new URLSearchParams(location.search).get('search') || ''
   );
+  const [cartCount, setCartCount] = useState(() => readCachedCartCount());
   const browsePath = useMemo(
     () => (location.pathname === '/products' ? '/products' : '/'),
     [location.pathname]
@@ -28,10 +30,32 @@ export default function GuestNavbar() {
     setSearchQuery(new URLSearchParams(location.search).get('search') || '');
   }, [location.search]);
 
-  const promptLogin = (path) => {
-    showGlobalLoginRequired('Please log in to continue.', () => {
-      navigate(`/login?returnUrl=${encodeURIComponent(path)}`);
-    });
+  useEffect(() => {
+    const handleCartUpdate = () => setCartCount(readCachedCartCount());
+    const handleStorageSync = () => setCartCount(readCachedCartCount());
+
+    window.addEventListener('cartUpdated', handleCartUpdate);
+    window.addEventListener('storage', handleStorageSync);
+
+    return () => {
+      window.removeEventListener('cartUpdated', handleCartUpdate);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, []);
+
+  const promptLogin = (path, options = {}) => {
+    showGlobalLoginRequired(
+      options.message || 'Please log in to continue.',
+      () => {
+        navigate(`/login?returnUrl=${encodeURIComponent(path)}`);
+      },
+      options.onCancel,
+      {
+        confirmLabel: options.confirmLabel,
+        cancelLabel: options.cancelLabel,
+        title: options.title,
+      }
+    );
   };
 
   const handleSearchSubmit = (event) => {
@@ -111,12 +135,23 @@ export default function GuestNavbar() {
               >
                 <Wallet className="h-5 w-5" />
               </button>
-              <button type="button" onClick={() => promptLogin('/cart')} className={topIconClass} aria-label="Cart">
+              <Link to="/cart" className={topIconClass} aria-label="Cart">
                 <ShoppingCart className="h-5 w-5" />
-              </button>
+                {cartCount > 0 && (
+                  <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
               <button
                 type="button"
-                onClick={() => promptLogin('/profile')}
+                onClick={() =>
+                  promptLogin('/profile', {
+                    message: 'Please log in or create an account to view your profile.',
+                    cancelLabel: 'Sign Up',
+                    onCancel: () => navigate('/signup'),
+                  })
+                }
                 className={topIconClass}
                 aria-label="Profile"
               >
@@ -167,14 +202,24 @@ export default function GuestNavbar() {
             <Wallet className="h-5 w-5" />
             <span>Payments</span>
           </button>
-          <button type="button" onClick={() => promptLogin('/profile')} className={bottomTabClass}>
+          <button
+            type="button"
+            onClick={() =>
+              promptLogin('/profile', {
+                message: 'Please log in or create an account to view your profile.',
+                cancelLabel: 'Sign Up',
+                onCancel: () => navigate('/signup'),
+              })
+            }
+            className={bottomTabClass}
+          >
             <User className="h-5 w-5" />
             <span>Profile</span>
           </button>
-          <button type="button" onClick={() => promptLogin('/cart')} className={bottomTabClass}>
+          <Link to="/cart" className={bottomTabClass}>
             <ShoppingCart className="h-5 w-5" />
             <span>Cart</span>
-          </button>
+          </Link>
         </div>
       </div>
     </>

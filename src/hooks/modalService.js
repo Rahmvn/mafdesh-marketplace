@@ -52,14 +52,14 @@ export function showGlobalConfirm(title, message, onConfirm) {
   });
 }
 
-export function showGlobalLoginRequired(message, onConfirm, onCancel) {
+export function showGlobalLoginRequired(message, onConfirm, onCancel, options = {}) {
   emit({
     variant: 'warning',
-    title: 'Login Required',
+    title: options.title || 'Login Required',
     message,
     isConfirm: true,
-    confirmLabel: 'Log In',
-    cancelLabel: 'Not Now',
+    confirmLabel: options.confirmLabel || 'Log In',
+    cancelLabel: options.cancelLabel || 'Not Now',
     onConfirm,
     onCancel,
   });

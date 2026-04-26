@@ -1,11 +1,12 @@
 import React from 'react';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
+import { cartService } from '../services/cartService';
 
 export default function Login() {
   const [userType, setUserType] = useState("buyer");
@@ -19,6 +20,18 @@ export default function Login() {
   const signupMessage = location.state?.message;
   const returnUrl = new URLSearchParams(location.search).get('returnUrl') || '';
   const { showError, showWarning, ModalComponent } = useModal();
+
+  const mergeGuestCartIfBuyer = useCallback(async (role, userId = null) => {
+    if (role !== 'buyer') {
+      return;
+    }
+
+    try {
+      await cartService.mergeGuestCart(userId);
+    } catch (error) {
+      console.error('Guest cart merge failed:', error);
+    }
+  }, []);
 
   useEffect(() => {
   const checkExistingSession = async () => {
@@ -49,6 +62,8 @@ export default function Login() {
       role: userData.role
     }));
 
+    await mergeGuestCartIfBuyer(userData.role, userId);
+
     if (returnUrl && returnUrl.startsWith('/')) {
       navigate(returnUrl);
       return;
@@ -72,10 +87,14 @@ export default function Login() {
 
     checkExistingSession();
     handleSignupSuccess();
-  }, [navigate, returnUrl, signupMessage]);
+  }, [mergeGuestCartIfBuyer, navigate, returnUrl, signupMessage]);
 
   const handleSubmit = async (e) => {
   e.preventDefault();
+
+  if (isLoading) {
+    return;
+  }
 
   if (!email || !password) {
     showWarning('Missing Details', 'Please enter both email and password.');
@@ -90,13 +109,10 @@ export default function Login() {
       email,
       password,
     });
-  
-    
 
     if (error) throw error;
-    await supabase.auth.getSession(); // Ensure session is established before proceeding
 
-    const user = data.user;
+    const user = data.user || data.session?.user;
 
     if (!user) {
       throw new Error("Login failed");
@@ -129,6 +145,8 @@ export default function Login() {
       role: profile.role,
     }));
 
+    await mergeGuestCartIfBuyer(profile.role, user.id);
+
     // 4. Redirect
     if (returnUrl && returnUrl.startsWith('/')) {
       navigate(returnUrl);
@@ -142,23 +160,31 @@ export default function Login() {
 
   } catch (error) {
     console.error('Login error:', error);
-    showError('Login Failed', error.message || 'Login failed. Please check your credentials.');
+    const message = String(error?.message || '');
+    if (message.includes('Navigator LockManager lock')) {
+      showError(
+        'Login Delayed',
+        'Login was blocked by another auth request. Please try again, and if it keeps happening close other Mafdesh tabs first.'
+      );
+    } else {
+      showError('Login Failed', error.message || 'Login failed. Please check your credentials.');
+    }
     setIsLoading(false);
   }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <main className="flex flex-1 items-center justify-center px-6 py-12">
+      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
       <div className="w-full max-w-md">
         {/* Logo Section */}
-        <div className="text-center mb-10">
-          <div className="mb-6 flex items-center justify-center">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="mb-3 sm:mb-4 flex items-center justify-center">
             <img
               src={noBgLogo}
               alt="Mafdesh Logo"
               className="w-auto"
-              style={{ height: '120px' }}
+              style={{ height: '96px' }}
             />
           </div>
           <p className="text-blue-700 text-base font-medium">Welcome back! Please login to continue</p>
@@ -183,9 +209,9 @@ export default function Login() {
           {/* Accent bar */}
           <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-blue-900 via-blue-700 to-orange-500"></div>
 
-          <div className="p-8">
+          <div className="p-6 sm:p-8">
             {/* User Type Selector */}
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <p className="text-xs font-bold text-blue-900 uppercase mb-4 tracking-wider">Login As</p>
               <div className="flex gap-3">
                 <button
@@ -276,12 +302,12 @@ export default function Login() {
             </form>
 
             {/* Footer */}
-            <div className="mt-8 pt-6 border-t border-blue-100 text-center">
+            <div className="mt-6 pt-5 border-t border-blue-100 text-center">
               <p className="text-blue-700 text-sm font-medium">
                 Don't have an account?{" "}
-                <a href="/signup" className="text-orange-600 font-bold hover:text-orange-700">
+                <Link to="/signup" className="text-orange-600 font-bold hover:text-orange-700">
                   Sign Up
-                </a>
+                </Link>
               </p>
             </div>
           </div>

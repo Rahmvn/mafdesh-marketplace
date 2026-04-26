@@ -308,10 +308,19 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     setShowUserMenu(false);
   };
 
-  const promptLogin = (path) => {
-    showGlobalLoginRequired('Please log in to continue.', () => {
-      navigate(`/login?returnUrl=${encodeURIComponent(path)}`);
-    });
+  const promptLogin = (path, options = {}) => {
+    showGlobalLoginRequired(
+      options.message || 'Please log in to continue.',
+      () => {
+        navigate(`/login?returnUrl=${encodeURIComponent(path)}`);
+      },
+      options.onCancel,
+      {
+        confirmLabel: options.confirmLabel,
+        cancelLabel: options.cancelLabel,
+        title: options.title,
+      }
+    );
   };
 
   const navBase = `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${navLinkClass}`;
@@ -485,26 +494,31 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                     </button>
                   )}
                   {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
-                  {isBuyer ? (
-                    <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
-                      <ShoppingCart className="h-5 w-5" />
-                      {cartCount > 0 && (
-                        <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                          {cartCount}
-                        </span>
-                      )}
-                    </Link>
-                  ) : (
-                    <button type="button" onClick={() => promptLogin('/cart')} className={buyerIconButtonClass} aria-label="Cart">
-                      <ShoppingCart className="h-5 w-5" />
-                    </button>
-                  )}
+                  <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
+                    <ShoppingCart className="h-5 w-5" />
+                    {cartCount > 0 && (
+                      <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                        {cartCount}
+                      </span>
+                    )}
+                  </Link>
                   {isBuyer ? (
                     <Link to="/profile" className={buyerIconButtonClass} aria-label="Profile">
                       <User className="h-5 w-5" />
                     </Link>
                   ) : (
-                    <button type="button" onClick={() => promptLogin('/profile')} className={buyerIconButtonClass} aria-label="Profile">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        promptLogin('/profile', {
+                          message: 'Please log in or create an account to view your profile.',
+                          cancelLabel: 'Sign Up',
+                          onCancel: () => navigate('/signup'),
+                        })
+                      }
+                      className={buyerIconButtonClass}
+                      aria-label="Profile"
+                    >
                       <User className="h-5 w-5" />
                     </button>
                   )}
@@ -614,24 +628,18 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             {isBuyerLike ? (
               <>
                 {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
-                {isBuyer ? (
-                  <Link
-                    to="/cart"
-                    className={buyerIconButtonClass}
-                    aria-label="Cart"
-                  >
-                    <ShoppingCart className="h-5 w-5" />
-                    {cartCount > 0 && (
-                      <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                        {cartCount}
-                      </span>
-                    )}
-                  </Link>
-                ) : (
-                  <button type="button" onClick={() => promptLogin('/cart')} className={buyerIconButtonClass} aria-label="Cart">
-                    <ShoppingCart className="h-5 w-5" />
-                  </button>
-                )}
+                <Link
+                  to="/cart"
+                  className={buyerIconButtonClass}
+                  aria-label="Cart"
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {cartCount > 0 && (
+                    <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                      {cartCount}
+                    </span>
+                  )}
+                </Link>
               </>
             ) : (
               <>
@@ -790,7 +798,17 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 <span>Profile</span>
               </Link>
             ) : (
-              <button type="button" onClick={() => promptLogin('/profile')} className={buyerBottomTabClass}>
+              <button
+                type="button"
+                onClick={() =>
+                  promptLogin('/profile', {
+                    message: 'Please log in or create an account to view your profile.',
+                    cancelLabel: 'Sign Up',
+                    onCancel: () => navigate('/signup'),
+                  })
+                }
+                className={buyerBottomTabClass}
+              >
                 <User className="h-5 w-5" />
                 <span>Profile</span>
               </button>

@@ -324,11 +324,6 @@ function RelatedProductCard({ product, onOpen }) {
           alt={product.name}
           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
         />
-        <div className="absolute left-3 top-3">
-          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-            {product.category || "Product"}
-          </span>
-        </div>
       </div>
 
       <div className="space-y-3 p-4">
@@ -561,38 +556,10 @@ export default function ProductDetail() {
           });
         }
 
-        let verifiedCandidates = sameCategoryCandidates.filter((candidate) => {
+        const verifiedCandidates = sameCategoryCandidates.filter((candidate) => {
           const sellerStatus = getSellerStatus(candidate?.seller);
           return candidate?.seller?.is_verified && sellerStatus === "active";
         });
-
-        if (verifiedCandidates.length < 4) {
-          let fallbackCandidates = [];
-
-          try {
-            fallbackCandidates = await runQuery({ includeDeletedCheck: true });
-          } catch (error) {
-            if (isAdmin || !isMissingDeletedAtColumn(error)) {
-              throw error;
-            }
-
-            fallbackCandidates = await runQuery({ includeDeletedCheck: false });
-          }
-
-          const seenIds = new Set(verifiedCandidates.map((candidate) => candidate.id));
-
-          fallbackCandidates.forEach((candidate) => {
-            const sellerStatus = getSellerStatus(candidate?.seller);
-            if (
-              candidate?.seller?.is_verified &&
-              sellerStatus === "active" &&
-              !seenIds.has(candidate.id)
-            ) {
-              verifiedCandidates.push(candidate);
-              seenIds.add(candidate.id);
-            }
-          });
-        }
 
         setRelatedProducts(verifiedCandidates.slice(0, 4));
       } catch (error) {
@@ -670,9 +637,6 @@ export default function ProductDetail() {
   };
 
   const handleAddToCart = async () => {
-    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (!(await requireLogin(currentUrl))) return;
-
     try {
       setAdding(true);
       await cartService.addToCart(product, 1);
@@ -1190,9 +1154,9 @@ export default function ProductDetail() {
         <section className="mt-10 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:mt-12 sm:p-6">
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">Related products</h2>
+              <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">More products you may like</h2>
               <p className="mt-1 text-sm text-slate-500">
-                More products from verified sellers.
+                Explore more picks in this category.
               </p>
             </div>
             <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
@@ -1213,7 +1177,7 @@ export default function ProductDetail() {
             </div>
           ) : relatedProducts.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              No related products from verified sellers are available right now.
+              No more products in this category are available right now.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

@@ -78,19 +78,11 @@ export default function App() {
 
           <Route
             path="/marketplace"
-            element={
-              <ProtectedRoute allowedRoles={['buyer']}>
-                <BuyerDashboard />
-              </ProtectedRoute>
-            }
+            element={<BuyerDashboard />}
           />
           <Route
             path="/cart"
-            element={
-              <ProtectedRoute allowedRoles={['buyer']}>
-                <Cart />
-              </ProtectedRoute>
-            }
+            element={<Cart />}
           />
           <Route
             path="/support"
@@ -111,7 +103,14 @@ export default function App() {
           <Route
             path="/profile"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute
+                loginPrompt={{
+                  message: 'Please log in or create an account to view your profile.',
+                  confirmLabel: 'Log In',
+                  cancelLabel: 'Sign Up',
+                  cancelRedirectPath: '/signup',
+                }}
+              >
                 <Profile />
               </ProtectedRoute>
             }

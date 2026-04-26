@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState } from "react";
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
@@ -142,16 +142,16 @@ const { error: profileError } = await supabase
       }}
       className="flex flex-col"
     >
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:py-10">
       <div style={{ maxWidth: "500px", width: "100%" }}>
         {/* Logo Section */}
-        <div className="text-center mb-10">
-          <div className="mb-4 flex items-center justify-center">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="mb-3 flex items-center justify-center">
             <img
               src={noBgLogo}
               alt="Mafdesh Logo"
               className="w-auto"
-              style={{ height: '120px' }}
+              style={{ height: '96px' }}
             />
           </div>
           <p className="text-blue-700 text-base font-medium">
@@ -177,9 +177,9 @@ const { error: profileError } = await supabase
             }}
           ></div>
 
-          <div style={{ padding: "48px 40px" }}>
+          <div style={{ padding: "36px 28px" }}>
             {/* User Type Selector */}
-            <div className="mb-10">
+            <div className="mb-7">
               <p
                 style={{
                   color: "#374151",
@@ -727,7 +727,7 @@ const { error: profileError } = await supabase
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "12px",
-                  marginTop: "24px",
+                  marginTop: "20px",
                   paddingTop: "4px",
                 }}
               >
@@ -745,26 +745,32 @@ const { error: profileError } = await supabase
                     accentColor: userType === "buyer" ? "#1e40af" : "#ea580c",
                   }}
                 />
-                <label
-                  htmlFor="terms"
+                <div
                   style={{
                     color: "#6b7280",
                     fontSize: "14px",
                     lineHeight: "1.6",
-                    cursor: "pointer",
                     fontWeight: "500",
                   }}
                 >
                   I agree to the{" "}
-                  <span style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700" }}>
+                  <Link
+                    to="/terms"
+                    style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Terms & Conditions
-                  </span>{" "}
+                  </Link>{" "}
                   and{" "}
-                  <span style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700" }}>
+                  <Link
+                    to="/policies"
+                    style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Privacy Policy
-                  </span>
+                  </Link>
                   {" "}<span style={{ color: "#dc2626" }}>*</span>
-                </label>
+                </div>
               </div>
 
               <button
@@ -780,7 +786,7 @@ const { error: profileError } = await supabase
                   fontSize: "15px",
                   fontWeight: "700",
                   cursor: "pointer",
-                  marginTop: "28px",
+                  marginTop: "24px",
                   transition: "all 0.3s ease",
                   letterSpacing: "0.3px",
                 }}
@@ -803,8 +809,8 @@ const { error: profileError } = await supabase
             {/* Footer */}
             <div
               style={{
-                marginTop: "28px",
-                paddingTop: "28px",
+                marginTop: "24px",
+                paddingTop: "24px",
                 borderTop: "1.5px solid #f3f4f6",
                 textAlign: "center",
               }}
@@ -817,8 +823,8 @@ const { error: profileError } = await supabase
                 }}
               >
                 Already have an account?{" "}
-                <a
-                  href="/login"
+                <Link
+                  to="/login"
                   style={{
                     color: "#1e40af",
                     fontWeight: "700",
@@ -831,7 +837,7 @@ const { error: profileError } = await supabase
                   onMouseOut={(e) => (e.target.style.textDecoration = "none")}
                 >
                   Login here
-                </a>
+                </Link>
               </p>
             </div>
           </div>
