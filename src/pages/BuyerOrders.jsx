@@ -8,6 +8,7 @@ import { formatRemaining, getUrgencyClass } from '../utils/timeUtils';
 import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getBuyerOrderTotal } from '../utils/orderAmounts';
+import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 
 const BUYER_STATUS_OPTIONS = [
   { value: 'ALL', label: 'All' },
@@ -70,23 +71,6 @@ function BuyerOrdersSkeleton() {
   );
 }
 
-function buildSellerDirectory(users = [], profiles = []) {
-  const profileMap = (profiles || []).reduce((map, profile) => {
-    map[profile.id] = profile;
-    return map;
-  }, {});
-
-  return (users || []).reduce((map, userRecord) => {
-    const profileRecord = profileMap[userRecord.id];
-    map[userRecord.id] =
-      String(userRecord.business_name || '').trim() ||
-      String(profileRecord?.full_name || '').trim() ||
-      String(profileRecord?.username || '').trim() ||
-      'Seller';
-    return map;
-  }, {});
-}
-
 export default function BuyerOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -135,18 +119,12 @@ export default function BuyerOrders() {
     let nextSellerNames = {};
 
     if (sellerIds.length > 0) {
-      const [{ data: users }, { data: profiles }] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, business_name')
-          .in('id', sellerIds),
-        supabase
-          .from('profiles')
-          .select('id, full_name, username')
-          .in('id', sellerIds),
-      ]);
+      const sellerDirectory = await fetchPublicSellerDirectory(sellerIds);
 
-      nextSellerNames = buildSellerDirectory(users, profiles);
+      nextSellerNames = sellerIds.reduce((map, sellerId) => {
+        map[sellerId] = sellerDirectory[String(sellerId)]?.display_name || 'Seller';
+        return map;
+      }, {});
     }
 
     setOrderItemsMap(itemsMap);

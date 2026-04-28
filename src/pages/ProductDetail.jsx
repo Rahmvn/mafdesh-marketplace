@@ -21,6 +21,11 @@ import { cartService } from "../services/cartService";
 import { supabase } from "../supabaseClient";
 import { getProductFulfillmentOptions } from "../services/deliveryService";
 import {
+  enrichProductsWithPublicSellerData,
+  fetchPublicSellerDirectory,
+  isSellerMarketplaceActive,
+} from "../services/publicSellerService";
+import {
   showGlobalError,
   showGlobalSuccess,
   showGlobalLoginRequired,
@@ -75,57 +80,14 @@ async function loadSellerIdentity(sellerId, initialSeller = null) {
     profiles: normalizedInitialProfiles,
   };
 
-  const [{ data: userData, error: userError }, { data: profileData, error: profileError }] =
-    await Promise.all([
-      supabase
-        .from("users")
-        .select("id, email, business_name, is_verified, status, account_status")
-        .eq("id", sellerId)
-        .maybeSingle(),
-      supabase
-        .from("profiles")
-        .select("id, full_name, username")
-        .eq("id", sellerId)
-        .maybeSingle(),
-    ]);
+  const sellerDirectory = await fetchPublicSellerDirectory([sellerId]);
+  const publicSeller = sellerDirectory[String(sellerId)] || null;
 
-  if (userError) {
-    console.error("Error loading seller user record:", userError);
-  }
-
-  if (profileError) {
-    console.error("Error loading seller profile record:", profileError);
-  }
-
-  let mergedSeller = {
+  return {
     ...baseSeller,
-    ...(userData || {}),
-    profiles: profileData || baseSeller.profiles || null,
+    ...(publicSeller || {}),
+    profiles: publicSeller?.profiles || baseSeller.profiles || null,
   };
-
-  if (!String(mergedSeller.business_name || "").trim()) {
-    const { data: publicSeller, error: publicSellerError } = await supabase.rpc(
-      "get_public_seller_identity",
-      {
-        p_seller_id: sellerId,
-      }
-    );
-
-    if (publicSellerError) {
-      console.error("Error loading public seller identity:", publicSellerError);
-    } else {
-      const normalizedPublicSeller = Array.isArray(publicSeller) ? publicSeller[0] : publicSeller;
-
-      if (normalizedPublicSeller) {
-        mergedSeller = {
-          ...mergedSeller,
-          ...normalizedPublicSeller,
-        };
-      }
-    }
-  }
-
-  return mergedSeller;
 }
 
 function normalizeValue(value) {
@@ -375,23 +337,7 @@ export default function ProductDetail() {
 
   const loadProduct = useCallback(async () => {
     try {
-      const productSelect = `
-        *,
-        seller:users!products_seller_id_fkey(
-          id,
-          email,
-          business_name,
-          is_verified,
-          status,
-          account_status,
-          profiles(
-            full_name,
-            username
-          )
-        )
-      `;
-
-      let productQuery = supabase.from("products").select(productSelect).eq("id", id);
+      let productQuery = supabase.from("products").select("*").eq("id", id);
 
       if (!isAdmin) {
         productQuery = productQuery.is("deleted_at", null);
@@ -402,7 +348,7 @@ export default function ProductDetail() {
       if (!isAdmin && isMissingDeletedAtColumn(error)) {
         ({ data, error } = await supabase
           .from("products")
-          .select(productSelect)
+          .select("*")
           .eq("id", id)
           .single());
       }
@@ -413,12 +359,10 @@ export default function ProductDetail() {
 
       setProduct(data);
 
-      const mergedSeller = await loadSellerIdentity(data?.seller_id, data?.seller || null);
+      const mergedSeller = await loadSellerIdentity(data?.seller_id);
 
       if (mergedSeller) {
-        const sellerStatus = getSellerStatus(mergedSeller);
-
-        if (!isAdmin && sellerStatus !== "active") {
+        if (!isAdmin && !isSellerMarketplaceActive(mergedSeller)) {
           showGlobalWarning(
             "Listing Unavailable",
             "This seller is not active right now, so the product is unavailable."
@@ -494,19 +438,7 @@ export default function ProductDetail() {
         category,
         stock_quantity,
         seller_id,
-        created_at,
-        seller:users!products_seller_id_fkey(
-          id,
-          email,
-          business_name,
-          is_verified,
-          status,
-          account_status,
-          profiles(
-            full_name,
-            username
-          )
-        )
+        created_at
       `;
 
       const runQuery = async ({ category = null, limit = 12, includeDeletedCheck = true }) => {
@@ -556,10 +488,11 @@ export default function ProductDetail() {
           });
         }
 
-        const verifiedCandidates = sameCategoryCandidates.filter((candidate) => {
-          const sellerStatus = getSellerStatus(candidate?.seller);
-          return candidate?.seller?.is_verified && sellerStatus === "active";
-        });
+        const hydratedCandidates = await enrichProductsWithPublicSellerData(sameCategoryCandidates);
+        const verifiedCandidates = hydratedCandidates.filter(
+          (candidate) =>
+            candidate?.seller?.is_verified && isSellerMarketplaceActive(candidate?.seller)
+        );
 
         setRelatedProducts(verifiedCandidates.slice(0, 4));
       } catch (error) {

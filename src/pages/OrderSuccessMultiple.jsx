@@ -6,6 +6,7 @@ import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import { getOrderItemsMap } from '../utils/orderItems';
 import { formatNaira } from '../utils/multiSellerCheckout';
+import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 
 function getHandlingCopy(order) {
   if (order.delivery_type === 'pickup') {
@@ -87,31 +88,9 @@ export default function OrderSuccessMultiple() {
 
       const itemMap = await getOrderItemsMap(orderRows);
       const sellerIds = [...new Set(orderRows.map((order) => order.seller_id).filter(Boolean))];
-      const [{ data: users }, { data: profiles }] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, business_name')
-          .in('id', sellerIds),
-        supabase
-          .from('profiles')
-          .select('id, full_name, username')
-          .in('id', sellerIds),
-      ]);
-
-      const profileMap = (profiles || []).reduce((map, profile) => {
-        map[profile.id] = profile;
-        return map;
-      }, {});
-
+      const sellerDirectory = await fetchPublicSellerDirectory(sellerIds);
       const nextSellerNames = sellerIds.reduce((map, sellerId) => {
-        const userRecord = (users || []).find((userRecordItem) => userRecordItem.id === sellerId);
-        const profileRecord = profileMap[sellerId];
-
-        map[sellerId] =
-          String(userRecord?.business_name || '').trim() ||
-          String(profileRecord?.full_name || '').trim() ||
-          String(profileRecord?.username || '').trim() ||
-          'Seller';
+        map[sellerId] = sellerDirectory[String(sellerId)]?.display_name || 'Seller';
         return map;
       }, {});
 

@@ -1,5 +1,9 @@
 import { supabase } from '../supabaseClient';
 import {
+  enrichProductsWithPublicSellerData,
+  isSellerMarketplaceActive,
+} from './publicSellerService';
+import {
   clearCachedCart,
   readCachedCartItems,
   writeCachedCartItems,
@@ -25,16 +29,6 @@ const CART_PRODUCT_OPTIONAL_FIELDS = `
   is_flash_sale
 `;
 
-const CART_PRODUCT_SELECT = `
-  ${CART_PRODUCT_BASE_FIELDS},
-  ${CART_PRODUCT_OPTIONAL_FIELDS},
-  seller:users!products_seller_id_fkey(
-    id,
-    status,
-    account_status
-  )
-`;
-
 function isMissingColumnError(error, columnNames = []) {
   const message = String(error?.message || '').toLowerCase();
   return (
@@ -50,10 +44,7 @@ function normalizeQuantity(quantity) {
 }
 
 function isSellerActive(product) {
-  const sellerStatus = String(
-    product?.seller?.account_status || product?.seller?.status || 'active'
-  ).toLowerCase();
-  return sellerStatus === 'active';
+  return isSellerMarketplaceActive(product?.seller);
 }
 
 function buildProductSnapshot(product = {}) {
@@ -203,7 +194,13 @@ async function fetchProductsByIds(productIds) {
   }
 
   const runQuery = async (includeDeletedCheck = true) => {
-    let query = supabase.from('products').select(CART_PRODUCT_SELECT).in('id', productIds);
+    let query = supabase
+      .from('products')
+      .select(`
+        ${CART_PRODUCT_BASE_FIELDS},
+        ${CART_PRODUCT_OPTIONAL_FIELDS}
+      `)
+      .in('id', productIds);
 
     if (includeDeletedCheck) {
       query = query.is('deleted_at', null);
@@ -219,13 +216,15 @@ async function fetchProductsByIds(productIds) {
   };
 
   try {
-    return await runQuery(true);
+    const products = await runQuery(true);
+    return enrichProductsWithPublicSellerData(products);
   } catch (error) {
     if (!(error?.code === '42703' && String(error.message || '').includes('deleted_at'))) {
       throw error;
     }
 
-    return runQuery(false);
+    const products = await runQuery(false);
+    return enrichProductsWithPublicSellerData(products);
   }
 }
 

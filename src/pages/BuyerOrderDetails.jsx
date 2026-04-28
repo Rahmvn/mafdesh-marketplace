@@ -37,6 +37,7 @@ import {
   getOrderAdminHoldTitle,
 } from "../services/orderAdminHoldService";
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
+import { fetchPublicSellerDirectory } from "../services/publicSellerService";
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -239,33 +240,19 @@ export default function BuyerOrderDetails() {
 
     const sellerDetails = authUser ? await loadSellerDetails(orderData.id) : null;
 
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("business_name, phone_number, is_verified")
-      .eq("id", orderData.seller_id)
-      .maybeSingle();
+    const sellerDirectory = await fetchPublicSellerDirectory([orderData.seller_id]);
+    const publicSeller = sellerDirectory[String(orderData.seller_id)] || null;
+    const profile = publicSeller?.profiles || null;
 
-    if (userError) console.error("User fetch error:", userError);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", orderData.seller_id)
-      .maybeSingle();
-
-    const businessName = String(sellerDetails?.businessName || user?.business_name || "").trim();
+    const businessName = String(
+      sellerDetails?.businessName || publicSeller?.business_name || ""
+    ).trim();
     const contactName = String(sellerDetails?.fullName || profile?.full_name || "").trim();
     const username = String(sellerDetails?.username || profile?.username || "").trim();
 
     const sellerPhone =
-      getValidPhoneNumber(
-        sellerDetails?.phoneNumber,
-        username,
-        contactName,
-        businessName
-      ) ||
-      getValidPhoneNumber(user?.phone_number, username, contactName, businessName) ||
-      getValidPhoneNumber(profile?.phone_number, username, contactName, businessName);
+      getValidPhoneNumber(sellerDetails?.phoneNumber, username, contactName, businessName) ||
+      "";
 
     setOrder(orderData);
     setSeller({
@@ -274,7 +261,7 @@ export default function BuyerOrderDetails() {
       contactName,
       username,
       phone: sellerPhone,
-      is_verified: Boolean(sellerDetails?.isVerified || user?.is_verified),
+      is_verified: Boolean(sellerDetails?.isVerified || publicSeller?.is_verified),
     });
     try {
       const refundRequestRows = await fetchOrderRefundRequests(id);

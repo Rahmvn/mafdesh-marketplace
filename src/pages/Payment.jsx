@@ -85,10 +85,11 @@ export default function Payment() {
         showGlobalWarning(
           sellerUnavailable ? "Seller Unavailable" : "Item Unavailable",
           sellerUnavailable
-            ? "This seller is not active right now, so the order could not be completed."
-            : "Sorry, this item is no longer available. Your order could not be completed."
+            ? "This seller is not active right now, so the order could not be completed. Your pending order was kept intact for support review."
+            : "Sorry, this item is no longer available. Your pending order was kept intact so you can retry later or contact support."
         );
-        await supabase.from("orders").delete().eq("id", id);
+        await loadOrder();
+        return;
       } else if (err.status === 403) {
         showGlobalError("Action Not Allowed", "You are not allowed to confirm this order.");
       } else {

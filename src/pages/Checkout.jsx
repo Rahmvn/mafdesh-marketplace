@@ -19,6 +19,10 @@ import {
 } from '../components/PageFeedback';
 import { buildProductSnapshot } from '../utils/productSnapshots';
 import { getProductPricing } from '../utils/flashSale';
+import {
+  fetchPublicSellerIdentityMap,
+  isSellerMarketplaceActive,
+} from '../services/publicSellerService';
 
 const generateOrderNumber = () => {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -47,12 +51,7 @@ export default function Checkout() {
       .from('products')
       .select(`
         *,
-        pickup_locations,
-        seller:users!products_seller_id_fkey(
-          id,
-          status,
-          account_status
-        )
+        pickup_locations
       `)
       .eq('id', productId)
       .single();
@@ -63,11 +62,10 @@ export default function Checkout() {
       return;
     }
 
-    const sellerStatus = String(
-      data?.seller?.account_status || data?.seller?.status || 'active'
-    ).toLowerCase();
+    const sellerMap = await fetchPublicSellerIdentityMap([data.seller_id]);
+    const seller = sellerMap[String(data.seller_id)] || null;
 
-    if (sellerStatus !== 'active') {
+    if (!isSellerMarketplaceActive(seller)) {
       showGlobalWarning(
         'Seller Unavailable',
         'This seller is not active right now, so checkout is unavailable.'

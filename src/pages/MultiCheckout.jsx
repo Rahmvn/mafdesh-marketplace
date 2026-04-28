@@ -32,6 +32,7 @@ import {
 } from '../utils/multiSellerCheckout';
 import { getProductPricing } from '../utils/flashSale';
 import { clearCachedCart } from '../utils/cartStorage';
+import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 
 function createCheckoutSessionId() {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
@@ -245,31 +246,11 @@ export default function MultiCheckout() {
       const nextSellerNames = {};
 
       if (sellerIds.length > 0) {
-        const [{ data: users }, { data: profiles }] = await Promise.all([
-          supabase
-            .from('users')
-            .select('id, business_name')
-            .in('id', sellerIds),
-          supabase
-            .from('profiles')
-            .select('id, full_name, username')
-            .in('id', sellerIds),
-        ]);
-
-        const profileMap = (profiles || []).reduce((map, profile) => {
-          map[profile.id] = profile;
-          return map;
-        }, {});
+        const sellerDirectory = await fetchPublicSellerDirectory(sellerIds);
 
         sellerIds.forEach((sellerId) => {
-          const userRecord = (users || []).find((user) => user.id === sellerId);
-          const profileRecord = profileMap[sellerId];
-
           nextSellerNames[sellerId] =
-            String(userRecord?.business_name || '').trim() ||
-            String(profileRecord?.full_name || '').trim() ||
-            String(profileRecord?.username || '').trim() ||
-            'Seller';
+            sellerDirectory[String(sellerId)]?.display_name || 'Seller';
         });
       }
 

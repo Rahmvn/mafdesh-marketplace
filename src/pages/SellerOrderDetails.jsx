@@ -250,15 +250,9 @@ export default function SellerOrderDetails() {
       .eq("id", orderData.buyer_id)
       .maybeSingle();
 
-    const { data: user } = await supabase
-      .from("users")
-      .select("email, phone_number")
-      .eq("id", orderData.buyer_id)
-      .maybeSingle();
-
     const mergedBuyer = {
       id: orderData.buyer_id,
-      email: String(buyerDetails?.email || user?.email || "").trim(),
+      email: String(buyerDetails?.email || "").trim(),
       full_name: String(buyerDetails?.fullName || profile?.full_name || "").trim(),
       username: String(buyerDetails?.username || profile?.username || "").trim(),
       phone_number:
@@ -266,19 +260,7 @@ export default function SellerOrderDetails() {
           buyerDetails?.phoneNumber,
           profile?.username,
           profile?.full_name,
-          user?.email
-        ) ||
-        getValidPhoneNumber(
-          user?.phone_number,
-          profile?.username,
-          profile?.full_name,
-          user?.email
-        ) ||
-        getValidPhoneNumber(
-          profile?.phone_number,
-          profile?.username,
-          profile?.full_name,
-          user?.email
+          buyerDetails?.email
         ),
     };
 

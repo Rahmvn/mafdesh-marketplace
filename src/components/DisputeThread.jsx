@@ -19,20 +19,32 @@ export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
   const fetchMessages = useCallback(async () => {
     const { data, error } = await supabase
       .from('dispute_messages')
-      .select(`
-        *,
-        sender:users!sender_id (
-          role,
-          profiles (full_name, username)
-        )
-      `)
+      .select('*')
       .eq('order_id', orderId)
       .order('created_at', { ascending: false });
 
     if (!error) {
+      const senderIds = [...new Set((data || []).map((message) => message.sender_id).filter(Boolean))];
+      let profileMap = {};
+
+      if (senderIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, username')
+          .in('id', senderIds);
+
+        profileMap = (profiles || []).reduce((map, profile) => {
+          map[profile.id] = profile;
+          return map;
+        }, {});
+      }
+
       const hydratedMessages = await Promise.all(
         (data || []).map(async (message) => ({
           ...message,
+          sender: {
+            profiles: profileMap[message.sender_id] || null,
+          },
           imageUrls: await resolveDisputeImageUrls(message.images || []),
         }))
       );

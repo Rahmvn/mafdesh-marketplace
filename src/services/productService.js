@@ -1,4 +1,8 @@
 import { supabase } from "../supabaseClient";
+import {
+  enrichProductsWithPublicSellerData,
+  isSellerMarketplaceActive,
+} from "./publicSellerService";
 
 const FINAL_ORDER_STATUSES = ["CANCELLED", "COMPLETED", "REFUNDED"];
 
@@ -20,18 +24,6 @@ function mapProductList(data) {
       thumbnail: product.images?.[0] || null,
     })) || []
   );
-}
-
-function isSellerMarketplaceActive(seller) {
-  if (!seller) {
-    return false;
-  }
-
-  const accountStatus = String(
-    seller.account_status || seller.status || 'active'
-  ).toLowerCase();
-
-  return accountStatus === 'active';
 }
 
 export function getProductArchiveActionMessage(error) {
@@ -81,15 +73,7 @@ export const productService = {
         stock_quantity,
         images,
         created_at,
-        users (
-          status,
-          account_status,
-          business_name,
-          profiles (
-            full_name,
-            username
-          )
-        )
+        seller_id
       `)
       .eq("is_approved", true)
       .is("deleted_at", null)
@@ -110,15 +94,7 @@ export const productService = {
           stock_quantity,
           images,
           created_at,
-          users (
-            status,
-            account_status,
-            business_name,
-            profiles (
-              full_name,
-              username
-            )
-          )
+          seller_id
         `)
         .eq("is_approved", true)
         .gt("stock_quantity", 0)
@@ -126,9 +102,14 @@ export const productService = {
     }
 
     if (error) throw error;
-    return mapProductList(data).filter((product) =>
-      isSellerMarketplaceActive(product.users)
-    );
+    const nextProducts = await enrichProductsWithPublicSellerData(mapProductList(data));
+
+    return nextProducts
+      .map((product) => ({
+        ...product,
+        users: product.seller,
+      }))
+      .filter((product) => isSellerMarketplaceActive(product.seller));
   },
 
   async getSellerProducts(userId) {

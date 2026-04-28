@@ -7,6 +7,10 @@ import {supabase} from '../supabaseClient';
 import GuestNavbar from '../components/GuestNavbar';
 import { GenericContentSkeleton } from '../components/PageFeedback';
 import {
+  enrichProductsWithPublicSellerData,
+  isSellerMarketplaceActive,
+} from '../services/publicSellerService';
+import {
   readCachedPublicProducts,
   writeCachedPublicProducts,
 } from '../utils/publicProductsStorage';
@@ -29,12 +33,7 @@ export default function LandingPage() {
     const { data, error } = await supabase
       .from('products')
       .select(`
-        *,
-        seller:users!products_seller_id_fkey(
-          id,
-          status,
-          account_status
-        )
+        *
       `)
       .gt('stock_quantity', 0)
       .eq('is_approved', true)
@@ -42,13 +41,10 @@ export default function LandingPage() {
       .order('created_at', { ascending: false });
 
     if (!error) {
-      const nextProducts = (data || []).filter((product) => {
-        const sellerStatus = String(
-          product?.seller?.account_status || product?.seller?.status || 'active'
-        ).toLowerCase();
-
-        return sellerStatus === 'active';
-      });
+      const hydratedProducts = await enrichProductsWithPublicSellerData(data || []);
+      const nextProducts = hydratedProducts.filter((product) =>
+        isSellerMarketplaceActive(product.seller)
+      );
       setProducts(nextProducts);
       writeCachedPublicProducts(nextProducts);
     }

@@ -295,6 +295,53 @@ async function reserveOrderStock(
   return fallbackDeductStock(supabaseAdmin, orderId)
 }
 
+async function restoreReservedStock(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  orderId: string
+) {
+  const { data: orderRecord, error: orderError } = await supabaseAdmin
+    .from('orders')
+    .select('product_id, quantity')
+    .eq('id', orderId)
+    .single()
+
+  if (orderError || !orderRecord) {
+    throw new Error('Order not found while restoring stock.')
+  }
+
+  const quantity = Number(orderRecord.quantity ?? 0)
+  if (!orderRecord.product_id || quantity <= 0) {
+    return
+  }
+
+  const { data: productRecord, error: productError } = await supabaseAdmin
+    .from('products')
+    .select('id, stock_quantity')
+    .eq('id', orderRecord.product_id)
+    .single()
+
+  if (productError || !productRecord) {
+    throw new Error('Product not found while restoring stock.')
+  }
+
+  const currentStock = Number(productRecord.stock_quantity ?? 0)
+
+  const { data: restoredProducts, error: restoreError } = await supabaseAdmin
+    .from('products')
+    .update({ stock_quantity: currentStock + quantity })
+    .eq('id', orderRecord.product_id)
+    .eq('stock_quantity', currentStock)
+    .select('id')
+
+  if (restoreError) {
+    throw restoreError
+  }
+
+  if (!restoredProducts?.length) {
+    throw new Error('Failed to restore reserved stock after finalization error.')
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -381,14 +428,25 @@ serve(async (req) => {
     }
 
     try {
-      await incrementFlashSaleCounters(supabaseAdmin, orderId)
       await finalizePaidOrder(supabaseAdmin, orderId, String(paymentReference || '').trim())
     } catch (finalizationError) {
+      try {
+        await restoreReservedStock(supabaseAdmin, orderId)
+      } catch (restoreError) {
+        console.error('Stock restore error after failed finalization:', restoreError)
+      }
+
       console.error('Order finalization error:', finalizationError)
       return jsonResponse(
         { error: String(finalizationError?.message || 'Unable to finalize this order.') },
         500
       )
+    }
+
+    try {
+      await incrementFlashSaleCounters(supabaseAdmin, orderId)
+    } catch (flashSaleError) {
+      console.warn('Flash sale counter update failed after order finalization:', flashSaleError)
     }
 
     return jsonResponse({

@@ -7,6 +7,10 @@ import FlashSaleStrip from '../components/FlashSaleStrip';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
 import {
+  enrichProductsWithPublicSellerData,
+  isSellerMarketplaceActive,
+} from '../services/publicSellerService';
+import {
   excludeActiveFlashSaleProducts,
   getActiveFlashSaleProducts,
   getNearestFlashSaleExpiry,
@@ -129,15 +133,7 @@ export default function Marketplace() {
         .from('products')
         .select(
           `
-          *,
-          seller:users!products_seller_id_fkey(
-            id,
-            email,
-            business_name,
-            is_verified,
-            status,
-            account_status
-          )
+          *
         `
         )
         .eq('is_approved', true)
@@ -147,13 +143,10 @@ export default function Marketplace() {
 
       if (error) throw error;
 
-      const nextProducts = (data || []).filter((product) => {
-        const sellerStatus = String(
-          product?.seller?.account_status || product?.seller?.status || 'active'
-        ).toLowerCase();
-
-        return sellerStatus === 'active';
-      });
+      const hydratedProducts = await enrichProductsWithPublicSellerData(data || []);
+      const nextProducts = hydratedProducts.filter((product) =>
+        isSellerMarketplaceActive(product.seller)
+      );
       setProducts(nextProducts);
 
       try {

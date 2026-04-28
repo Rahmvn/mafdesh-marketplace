@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { getOrderItemsMap } from './orderItems';
 import { getBuyerOrderAmounts } from './orderAmounts';
+import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 
 function formatCurrency(value) {
@@ -78,6 +79,34 @@ function getPartyName(user, profile, fallback) {
     user?.email ||
     fallback
   );
+}
+
+async function getOrderCounterparty(orderId) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ orderId }),
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  return payload?.counterparty || null;
 }
 
 function getLandscapeLogoMarkup(logoSrc) {
@@ -744,34 +773,57 @@ export async function generateReceipt(orderId, receiptWindow = null) {
 
     const itemsMap = await getOrderItemsMap([order]);
     const items = itemsMap[order.id] || [];
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const currentUserId = session?.user?.id || null;
+    const isBuyerView = currentUserId === order.buyer_id;
+    const isSellerView = currentUserId === order.seller_id;
+    const counterparty = currentUserId ? await getOrderCounterparty(order.id) : null;
+    const sellerDirectory = await fetchPublicSellerDirectory([order.seller_id]);
+    const publicSeller = sellerDirectory[String(order.seller_id)] || null;
 
     const [
-      { data: sellerUser },
-      { data: sellerProfile },
-      { data: buyerUser },
-      { data: buyerProfile },
+      { data: currentUser },
+      { data: currentProfile },
     ] = await Promise.all([
       supabase
         .from('users')
         .select('id, business_name, email, phone_number')
-        .eq('id', order.seller_id)
+        .eq('id', currentUserId)
         .maybeSingle(),
       supabase
         .from('profiles')
         .select('id, full_name, username')
-        .eq('id', order.seller_id)
-        .maybeSingle(),
-      supabase
-        .from('users')
-        .select('id, email')
-        .eq('id', order.buyer_id)
-        .maybeSingle(),
-      supabase
-        .from('profiles')
-        .select('id, full_name, username')
-        .eq('id', order.buyer_id)
+        .eq('id', currentUserId)
         .maybeSingle(),
     ]);
+
+    const sellerUser = isSellerView
+      ? currentUser
+      : {
+          id: order.seller_id,
+          business_name: publicSeller?.business_name || '',
+          email: counterparty?.role === 'seller' ? counterparty.email || '' : '',
+          phone_number:
+            counterparty?.role === 'seller' ? counterparty.phoneNumber || '' : '',
+        };
+    const sellerProfile = isSellerView
+      ? currentProfile
+      : publicSeller?.profiles || null;
+    const buyerUser = isBuyerView
+      ? currentUser
+      : {
+          id: order.buyer_id,
+          email: counterparty?.role === 'buyer' ? counterparty.email || '' : '',
+        };
+    const buyerProfile = isBuyerView
+      ? currentProfile
+      : {
+          id: order.buyer_id,
+          full_name: counterparty?.role === 'buyer' ? counterparty.fullName || '' : '',
+          username: counterparty?.role === 'buyer' ? counterparty.username || '' : '',
+        };
 
     writeReceiptWindow(
       activeWindow,
