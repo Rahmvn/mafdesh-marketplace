@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Briefcase, Home, LoaderCircle, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AddressFields from './AddressFields';
@@ -31,6 +31,9 @@ export default function AddressSelector({
   selectedAddressId,
   initialAddress = null,
 }) {
+  const initialAddressRef = useRef(initialAddress);
+  const initialSelectedAddressIdRef = useRef(selectedAddressId);
+  const onSelectRef = useRef(onSelect);
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -47,7 +50,16 @@ export default function AddressSelector({
           : true,
     })
   );
+  const manualFormRef = useRef(manualForm);
   const [touchedFields, setTouchedFields] = useState({});
+
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    manualFormRef.current = manualForm;
+  }, [manualForm]);
 
   const manualErrors = useMemo(() => validateSavedAddress(manualForm), [manualForm]);
   const visibleErrors = useMemo(
@@ -88,6 +100,10 @@ export default function AddressSelector({
   );
 
   const loadAddresses = useCallback(async () => {
+    const initialAddressValue = initialAddressRef.current;
+    const initialSelectedAddressId = initialSelectedAddressIdRef.current;
+    const initialManualForm = manualFormRef.current;
+
     setLoading(true);
     setLoadError('');
 
@@ -97,36 +113,54 @@ export default function AddressSelector({
 
       if (addresses.length === 0) {
         const nextForm = createEmptySavedAddressForm({
-          ...initialAddress,
+          ...initialAddressValue,
           is_default: true,
           save_to_address_book:
-            initialAddress?.source === 'manual'
-              ? Boolean(initialAddress?.save_to_address_book)
+            initialAddressValue?.source === 'manual'
+              ? Boolean(initialAddressValue?.save_to_address_book)
               : true,
         });
 
         setShowManualForm(true);
         setSelectedSavedId(null);
         setManualForm(nextForm);
-        emitManualSelection(nextForm, 0);
+        onSelectRef.current(
+          toDeliveryAddressSelection(nextForm, {
+            source: 'manual',
+            save_to_address_book: Boolean(nextForm.save_to_address_book),
+            should_set_as_default: true,
+          })
+        );
         return;
       }
 
-      if (initialAddress?.source === 'manual' && !selectedAddressId) {
+      if (initialAddressValue?.source === 'manual' && !initialSelectedAddressId) {
         setShowManualForm(true);
         setSelectedSavedId(null);
-        emitManualSelection(manualForm, addresses.length);
+        onSelectRef.current(
+          toDeliveryAddressSelection(initialManualForm, {
+            source: 'manual',
+            save_to_address_book: Boolean(initialManualForm.save_to_address_book),
+            should_set_as_default: addresses.length === 0,
+          })
+        );
         return;
       }
 
       const selectedAddress =
-        addresses.find((address) => address.id === selectedAddressId) ||
+        addresses.find((address) => address.id === initialSelectedAddressId) ||
         pickDefaultSavedAddress(addresses);
 
       if (selectedAddress) {
         setShowManualForm(false);
         setSelectedSavedId(selectedAddress.id);
-        emitSavedSelection(selectedAddress);
+        onSelectRef.current(
+          toDeliveryAddressSelection(selectedAddress, {
+            source: 'saved',
+            save_to_address_book: false,
+            should_set_as_default: false,
+          })
+        );
       }
     } catch (error) {
       console.error('Failed to load saved addresses:', error);
@@ -134,17 +168,17 @@ export default function AddressSelector({
       setSavedAddresses([]);
       setShowManualForm(true);
       setSelectedSavedId(null);
-      emitManualSelection(manualForm, 0);
+      onSelectRef.current(
+        toDeliveryAddressSelection(initialManualForm, {
+          source: 'manual',
+          save_to_address_book: Boolean(initialManualForm.save_to_address_book),
+          should_set_as_default: true,
+        })
+      );
     } finally {
       setLoading(false);
     }
-  }, [
-    emitManualSelection,
-    emitSavedSelection,
-    initialAddress,
-    manualForm,
-    selectedAddressId,
-  ]);
+  }, []);
 
   useEffect(() => {
     loadAddresses();

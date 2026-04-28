@@ -22,7 +22,7 @@ import {
 import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
 
 function formatPrice(value) {
-  return `\u20A6${Number(value || 0).toLocaleString()}`;
+  return `₦${Number(value || 0).toLocaleString()}`;
 }
 
 function isMissingDeletedAtColumn(error) {
@@ -471,7 +471,7 @@ export default function Cart() {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-blue-900">{item.products?.name}</p>
                           <p className="text-orange-600 font-bold mt-1">
-                            â‚¦{Number(pricing.displayPrice).toLocaleString()}
+                          ₦{Number(pricing.displayPrice).toLocaleString()}
                           </p>
 
                           <div className="flex items-center gap-3 mt-3">
@@ -531,7 +531,7 @@ export default function Cart() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-                    <span>â‚¦{getTotal().toLocaleString()}</span>
+                    <span>₦{getTotal().toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-gray-500">
                     <span>Delivery</span>
@@ -540,7 +540,7 @@ export default function Cart() {
                   <div className="border-t pt-3 mt-3">
                     <div className="flex justify-between font-bold text-blue-900">
                       <span>Total</span>
-                      <span>â‚¦{getTotal().toLocaleString()}</span>
+                      <span>₦{getTotal().toLocaleString()}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">*Excludes delivery fee</p>
                   </div>
@@ -566,15 +566,8 @@ export default function Cart() {
               </div>
             </div>
 
-            <section className="space-y-4">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-xl font-bold text-blue-900">
-                  Verified Picks From Your Cart Categories
-                </h2>
-                <p className="text-sm text-blue-700">
-                  A random mix from the categories already in your cart, limited to active verified sellers.
-                </p>
-              </div>
+            <section >
+              
 
               {recommendationLoading ? (
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
@@ -602,7 +595,7 @@ export default function Cart() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-blue-100 bg-white p-6 text-sm text-slate-600">
-                  We could not find extra verified-seller picks in your cart categories right now.
+                  We could not find related products in your cart categories right now.
                 </div>
               )}
             </section>
