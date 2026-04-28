@@ -24,7 +24,7 @@ export default function Footer() {
   return (
     <footer
       className={`mt-auto bg-gradient-to-br from-blue-950 via-blue-900 to-blue-950 text-white ${
-        isBuyer ? 'pb-20 xl:pb-0' : ''
+        isBuyer ? 'pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0' : ''
       }`}
     >
       <div className="max-w-full mx-auto px-6 py-12">

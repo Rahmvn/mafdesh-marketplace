@@ -81,6 +81,14 @@ export default function SellerOrderDetails() {
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
 
+  const openProductDetails = (productId) => {
+    if (!productId) {
+      return;
+    }
+
+    navigate(`/product/${productId}`);
+  };
+
   const loadBuyerDetails = useCallback(async (orderId) => {
     const invokeCounterparty = async (accessToken) => {
       const response = await fetch(
@@ -676,12 +684,24 @@ export default function SellerOrderDetails() {
                 const safeImageUrl = getSafeProductImage(item.product);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
-  <img
-    src={safeImageUrl}
-    alt={item.product?.name}
-    className="w-16 h-16 object-contain border rounded"
-    onError={(e) => { e.target.src = '/placeholder.png'; }}
-  />
+  <button
+    type="button"
+    onClick={() => openProductDetails(item.product?.id)}
+    disabled={!item.product?.id}
+    className="h-16 w-16 overflow-hidden rounded border transition hover:border-orange-300 disabled:cursor-default"
+    aria-label={
+      item.product?.id
+        ? `View details for ${item.product?.name || "this product"}`
+        : "Product details unavailable"
+    }
+  >
+    <img
+      src={safeImageUrl}
+      alt={item.product?.name}
+      className="h-full w-full object-contain"
+      onError={(e) => { e.target.src = '/placeholder.png'; }}
+    />
+  </button>
   <div className="flex-1 min-w-0">
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
       <div className="min-w-0">
@@ -978,4 +998,3 @@ export default function SellerOrderDetails() {
     </div>
   );
 }
-

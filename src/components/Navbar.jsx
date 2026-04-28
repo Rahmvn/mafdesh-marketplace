@@ -352,7 +352,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               to={homePath}
               className={
                 isBuyerLike
-                  ? 'hidden xl:flex flex-shrink-0 items-center'
+                  ? 'hidden lg:flex flex-shrink-0 items-center'
                   : 'flex flex-shrink-0 items-center'
               }
               onClick={closeMenus}
@@ -369,7 +369,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             </Link>
 
             {isBuyerLike && (
-              <div className="min-w-0 flex-1 xl:hidden">
+              <div className="min-w-0 flex-1 lg:hidden">
                 <form onSubmit={handleSearchSubmit} className="min-w-0 flex-1">
                   <div className="relative">
                     <input
@@ -423,7 +423,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             )}
 
             {isBuyerLike && (
-              <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 xl:flex">
+              <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 lg:flex">
                 <form onSubmit={handleSearchSubmit} className="relative w-full max-w-2xl">
                   <input
                     type="text"
@@ -437,7 +437,13 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               </div>
             )}
 
-            <div className="hidden shrink-0 items-center gap-3 xl:flex">
+            <div
+              className={
+                isBuyerLike
+                  ? "hidden shrink-0 items-center gap-3 lg:flex"
+                  : "hidden shrink-0 items-center gap-3 xl:flex"
+              }
+            >
               {themeToggle && !isBuyerLike && (
                 <ThemeToggleButton
                   darkMode={themeToggle.darkMode}
@@ -624,7 +630,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               )}
             </div>
 
-          <div className="flex shrink-0 items-center gap-2 xl:hidden">
+          <div className={`${isBuyerLike ? "flex lg:hidden" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
             {isBuyerLike ? (
               <>
                 {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
@@ -757,7 +763,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
         </div>
       )}
       {isBuyerLike && (
-        <div className={`fixed inset-x-0 bottom-0 z-40 border-t xl:hidden ${mobilePanelClass}`}>
+        <div className={`fixed inset-x-0 bottom-0 z-40 border-t lg:hidden ${mobilePanelClass}`}>
           <div className="grid grid-cols-5 gap-1 px-3 py-2">
             <Link to={homePath} className={buyerBottomTabClass}>
               <Home className="h-5 w-5" />

@@ -5,6 +5,7 @@ import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
+import { openBuyerDispute, uploadDisputeEvidence } from "../services/disputeService";
 
 export default function BuyerDispute(){
 
@@ -55,27 +56,11 @@ setImages(files);
 
 };
 const uploadImages = async ()=>{
-
-const paths = [];
-
-for(const file of images){
-
-const filePath = `disputes/${order.id}/${Date.now()}-${file.name}`;
-
-const {error} = await supabase.storage
-.from("dispute-evidence")
-.upload(filePath,file);
-
-if(error){
-console.error(error);
-continue;
-}
-
-paths.push(filePath);
-
-}
-
-return paths;
+return uploadDisputeEvidence({
+orderId: order.id,
+actorId: order.buyer_id,
+files: images,
+});
 
 };
 const submitDispute = async()=>{
@@ -92,17 +77,9 @@ return;
 
 const imagePaths = await uploadImages();
 
-const {error} = await supabase
-.from("orders")
-.update({
-status:"DISPUTED",
-dispute_reason:reason,
-dispute_images:imagePaths,
-disputed_at:new Date()
-})
-.eq("id",order.id);
-
-if(error){
+try{
+await openBuyerDispute(order.id, reason.trim(), imagePaths);
+} catch (error) {
 console.error(error);
 showGlobalError("Submission Failed", "Failed to submit dispute. Please try again.");
 return;

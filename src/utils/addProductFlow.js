@@ -352,7 +352,7 @@ export async function submitAddProductForm({ currentUser, formData }) {
 
     const { error: uploadError } = await supabase.storage
       .from('product-images')
-      .upload(fileName, file, { upsert: true });
+      .upload(fileName, file);
 
     if (uploadError) {
       throw uploadError;

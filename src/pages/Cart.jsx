@@ -192,6 +192,14 @@ export default function Cart() {
     }, 0);
   };
 
+  const openProductDetails = (productId) => {
+    if (!productId) {
+      return;
+    }
+
+    navigate(`/product/${productId}`);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-blue-50">
@@ -259,6 +267,7 @@ export default function Cart() {
                 const isSyncing = syncingIds.has(item.id);
                 const quantity = Number(item.quantity ?? 0);
                 const pricing = getProductPricing(item.products);
+                const productId = item.product_id || item.products?.id;
 
                 return (
                   <div
@@ -266,11 +275,23 @@ export default function Cart() {
                     className="bg-white p-4 rounded-xl border border-blue-100 transition-shadow hover:shadow-md"
                   >
                     <div className="flex flex-col sm:flex-row gap-4">
-                      <img
-                        src={item.products?.images?.[0] || "/placeholder.svg"}
-                        alt={item.products?.name}
-                        className="w-24 h-24 object-contain border rounded bg-gray-50"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => openProductDetails(productId)}
+                        disabled={!productId}
+                        className="w-24 h-24 overflow-hidden rounded border bg-gray-50 transition hover:border-orange-300 disabled:cursor-default"
+                        aria-label={
+                          productId
+                            ? `View details for ${item.products?.name || "this product"}`
+                            : "Product details unavailable"
+                        }
+                      >
+                        <img
+                          src={item.products?.images?.[0] || "/placeholder.svg"}
+                          alt={item.products?.name}
+                          className="h-full w-full object-contain"
+                        />
+                      </button>
 
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-blue-900">{item.products?.name}</p>

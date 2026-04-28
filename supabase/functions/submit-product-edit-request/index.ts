@@ -101,12 +101,19 @@ serve(async (req) => {
 
     const { data: seller, error: sellerError } = await supabaseAdmin
       .from("users")
-      .select("id, role")
+      .select("id, role, seller_agreement_accepted")
       .eq("id", authUser.id)
       .single();
 
     if (sellerError || !seller || seller.role !== "seller") {
       return jsonResponse({ error: "Only sellers can submit product edit requests." }, 403);
+    }
+
+    if (!seller.seller_agreement_accepted) {
+      return jsonResponse(
+        { error: "Accept the seller agreement before editing products." },
+        403
+      );
     }
 
     const body = await req.json();

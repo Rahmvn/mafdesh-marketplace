@@ -23,6 +23,14 @@ import {
   REFUND_REQUEST_STATUS,
 } from "../services/refundRequestService";
 import {
+  confirmBuyerOrderDelivery,
+  confirmBuyerOrderPickup,
+} from "../services/buyerOrderTransitionService";
+import {
+  openBuyerDispute,
+  uploadDisputeEvidence,
+} from "../services/disputeService";
+import {
   fetchOrderAdminHolds,
   getActiveOrderAdminHold,
   getOrderAdminHoldDescription,
@@ -315,6 +323,14 @@ export default function BuyerOrderDetails() {
     setRefreshing(false);
   };
 
+  const openProductDetails = (productId) => {
+    if (!productId) {
+      return;
+    }
+
+    navigate(`/product/${productId}`);
+  };
+
   const confirmDelivery = async () => {
     if (getActiveOrderAdminHold(adminHolds)) {
       showGlobalWarning(
@@ -336,31 +352,16 @@ export default function BuyerOrderDetails() {
       "Confirm Delivery",
       "Confirm you received all items? This will release payment to the seller.",
       async () => {
-        const { data, error } = await supabase
-          .from("orders")
-          .update({
-            status: "COMPLETED",
-            completed_at: new Date().toISOString()
-          })
-          .eq("id", order.id)
-          .eq("status", "DELIVERED")
-          .select("id");
-
-        if (error) {
+        try {
+          await confirmBuyerOrderDelivery(order.id);
+          loadOrder();
+        } catch (error) {
           console.error(error);
-          showGlobalError("Confirmation Failed", "Failed to confirm delivery.");
-          return;
-        }
-
-        if (!data?.length) {
           showGlobalError(
             "Confirmation Failed",
-            "You can only confirm delivery after the seller marks this order as delivered."
+            error.message || "Failed to confirm delivery."
           );
-          return;
         }
-
-        loadOrder();
       }
     );
   };
@@ -393,51 +394,26 @@ export default function BuyerOrderDetails() {
       "Confirm Pickup",
       "Please inspect all items before confirming. Once you confirm pickup, the transaction is final and you will not be able to request a refund or open a dispute. If anything is wrong, use Report a Problem instead. Have you inspected and received all items in good condition?",
       async () => {
-        const { data, error } = await supabase
-          .from("orders")
-          .update({
-            status: "COMPLETED",
-            picked_up_at: new Date().toISOString(),
-            completed_at: new Date().toISOString()
-          })
-          .eq("id", order.id)
-          .eq("status", "READY_FOR_PICKUP")
-          .select("id");
-
-        if (error) {
+        try {
+          await confirmBuyerOrderPickup(order.id);
+          loadOrder();
+        } catch (error) {
           console.error(error);
-          showGlobalError("Confirmation Failed", "Failed to confirm pickup.");
-          return;
-        }
-
-        if (!data?.length) {
           showGlobalError(
             "Confirmation Failed",
-            "You can only confirm pickup after the seller marks this order as ready for pickup."
+            error.message || "Failed to confirm pickup."
           );
-          return;
         }
-
-        loadOrder();
       }
     );
   };
 
   const uploadDisputeImages = async (files) => {
-    const urls = [];
-    for (const file of files) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `dispute_${order.id}_${Date.now()}_${Math.random()}.${fileExt}`;
-      const { error } = await supabase.storage
-        .from('dispute-evidence')
-        .upload(fileName, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage
-        .from('dispute-evidence')
-        .getPublicUrl(fileName);
-      urls.push(urlData.publicUrl);
-    }
-    return urls;
+    return uploadDisputeEvidence({
+      orderId: order.id,
+      actorId: order.buyer_id,
+      files,
+    });
   };
 
   const submitDispute = async () => {
@@ -455,29 +431,11 @@ export default function BuyerOrderDetails() {
     }
     setUploadingDispute(true);
     try {
-      let uploadedUrls = [];
+      let uploadedPaths = [];
       if (disputeImages.length > 0) {
-        uploadedUrls = await uploadDisputeImages(disputeImages);
+        uploadedPaths = await uploadDisputeImages(disputeImages);
       }
-      const { error: msgError } = await supabase
-        .from('dispute_messages')
-        .insert({
-          order_id: order.id,
-          sender_id: order.buyer_id,
-          sender_role: 'buyer',
-          message: disputeMessage.trim(),
-          images: uploadedUrls
-        });
-      if (msgError) throw msgError;
-      await supabase
-        .from('orders')
-        .update({
-          status: 'DISPUTED',
-          dispute_reason: disputeMessage.trim(),
-          disputed_at: new Date().toISOString(),
-          dispute_status: 'open'
-        })
-        .eq('id', order.id);
+      await openBuyerDispute(order.id, disputeMessage.trim(), uploadedPaths);
       showGlobalSuccess('Dispute Submitted', 'Your dispute was submitted successfully. Our team will review.');
       setDisputeModal(false);
       setDisputeMessage('');
@@ -963,12 +921,24 @@ export default function BuyerOrderDetails() {
                 const isReviewed = existingReviews.includes(item.product.id);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
-                    <img
-                      src={safeImageUrl}
-                      alt={item.product?.name}
-                      className="w-16 h-16 object-contain border rounded"
-                      onError={(e) => { e.target.src = '/placeholder.png'; }}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => openProductDetails(item.product?.id)}
+                      disabled={!item.product?.id}
+                      className="h-16 w-16 overflow-hidden rounded border transition hover:border-orange-300 disabled:cursor-default"
+                      aria-label={
+                        item.product?.id
+                          ? `View details for ${item.product?.name || "this product"}`
+                          : "Product details unavailable"
+                      }
+                    >
+                      <img
+                        src={safeImageUrl}
+                        alt={item.product?.name}
+                        className="h-full w-full object-contain"
+                        onError={(e) => { e.target.src = '/placeholder.png'; }}
+                      />
+                    </button>
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-900">{item.product?.name}</h3>
                       <p className="text-xs text-gray-500">Product ID: {item.product?.id}</p>
@@ -1075,7 +1045,6 @@ export default function BuyerOrderDetails() {
           <DisputeThread
             orderId={order.id}
             currentUserId={order.buyer_id}
-            currentUserRole="buyer"
             orderStatus={order.status}
           />
         )}

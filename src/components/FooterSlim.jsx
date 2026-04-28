@@ -16,7 +16,7 @@ export default function FooterSlim() {
   return (
     <footer
       className={`mt-auto bg-blue-950 px-4 py-4 text-white ${
-        isBuyer ? 'pb-20 xl:pb-4' : ''
+        isBuyer ? 'pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-4' : ''
       }`}
     >
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 sm:flex-row sm:items-center">

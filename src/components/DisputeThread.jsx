@@ -2,8 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { AlertCircle, Upload } from 'lucide-react';
 import useModal from '../hooks/useModal';
+import {
+  addDisputeMessage,
+  resolveDisputeImageUrls,
+  uploadDisputeEvidence,
+} from '../services/disputeService';
 
-export default function DisputeThread({ orderId, currentUserId, currentUserRole, orderStatus }) {
+export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [newImages, setNewImages] = useState([]);
@@ -23,7 +28,18 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
       `)
       .eq('order_id', orderId)
       .order('created_at', { ascending: false });
-    if (!error) setMessages(data || []);
+
+    if (!error) {
+      const hydratedMessages = await Promise.all(
+        (data || []).map(async (message) => ({
+          ...message,
+          imageUrls: await resolveDisputeImageUrls(message.images || []),
+        }))
+      );
+
+      setMessages(hydratedMessages);
+    }
+
     setLoading(false);
   }, [orderId]);
 
@@ -36,48 +52,30 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
         schema: 'public',
         table: 'dispute_messages',
         filter: `order_id=eq.${orderId}`,
-      }, (payload) => {
-        setMessages(prev => [payload.new, ...prev]);
+      }, () => {
+        fetchMessages();
       })
       .subscribe();
     return () => supabase.removeChannel(subscription);
   }, [orderId, fetchMessages]);
 
   const uploadImages = async (files) => {
-    const urls = [];
-    for (const file of files) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `dispute_${orderId}_${Date.now()}_${Math.random()}.${fileExt}`;
-      const { error } = await supabase.storage
-        .from('dispute-evidence')
-        .upload(fileName, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage
-        .from('dispute-evidence')
-        .getPublicUrl(fileName);
-      urls.push(urlData.publicUrl);
-    }
-    return urls;
+    return uploadDisputeEvidence({
+      orderId,
+      actorId: currentUserId,
+      files,
+    });
   };
 
   const sendMessage = async () => {
     if (!newMessage.trim() && newImages.length === 0) return;
     setUploading(true);
     try {
-      let uploadedUrls = [];
+      let uploadedPaths = [];
       if (newImages.length) {
-        uploadedUrls = await uploadImages(newImages);
+        uploadedPaths = await uploadImages(newImages);
       }
-      const { error } = await supabase
-        .from('dispute_messages')
-        .insert({
-          order_id: orderId,
-          sender_id: currentUserId,
-          sender_role: currentUserRole,
-          message: newMessage.trim() || null,
-          images: uploadedUrls,
-        });
-      if (error) throw error;
+      await addDisputeMessage(orderId, newMessage.trim() || null, uploadedPaths);
       setNewMessage('');
       setNewImages([]);
     } catch (err) {
@@ -129,9 +127,9 @@ export default function DisputeThread({ orderId, currentUserId, currentUserRole,
                 </span>
               </div>
               {msg.message && <p className="mt-1 text-gray-700">{msg.message}</p>}
-              {msg.images && msg.images.length > 0 && (
+              {msg.imageUrls && msg.imageUrls.length > 0 && (
                 <div className="flex gap-2 mt-2 flex-wrap">
-                  {msg.images.map((img, idx) => (
+                  {msg.imageUrls.map((img, idx) => (
                     <a key={idx} href={img} target="_blank" rel="noopener noreferrer">
                       <img src={img} alt="evidence" className="w-16 h-16 object-cover rounded border" />
                     </a>

@@ -702,7 +702,7 @@ export default function ProductDetail() {
     <div className="min-h-screen flex flex-col bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef6ff_42%,_#f8fafc_100%)]">
       <AuthNavbarWrapper />
 
-      <main className="mx-auto flex-1 w-full max-w-7xl px-4 py-5 sm:py-8">
+      <main className="mx-auto flex-1 w-full max-w-[1180px] px-4 py-5 sm:py-8 lg:px-6">
         <button
           onClick={() => navigate(-1)}
           className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:text-blue-900"
@@ -710,11 +710,11 @@ export default function ProductDetail() {
           <ArrowLeft size={18} /> Back
         </button>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.04fr_0.96fr] xl:gap-8">
-          <section className="min-w-0">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,540px)_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <section className="min-w-0 lg:w-[540px]">
             <div className="rounded-[30px] border border-slate-200 bg-white p-3 shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:p-4">
               <div
-                className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.18),_rgba(255,255,255,0.94)_48%,_rgba(239,246,255,0.96)_100%)] p-4 [touch-action:pan-y] sm:p-6"
+                className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.18),_rgba(255,255,255,0.94)_48%,_rgba(239,246,255,0.96)_100%)] p-4 [touch-action:pan-y] sm:p-6 lg:mx-auto lg:max-w-[460px]"
                 onTouchStart={handleImageTouchStart}
                 onTouchEnd={handleImageTouchEnd}
                 onTouchCancel={() => setTouchStartX(null)}
@@ -744,7 +744,7 @@ export default function ProductDetail() {
                   </>
                 )}
 
-                <div className="aspect-square flex items-center justify-center overflow-hidden">
+                <div className="aspect-square flex items-center justify-center overflow-hidden lg:aspect-[5/4] lg:max-h-[360px]">
                   <img
                     src={galleryImages[activeImage]}
                     alt={product.name}

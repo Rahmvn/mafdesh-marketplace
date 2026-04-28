@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -13,11 +13,9 @@ import Footer from "../components/FooterSlim";
 import useModal from "../hooks/useModal";
 import AdminActionModal from "../components/AdminActionModal";
 import {
-  ADMIN_ACTION_TYPES,
-  ADMIN_TARGET_TYPES,
-  getCurrentAdminUser,
-  performAdminAction,
-} from "../services/adminActionService";
+  resolveDisputeImageUrls,
+  resolveOrderDispute,
+} from "../services/disputeService";
 import {
   fetchOrderAdminHolds,
   getActiveOrderAdminHold,
@@ -88,33 +86,9 @@ function getResolutionLabel(resolutionType) {
   );
 }
 
-function buildOrderSnapshot(currentOrder, extras = {}) {
-  if (!currentOrder) {
-    return null;
-  }
-
-  return {
-    id: currentOrder.id,
-    order_number: currentOrder.order_number,
-    status: currentOrder.status,
-    dispute_status: currentOrder.dispute_status,
-    resolution_type: currentOrder.resolution_type,
-    resolution_amount: currentOrder.resolution_amount,
-    constitution_section: currentOrder.constitution_section,
-    resolved_at: currentOrder.resolved_at,
-    resolved_by: currentOrder.resolved_by,
-    total_amount: currentOrder.total_amount,
-    buyer_id: currentOrder.buyer_id,
-    seller_id: currentOrder.seller_id,
-    dispute_reason: currentOrder.dispute_reason,
-    ...extras,
-  };
-}
-
 export default function AdminOrderDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const admin = useMemo(() => getCurrentAdminUser(), []);
 
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
@@ -249,16 +223,7 @@ export default function AdminOrderDetails() {
 
       let evidenceUrls = [];
       if (orderData.dispute_images?.length) {
-        const signedUrls = await Promise.all(
-          orderData.dispute_images.map(async (path) => {
-            const { data } = await supabase.storage
-              .from("dispute-evidence")
-              .createSignedUrl(path, 3600);
-            return data?.signedUrl || null;
-          })
-        );
-
-        evidenceUrls = signedUrls.filter(Boolean);
+        evidenceUrls = await resolveDisputeImageUrls(orderData.dispute_images, 3600);
       }
 
       setOrder(orderData);
@@ -389,68 +354,19 @@ export default function AdminOrderDetails() {
       return;
     }
 
-    const resolvedAt = new Date().toISOString();
     const resolutionAmount =
       resolutionType === "partial_refund" ? Number.parseFloat(partialAmount) : null;
-
-    const updateData = {
-      dispute_status: "resolved",
-      resolved_by: admin.id,
-      resolution_type: resolutionType,
-      constitution_section: constitutionSection,
-      resolution_notes: notes.trim() || null,
-      resolved_at: resolvedAt,
-      ship_deadline: null,
-      auto_cancel_at: null,
-      auto_complete_at: null,
-      dispute_deadline: null,
-    };
-
-    if (resolutionType === "full_refund" || resolutionType === "partial_refund") {
-      updateData.status = "REFUNDED";
-    } else if (resolutionType === "release") {
-      updateData.status = "COMPLETED";
-    } else if (resolutionType === "cancelled") {
-      updateData.status = "CANCELLED";
-    }
-
-    if (resolutionType === "partial_refund") {
-      updateData.resolution_amount = resolutionAmount;
-    } else {
-      updateData.resolution_amount = null;
-    }
 
     setResolving(true);
 
     try {
-      await performAdminAction({
-        adminId: admin.id,
-        actionType: ADMIN_ACTION_TYPES.RESOLVE_DISPUTE,
-        targetType: ADMIN_TARGET_TYPES.ORDER,
-        targetId: order.id,
+      await resolveOrderDispute({
+        orderId: order.id,
+        resolutionType,
+        constitutionSection,
         reason,
-        metadata: {
-          order_number: order.order_number,
-          buyer_id: order.buyer_id,
-          seller_id: order.seller_id,
-          dispute_reason: order.dispute_reason,
-          resolution_type: resolutionType,
-          constitution_section: constitutionSection,
-          partial_amount: resolutionAmount,
-          notes: notes.trim() || null,
-        },
-        fetchPreviousState: async () => buildOrderSnapshot(order),
-        performMutation: async () => {
-          const { error } = await supabase
-            .from("orders")
-            .update(updateData)
-            .eq("id", order.id);
-
-          if (error) {
-            throw error;
-          }
-        },
-        fetchNewState: async () => buildOrderSnapshot(order, updateData),
+        resolutionNotes: notes.trim() || null,
+        resolutionAmount,
       });
 
       setResolutionModalOpen(false);
