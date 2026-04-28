@@ -17,18 +17,12 @@ import {
   GenericContentSkeleton,
   InlineLoadingSkeleton,
 } from '../components/PageFeedback';
-import { buildProductSnapshot } from '../utils/productSnapshots';
 import { getProductPricing } from '../utils/flashSale';
 import {
   fetchPublicSellerIdentityMap,
   isSellerMarketplaceActive,
 } from '../services/publicSellerService';
-
-const generateOrderNumber = () => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${timestamp}-${random}`;
-};
+import { createSingleCheckoutOrder } from '../services/singleCheckoutService';
 
 export default function Checkout() {
   const { id } = useParams();
@@ -202,96 +196,66 @@ export default function Checkout() {
       navigate('/login');
       return;
     }
-    const buyerId = sessionData.session.user.id;
 
     const pickupLocation = (fulfillment?.pickupLocations || []).find(
       (location) => location.id === selectedPickup
     );
     const deliveryFee = deliveryType === DELIVERY_TYPE.PICKUP ? 0 : Number(deliveryQuote?.fee || 0);
-    const platformFee = Math.round(productPrice * 0.05);
-    const totalAmount = productPrice + deliveryFee;
-    const orderNumber = generateOrderNumber();
     const fullDeliveryAddress =
       deliveryType === DELIVERY_TYPE.DELIVERY
         ? `${deliveryAddress.trim()}, ${deliveryLga}, ${deliveryState}`
         : null;
 
-    // Create order
-    const orderPayload = {
-      buyer_id: buyerId,
-      seller_id: product.seller_id,
-      product_id: product.id,
-      product_snapshot: buildProductSnapshot(product),
-      quantity: 1,
-      product_price: productPrice,
-      delivery_fee: deliveryFee,
-      platform_fee: platformFee,
-      total_amount: totalAmount,
-      delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
-      delivery_address: fullDeliveryAddress,
-      delivery_type: deliveryType,
-      selected_pickup_location: deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
-      delivery_zone_snapshot:
-        deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryQuote?.deliveryZoneSnapshot || null : null,
-      pickup_location_snapshot:
-        deliveryType === DELIVERY_TYPE.PICKUP && pickupLocation
-          ? {
-              id: pickupLocation.id,
-              label: pickupLocation.label,
-              address_text: pickupLocation.address_text,
-              lga_name: pickupLocation.lga_name || null,
-              city_name: pickupLocation.city_name || null,
-              area_name: pickupLocation.area_name || null,
-              landmark_text: pickupLocation.landmark_text || null,
-              pickup_instructions: pickupLocation.pickup_instructions || null,
-              state_name: pickupLocation.state_name || null,
-            }
-          : null,
-      order_number: orderNumber,
-      status: 'PENDING',
-    };
+    try {
+      const order = await createSingleCheckoutOrder({
+        p_product_id: product.id,
+        p_delivery_type: deliveryType,
+        p_delivery_fee: deliveryFee,
+        p_delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
+        p_delivery_address: fullDeliveryAddress,
+        p_selected_pickup_location:
+          deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
+        p_delivery_zone_snapshot:
+          deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryQuote?.deliveryZoneSnapshot || null : null,
+        p_pickup_location_snapshot:
+          deliveryType === DELIVERY_TYPE.PICKUP && pickupLocation
+            ? {
+                id: pickupLocation.id,
+                label: pickupLocation.label,
+                address_text: pickupLocation.address_text,
+                lga_name: pickupLocation.lga_name || null,
+                city_name: pickupLocation.city_name || null,
+                area_name: pickupLocation.area_name || null,
+                landmark_text: pickupLocation.landmark_text || null,
+                pickup_instructions: pickupLocation.pickup_instructions || null,
+                state_name: pickupLocation.state_name || null,
+              }
+            : null,
+      });
 
-    let order;
-    let orderError;
-
-    ({ data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert(orderPayload)
-      .select()
-      .single());
-
-    if (isDeliverySchemaMissingError(orderError)) {
-      ({ data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          buyer_id: buyerId,
-          seller_id: product.seller_id,
-          product_id: product.id,
-          product_snapshot: buildProductSnapshot(product),
-          quantity: 1,
-          product_price: productPrice,
-          delivery_fee: deliveryFee,
-          platform_fee: platformFee,
-          total_amount: totalAmount,
-          delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
-          delivery_address: fullDeliveryAddress,
-          delivery_type: deliveryType,
-          selected_pickup_location:
-            deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
-          order_number: orderNumber,
-          status: 'PENDING',
-        })
-        .select()
-        .single());
-    }
-
-    if (orderError) {
+      navigate(`/payment/${order.id}`);
+    } catch (orderError) {
       console.error(orderError);
-      const orderErrorMessage = String(orderError.message || '');
+      const orderErrorMessage = String(orderError?.message || '');
       if (orderErrorMessage.includes('not active for marketplace orders')) {
         showGlobalWarning(
           'Seller Unavailable',
           'This seller is not active right now, so checkout is unavailable.'
+        );
+      } else if (orderErrorMessage.includes('out of stock')) {
+        showGlobalWarning(
+          'Item Unavailable',
+          'This product is out of stock right now. Please refresh and try again.'
+        );
+      } else if (orderErrorMessage.includes('product_price') || orderErrorMessage.includes('product price')) {
+        showGlobalWarning(
+          'Price Changed',
+          'This product price changed before checkout completed. Please review the latest total and try again.'
+        );
+      } else if (isDeliverySchemaMissingError(orderError)) {
+        showGlobalError(
+          'Checkout Unavailable',
+          'Checkout needs a database update before orders can be created. Please apply the latest Supabase migration and try again.'
         );
       } else {
         showGlobalError('Order Creation Failed', 'Failed to create order. Please try again.');
@@ -299,8 +263,6 @@ export default function Checkout() {
       setIsSubmitting(false);
       return;
     }
-
-    navigate(`/payment/${order.id}`);
   };
 
   if (loading) {
