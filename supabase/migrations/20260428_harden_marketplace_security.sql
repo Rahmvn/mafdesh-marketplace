@@ -751,6 +751,14 @@ begin
     if p_resolution_amount > coalesce(v_order.total_amount, 0) then
       raise exception 'Partial refund amount cannot exceed the order total.';
     end if;
+
+    if p_resolution_amount > (coalesce(v_order.total_amount, 0) * 0.70) then
+      raise exception 'Partial refund cannot exceed 70%% of the order total. For higher refunds use full_refund instead.';
+    end if;
+
+    if p_resolution_amount <= 0 then
+      raise exception 'Partial refund amount must be greater than zero.';
+    end if;
   else
     p_resolution_amount := null;
   end if;

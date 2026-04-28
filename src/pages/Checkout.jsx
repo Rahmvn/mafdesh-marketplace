@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
-import { ArrowLeft } from 'lucide-react';
+import AddressSelector from '../components/buyer/AddressSelector';
+import {
+  GenericContentSkeleton,
+  InlineLoadingSkeleton,
+} from '../components/PageFeedback';
+import { showGlobalError, showGlobalWarning } from '../hooks/modalService';
 import {
   DELIVERY_TYPE,
   formatPickupLocationAddress,
@@ -11,18 +16,20 @@ import {
   isDeliverySchemaMissingError,
   quoteSellerDelivery,
 } from '../services/deliveryService';
-import { NIGERIAN_STATES, NIGERIA_LGAS } from '../utils/nigeriaData';
-import { showGlobalError, showGlobalWarning } from '../hooks/modalService';
-import {
-  GenericContentSkeleton,
-  InlineLoadingSkeleton,
-} from '../components/PageFeedback';
-import { getProductPricing } from '../utils/flashSale';
 import {
   fetchPublicSellerIdentityMap,
   isSellerMarketplaceActive,
 } from '../services/publicSellerService';
+import { saveSavedAddress } from '../services/savedAddressService';
 import { createSingleCheckoutOrder } from '../services/singleCheckoutService';
+import { supabase } from '../supabaseClient';
+import { getProductPricing } from '../utils/flashSale';
+import { formatNaira } from '../utils/multiSellerCheckout';
+import {
+  formatSavedAddressForOrder,
+  getFirstSavedAddressError,
+  validateSavedAddress,
+} from '../utils/savedAddresses';
 
 export default function Checkout() {
   const { id } = useParams();
@@ -31,9 +38,8 @@ export default function Checkout() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deliveryType, setDeliveryType] = useState(DELIVERY_TYPE.DELIVERY);
-  const [deliveryState, setDeliveryState] = useState('');
-  const [deliveryLga, setDeliveryLga] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState(null);
   const [selectedPickup, setSelectedPickup] = useState('');
   const [fulfillment, setFulfillment] = useState(null);
   const [deliveryQuote, setDeliveryQuote] = useState(null);
@@ -74,6 +80,7 @@ export default function Checkout() {
     } catch (fulfillmentError) {
       console.error('Failed to load fulfillment options:', fulfillmentError);
     }
+
     setProduct(data);
     setLoading(false);
   }, [id, navigate]);
@@ -107,7 +114,7 @@ export default function Checkout() {
         return;
       }
 
-      if (!deliveryState) {
+      if (!selectedDeliveryAddress?.state) {
         setQuoteLoading(false);
         setDeliveryQuote(null);
         return;
@@ -120,7 +127,7 @@ export default function Checkout() {
           sellerId: product.seller_id,
           productIds: [product.id],
           deliveryType,
-          destinationState: deliveryState,
+          destinationState: selectedDeliveryAddress.state,
         });
         setDeliveryQuote(quote);
       } catch (error) {
@@ -139,7 +146,7 @@ export default function Checkout() {
     };
 
     runQuote();
-  }, [deliveryState, deliveryType, fulfillment, product]);
+  }, [deliveryType, fulfillment, product, selectedDeliveryAddress]);
 
   useEffect(() => {
     if (deliveryType === DELIVERY_TYPE.PICKUP && !fulfillment?.pickupLocations?.length) {
@@ -148,32 +155,26 @@ export default function Checkout() {
     }
   }, [deliveryType, fulfillment]);
 
-  useEffect(() => {
-    setDeliveryLga('');
-  }, [deliveryState]);
-
   const pricing = useMemo(() => getProductPricing(product), [product]);
   const productPrice = pricing.displayPrice;
-  const availableLgas = useMemo(
-    () => NIGERIA_LGAS[deliveryState] || [],
-    [deliveryState]
-  );
+
+  const handleAddressSelect = useCallback((address) => {
+    setSelectedDeliveryAddress(address);
+    setSelectedAddressId(address?.source === 'saved' ? address.id : null);
+  }, []);
 
   const handleConfirm = async () => {
-    // Validation
     if (deliveryType === DELIVERY_TYPE.DELIVERY) {
-      if (!deliveryState) {
-        showGlobalWarning('Delivery State Required', 'Please select a delivery state.');
+      const addressErrors = validateSavedAddress(selectedDeliveryAddress || {});
+
+      if (Object.keys(addressErrors).length > 0) {
+        showGlobalWarning(
+          'Delivery Address Required',
+          getFirstSavedAddressError(addressErrors) || 'Please choose a delivery address.'
+        );
         return;
       }
-      if (!deliveryLga) {
-        showGlobalWarning('Delivery LGA Required', 'Please select a local government area.');
-        return;
-      }
-      if (!deliveryAddress.trim()) {
-        showGlobalWarning('Delivery Address Required', 'Please enter a delivery address.');
-        return;
-      }
+
       if (!deliveryQuote?.available) {
         showGlobalWarning(
           'Delivery Unavailable',
@@ -182,6 +183,7 @@ export default function Checkout() {
         return;
       }
     }
+
     if (deliveryType === DELIVERY_TYPE.PICKUP && !selectedPickup) {
       showGlobalWarning('Pickup Location Required', 'Please select a pickup location.');
       return;
@@ -203,7 +205,7 @@ export default function Checkout() {
     const deliveryFee = deliveryType === DELIVERY_TYPE.PICKUP ? 0 : Number(deliveryQuote?.fee || 0);
     const fullDeliveryAddress =
       deliveryType === DELIVERY_TYPE.DELIVERY
-        ? `${deliveryAddress.trim()}, ${deliveryLga}, ${deliveryState}`
+        ? formatSavedAddressForOrder(selectedDeliveryAddress)
         : null;
 
     try {
@@ -211,12 +213,15 @@ export default function Checkout() {
         p_product_id: product.id,
         p_delivery_type: deliveryType,
         p_delivery_fee: deliveryFee,
-        p_delivery_state: deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryState : null,
+        p_delivery_state:
+          deliveryType === DELIVERY_TYPE.DELIVERY ? selectedDeliveryAddress?.state || null : null,
         p_delivery_address: fullDeliveryAddress,
         p_selected_pickup_location:
           deliveryType === DELIVERY_TYPE.PICKUP ? pickupLocation?.label || null : null,
         p_delivery_zone_snapshot:
-          deliveryType === DELIVERY_TYPE.DELIVERY ? deliveryQuote?.deliveryZoneSnapshot || null : null,
+          deliveryType === DELIVERY_TYPE.DELIVERY
+            ? deliveryQuote?.deliveryZoneSnapshot || null
+            : null,
         p_pickup_location_snapshot:
           deliveryType === DELIVERY_TYPE.PICKUP && pickupLocation
             ? {
@@ -233,10 +238,30 @@ export default function Checkout() {
             : null,
       });
 
+      if (
+        deliveryType === DELIVERY_TYPE.DELIVERY &&
+        selectedDeliveryAddress?.source === 'manual' &&
+        selectedDeliveryAddress?.save_to_address_book
+      ) {
+        try {
+          await saveSavedAddress({
+            ...selectedDeliveryAddress,
+            is_default: selectedDeliveryAddress.should_set_as_default,
+          });
+        } catch (addressSaveError) {
+          console.error('Failed to save checkout address:', addressSaveError);
+          showGlobalWarning(
+            'Address Not Saved',
+            'Your order was created, but we could not save this address to your address book.'
+          );
+        }
+      }
+
       navigate(`/payment/${order.id}`);
     } catch (orderError) {
       console.error(orderError);
       const orderErrorMessage = String(orderError?.message || '');
+
       if (orderErrorMessage.includes('not active for marketplace orders')) {
         showGlobalWarning(
           'Seller Unavailable',
@@ -247,7 +272,10 @@ export default function Checkout() {
           'Item Unavailable',
           'This product is out of stock right now. Please refresh and try again.'
         );
-      } else if (orderErrorMessage.includes('product_price') || orderErrorMessage.includes('product price')) {
+      } else if (
+        orderErrorMessage.includes('product_price') ||
+        orderErrorMessage.includes('product price')
+      ) {
         showGlobalWarning(
           'Price Changed',
           'This product price changed before checkout completed. Please review the latest total and try again.'
@@ -260,6 +288,7 @@ export default function Checkout() {
       } else {
         showGlobalError('Order Creation Failed', 'Failed to create order. Please try again.');
       }
+
       setIsSubmitting(false);
       return;
     }
@@ -277,7 +306,9 @@ export default function Checkout() {
     );
   }
 
-  if (!product) return null;
+  if (!product) {
+    return null;
+  }
 
   const deliveryFee = deliveryType === DELIVERY_TYPE.PICKUP ? 0 : Number(deliveryQuote?.fee || 0);
   const total = productPrice + deliveryFee;
@@ -291,41 +322,36 @@ export default function Checkout() {
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 mb-4"
+          className="mb-4 flex items-center gap-1 text-blue-600 hover:text-blue-800"
         >
           <ArrowLeft size={18} /> Back
         </button>
 
-        <h1 className="text-2xl font-bold text-blue-900 mb-6">Checkout</h1>
+        <h1 className="mb-6 text-2xl font-bold text-blue-900">Checkout</h1>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* LEFT COLUMN */}
           <div className="space-y-6 lg:col-span-2">
-            {/* Product summary */}
-            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
-              <h2 className="font-semibold text-blue-900 mb-4">Product</h2>
+            <div className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 font-semibold text-blue-900">Product</h2>
               <div className="flex flex-col gap-4 sm:flex-row">
                 <img
                   src={product.images?.[0] || '/placeholder.png'}
                   alt={product.name}
-                  className="w-24 h-24 object-contain border rounded-lg"
+                  className="h-24 w-24 rounded-lg border object-contain"
                 />
                 <div className="min-w-0">
                   <p className="font-semibold text-blue-900">{product.name}</p>
-                  <p className="text-orange-600 font-bold mt-2">
-                    ₦{productPrice.toLocaleString()}
-                  </p>
+                  <p className="mt-2 font-bold text-orange-600">{formatNaira(productPrice)}</p>
                 </div>
               </div>
             </div>
 
-            {/* Delivery method */}
-            <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
-              <h2 className="font-semibold text-blue-900 mb-4">Delivery Method</h2>
+            <div className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
+              <h2 className="mb-4 font-semibold text-blue-900">Delivery Method</h2>
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                 <button
                   onClick={() => setDeliveryType(DELIVERY_TYPE.DELIVERY)}
-                  className={`w-full sm:w-auto px-4 py-2 rounded-lg border transition ${
+                  className={`w-full rounded-lg border px-4 py-2 transition sm:w-auto ${
                     deliveryType === DELIVERY_TYPE.DELIVERY
                       ? 'border-orange-500 bg-orange-50 text-orange-600'
                       : 'border-blue-200 text-blue-700 hover:bg-gray-50'
@@ -333,10 +359,10 @@ export default function Checkout() {
                 >
                   Delivery
                 </button>
-                {pickupEnabled && (
+                {pickupEnabled ? (
                   <button
                     onClick={() => setDeliveryType(DELIVERY_TYPE.PICKUP)}
-                    className={`w-full sm:w-auto px-4 py-2 rounded-lg border transition ${
+                    className={`w-full rounded-lg border px-4 py-2 transition sm:w-auto ${
                       deliveryType === DELIVERY_TYPE.PICKUP
                         ? 'border-orange-500 bg-orange-50 text-orange-600'
                         : 'border-blue-200 text-blue-700 hover:bg-gray-50'
@@ -344,121 +370,96 @@ export default function Checkout() {
                   >
                     Pickup
                   </button>
-                )}
+                ) : null}
               </div>
 
-              {!pickupEnabled && (
+              {!pickupEnabled ? (
                 <p className="mt-3 text-sm text-blue-600">
-                  Delivery is always available. Pickup only appears when this seller has active pickup locations for the product.
+                  Delivery is always available. Pickup only appears when this seller has active
+                  pickup locations for the product.
                 </p>
-              )}
+              ) : null}
 
-              {/* Pickup location dropdown */}
-              {deliveryType === DELIVERY_TYPE.PICKUP && pickupEnabled && (
+              {deliveryType === DELIVERY_TYPE.PICKUP && pickupEnabled ? (
                 <div className="mt-4">
-                  <label className="block text-sm font-semibold text-blue-900 mb-2">
+                  <label className="mb-2 block text-sm font-semibold text-blue-900">
                     Select Pickup Location
                   </label>
                   <select
                     value={selectedPickup}
-                    onChange={(e) => setSelectedPickup(e.target.value)}
-                    className="w-full border border-blue-200 rounded-lg p-3"
+                    onChange={(event) => setSelectedPickup(event.target.value)}
+                    className="w-full rounded-lg border border-blue-200 p-3"
                     required
                   >
                     <option value="">Choose a pickup point</option>
-                    {pickupOptions.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.label} - {formatPickupLocationAddress(loc)}
+                    {pickupOptions.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.label} - {formatPickupLocationAddress(location)}
                       </option>
                     ))}
                   </select>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Seller has 2 business days to prepare. You'll be notified when ready.
+                  <p className="mt-2 text-sm text-gray-500">
+                    Seller has 2 business days to prepare. You&apos;ll be notified when ready.
                   </p>
                 </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Delivery address form */}
-            {deliveryType === DELIVERY_TYPE.DELIVERY && (
-              <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm space-y-4">
-                <h2 className="font-semibold text-blue-900">Delivery Details</h2>
-                <select
-                  value={deliveryState}
-                  onChange={(e) => setDeliveryState(e.target.value)}
-                  className="w-full border border-blue-200 rounded-lg p-3"
-                >
-                  <option value="">Select State</option>
-                  {NIGERIAN_STATES.map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={deliveryLga}
-                  onChange={(e) => setDeliveryLga(e.target.value)}
-                  disabled={!deliveryState}
-                  className="w-full border border-blue-200 rounded-lg p-3 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  <option value="">Select Local Government Area</option>
-                  {availableLgas.map((lga) => (
-                    <option key={lga} value={lga}>
-                      {lga}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  placeholder="Enter full delivery address (street, building, landmark)"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  className="w-full border border-blue-200 rounded-lg p-3"
-                  rows={3}
+            {deliveryType === DELIVERY_TYPE.DELIVERY ? (
+              <div className="space-y-4">
+                <AddressSelector
+                  onSelect={handleAddressSelect}
+                  selectedAddressId={selectedAddressId}
+                  initialAddress={selectedDeliveryAddress}
                 />
                 {quoteLoading ? <InlineLoadingSkeleton className="max-w-40" /> : null}
-                {!deliveryState && (
+                {!selectedDeliveryAddress?.state ? (
                   <p className="text-sm text-blue-600">
-                    Select your delivery state and we will calculate the delivery fee automatically.
+                    Select your delivery state and we will calculate the delivery fee
+                    automatically.
                   </p>
-                )}
-                {deliveryQuote && (
-                  <p className={`text-sm ${deliveryQuote.available ? 'text-green-700' : 'text-red-600'}`}>
+                ) : null}
+                {deliveryQuote ? (
+                  <p
+                    className={`text-sm ${
+                      deliveryQuote.available ? 'text-green-700' : 'text-red-600'
+                    }`}
+                  >
                     {deliveryQuote.message ||
                       (deliveryQuote.available
                         ? 'Delivery fee calculated successfully.'
                         : 'Delivery is not available for this destination.')}
                   </p>
-                )}
+                ) : null}
               </div>
-            )}
+            ) : null}
           </div>
 
-          {/* RIGHT COLUMN - ORDER SUMMARY */}
-          <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm h-fit lg:sticky lg:top-24">
-            <h2 className="font-semibold text-blue-900 mb-4">Order Summary</h2>
+          <div className="h-fit rounded-xl border border-blue-100 bg-white p-5 shadow-sm lg:sticky lg:top-24">
+            <h2 className="mb-4 font-semibold text-blue-900">Order Summary</h2>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Product</span>
-                <span>₦{productPrice.toLocaleString()}</span>
+                <span>{formatNaira(productPrice)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Delivery</span>
-                <span>₦{deliveryFee.toLocaleString()}</span>
+                <span>{formatNaira(deliveryFee)}</span>
               </div>
-              <div className="border-t pt-3 flex justify-between font-bold text-blue-900">
+              <div className="flex justify-between border-t pt-3 font-bold text-blue-900">
                 <span>Total</span>
-                <span>₦{total.toLocaleString()}</span>
+                <span>{formatNaira(total)}</span>
               </div>
             </div>
 
             <button
               onClick={handleConfirm}
               disabled={isSubmitting || !hasAvailableMethod}
-              className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
+              className="mt-6 w-full rounded-lg bg-orange-600 py-3 font-semibold text-white transition hover:bg-orange-700 disabled:opacity-50"
             >
               {isSubmitting ? 'Preparing...' : 'Continue to Payment'}
             </button>
-            <p className="text-xs text-blue-600 mt-4 text-center">
+            <p className="mt-4 text-center text-xs text-blue-600">
               Your order will be confirmed after you complete payment.
             </p>
           </div>
@@ -468,4 +469,3 @@ export default function Checkout() {
     </div>
   );
 }
-

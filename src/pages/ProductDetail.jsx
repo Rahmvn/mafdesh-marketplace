@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -980,6 +980,12 @@ export default function ProductDetail() {
                       }.`
                     : "Pickup is not available for this product."}
                 </p>
+                <Link
+                  to="/refund-policy"
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 transition hover:text-orange-600"
+                >
+                  Read refund policy
+                </Link>
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-3">

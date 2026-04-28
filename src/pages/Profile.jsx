@@ -11,6 +11,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MapPin,
   Phone,
   Shield,
 } from 'lucide-react';
@@ -20,6 +21,13 @@ import { supabase } from '../supabaseClient';
 import VerificationBadge from '../components/VerificationBadge';
 import useModal from '../hooks/useModal';
 import { RetryablePageError } from '../components/PageFeedback';
+import { listSavedAddresses } from '../services/savedAddressService';
+import {
+  formatSavedAddressLandmark,
+  formatSavedAddressLocation,
+  formatSavedAddressStreet,
+  pickDefaultSavedAddress,
+} from '../utils/savedAddresses';
 
 const NIGERIAN_BANKS = [
   'Access Bank',
@@ -253,6 +261,8 @@ export default function Profile() {
   const navigate = useNavigate();
   const { showConfirm, ModalComponent } = useModal();
   const [profile, setProfile] = useState(null);
+  const [defaultAddress, setDefaultAddress] = useState(null);
+  const [addressPreviewLoading, setAddressPreviewLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -306,6 +316,8 @@ export default function Profile() {
       const merged = { ...userData, ...profileData };
 
       setProfile(merged);
+      setDefaultAddress(null);
+      setAddressPreviewLoading(merged.role === 'buyer');
 
       if (merged.role === 'seller') {
         setPendingDetails({
@@ -316,6 +328,16 @@ export default function Profile() {
           bvn: merged.bvn || '',
           tax_id: merged.tax_id || '',
         });
+      } else if (merged.role === 'buyer') {
+        try {
+          const savedAddresses = await listSavedAddresses();
+          setDefaultAddress(pickDefaultSavedAddress(savedAddresses));
+        } catch (addressError) {
+          console.error('Failed to load address preview:', addressError);
+          setDefaultAddress(null);
+        } finally {
+          setAddressPreviewLoading(false);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -554,6 +576,7 @@ export default function Profile() {
   }
 
   const isSeller = profile.role === 'seller';
+  const isBuyer = profile.role === 'buyer';
   const isVerified = profile.is_verified;
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
@@ -626,7 +649,7 @@ export default function Profile() {
               {isSeller && isVerified ? <VerificationBadge /> : null}
             </div>
             <p className="mb-8 font-semibold capitalize text-blue-600">
-              {isSeller ? '🏪 Seller' : '👤 Buyer'}
+              {isSeller ? 'Seller' : 'Buyer'}
             </p>
 
             <div className="mb-8 space-y-4">
@@ -684,6 +707,52 @@ export default function Profile() {
                 </div>
               ) : null}
             </div>
+
+            {isBuyer ? (
+              <div className="mb-8">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold text-gray-800">Address Book</h2>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/account/addresses')}
+                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
+                  >
+                    Manage addresses →
+                  </button>
+                </div>
+
+                {addressPreviewLoading ? (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+                    Loading your saved addresses...
+                  </div>
+                ) : defaultAddress ? (
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-5 w-5 text-orange-600" />
+                        <p className="font-semibold text-gray-900">{defaultAddress.label}</p>
+                      </div>
+                      <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                        Default
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-gray-700">
+                      <p className="font-semibold text-gray-900">{defaultAddress.full_name}</p>
+                      <p>{defaultAddress.phone_number}</p>
+                      <p>{formatSavedAddressStreet(defaultAddress)}</p>
+                      {formatSavedAddressLandmark(defaultAddress) ? (
+                        <p>{formatSavedAddressLandmark(defaultAddress)}</p>
+                      ) : null}
+                      <p>{formatSavedAddressLocation(defaultAddress)}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-700">
+                    No saved addresses. Add one for faster checkout.
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             {isSeller ? (
               <div className="mb-8">
@@ -957,4 +1026,3 @@ export default function Profile() {
     </div>
   );
 }
-

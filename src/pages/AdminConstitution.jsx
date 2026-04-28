@@ -145,36 +145,27 @@ export default function AdminConstitution() {
               <div>
                 <h3 className="font-semibold text-lg text-blue-800">Full Refund</h3>
                 <p className="text-gray-700">
-                  Requires product return unless: product destroyed/unusable, return shipping
-                  unreasonable, or safety risk. Process: Admin approves → buyer ships → buyer
-                  provides proof → seller confirms receipt → refund.
+                  A full refund is awarded when the seller is clearly at fault — wrong item, fake
+                  item, item never arrived, or significantly damaged.
                 </p>
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-blue-800">Partial Refund</h3>
                 <p className="text-gray-700">
-                  For minor damage, missing accessories, or slight differences. Guideline: ≤30%
-                  of order value. Must be reasonable and documented.
+                  Partial refunds are determined by admin based on evidence and fault. The amount
+                  is at admin discretion up to the full order value.
                 </p>
               </div>
               <div>
-                <h3 className="font-semibold text-lg text-blue-800">
-                  Return Shipping Responsibility
-                </h3>
-                <ul className="list-disc pl-5 text-gray-700 space-y-1">
-                  <li>
-                    <strong>Seller at fault</strong> (wrong item, damaged, fake): Seller pays
-                    return shipping.
-                  </li>
-                  <li>
-                    <strong>Buyer at fault</strong> (changed mind, ordered wrong): Buyer pays
-                    return shipping; seller may offer partial refund without return.
-                  </li>
-                  <li>
-                    <strong>Undetermined fault</strong>: Admin may split cost or use Buyer
-                    Protection Fund.
-                  </li>
-                </ul>
+                <h3 className="font-semibold text-lg text-blue-800">Refund Mediation</h3>
+                <p className="text-gray-700">
+                  Mafdesh admin mediates all refund decisions based on evidence provided. Physical
+                  returns may be required at admin discretion.
+                </p>
+                <p className="text-gray-700 mt-1">
+                  Refunds are processed by the Mafdesh team. Processing time is 5 to 7 business
+                  days after admin approval. Users are notified when the refund is processed.
+                </p>
               </div>
             </div>
           </section>
@@ -240,7 +231,7 @@ export default function AdminConstitution() {
                   <strong>Evidence:</strong> Product photos vs listing description.
                 </p>
                 <p className="text-gray-700">
-                  <strong>Decision:</strong> Buyer returns item → Refund buyer.
+                  <strong>Decision:</strong> Refund buyer when evidence clearly supports the buyer.
                 </p>
               </div>
               <div className="border-l-4 border-blue-300 pl-4">
@@ -251,8 +242,8 @@ export default function AdminConstitution() {
                   <strong>Example:</strong> Different model, fake brand, incorrect specs.
                 </p>
                 <p className="text-gray-700">
-                  <strong>Decision:</strong> Buyer returns item → Refund. If minor difference →
-                  Partial refund possible.
+                  <strong>Decision:</strong> Full refund if seller fault is clear. Partial refund
+                  may be awarded where the issue is minor or fault is shared.
                 </p>
               </div>
               <div className="border-l-4 border-blue-300 pl-4">
@@ -329,8 +320,8 @@ export default function AdminConstitution() {
                   to report, seller used inadequate packaging.
                 </p>
                 <p className="text-gray-700">
-                  <strong>Decision:</strong> Determine fault percentage (e.g., 60% seller, 40%
-                  buyer) and refund accordingly. Document reasoning.
+                  <strong>Decision:</strong> Determine fault based on the evidence and award a
+                  partial refund where appropriate. Document reasoning.
                 </p>
               </div>
               <div className="border-l-4 border-blue-300 pl-4">
@@ -338,12 +329,13 @@ export default function AdminConstitution() {
                   Scenario 12: Missing Accessories
                 </h3>
                 <p className="text-gray-700">
-                  <strong>Essential missing</strong> (item unusable): Return required → Full
-                  refund.
+                  <strong>Essential missing</strong> (item unusable): Full refund where the
+                  evidence shows seller fault.
                 </p>
                 <p className="text-gray-700">
-                  <strong>Non-essential missing</strong>: Partial refund (10-30%) or seller ships
-                  missing part within 7 days.
+                  <strong>Non-essential missing</strong>: Partial refunds are determined by admin
+                  based on evidence and fault. The amount is at admin discretion up to the full
+                  order value.
                 </p>
               </div>
             </div>
@@ -363,8 +355,9 @@ export default function AdminConstitution() {
                 section is reserved for future use.
               </div>
               <p className="text-gray-700">
-                <strong>Digital products</strong> (ebooks, software): No physical return. Refund
-                only if item is corrupted/doesn't work. Downloads tracked via unique links.
+                <strong>Digital products</strong> (ebooks, software): Refund only if the item is
+                corrupted or does not work. Access and delivery records should be reviewed as part
+                of the evidence.
               </p>
               <p className="text-gray-700">
                 <strong>Services</strong> (repairs, custom work): Milestone-based escrow releases.
@@ -446,8 +439,8 @@ export default function AdminConstitution() {
                 Act (FCCPA) 2018:
               </p>
               <ul className="list-disc pl-5 text-gray-700">
-                <li>Returns accepted for defective goods (14 days minimum).</li>
-                <li>Full refund within 7 days of return.</li>
+                <li>Clear disclosure of refund and dispute processes is required.</li>
+                <li>Admin decisions must be evidence-based, fair, and well documented.</li>
                 <li>Clear disclosure of refund/replacement policy required.</li>
               </ul>
             </div>
@@ -463,16 +456,7 @@ export default function AdminConstitution() {
             </h2>
             <div className="space-y-4 pl-6">
               <p className="text-gray-700">
-                1% of each transaction is set aside into a protection fund. Used for:
-              </p>
-              <ul className="list-disc pl-5 text-gray-700">
-                <li>Compensating buyers when seller is unresponsive.</li>
-                <li>Covering return shipping for genuine cases.</li>
-                <li>Goodwill gestures for edge cases.</li>
-              </ul>
-              <p className="text-gray-700">
-                <strong>Cap:</strong> ₦50,000 per buyer per year. <strong>Approval:</strong>
-                {" "}Requires admin approval and documentation.
+                A buyer protection fund is planned for a future platform update.
               </p>
             </div>
           </section>

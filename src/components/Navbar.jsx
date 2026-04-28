@@ -509,9 +509,64 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                     )}
                   </Link>
                   {isBuyer ? (
-                    <Link to="/profile" className={buyerIconButtonClass} aria-label="Profile">
-                      <User className="h-5 w-5" />
-                    </Link>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserMenu((current) => !current);
+                          setAdminNavOpen(false);
+                        }}
+                        className={buyerIconButtonClass}
+                        aria-label="Profile menu"
+                      >
+                        <User className="h-5 w-5" />
+                      </button>
+
+                      {showUserMenu && (
+                        <div className={`absolute right-0 z-50 mt-2 w-56 rounded-lg py-1 shadow-lg ${menuPanelClass}`}>
+                          <Link
+                            to="/profile"
+                            className={`block px-4 py-2 text-sm transition-colors ${menuLinkClass}`}
+                            onClick={closeMenus}
+                          >
+                            <User className="mr-2 inline h-4 w-4" />
+                            My Profile
+                          </Link>
+                          <Link
+                            to="/account/addresses"
+                            className={`block px-4 py-2 text-sm transition-colors ${menuLinkClass}`}
+                            onClick={closeMenus}
+                          >
+                            <MapPin className="mr-2 inline h-4 w-4" />
+                            My Addresses
+                          </Link>
+                          <Link
+                            to="/support"
+                            className={`block px-4 py-2 text-sm transition-colors ${menuLinkClass}`}
+                            onClick={closeMenus}
+                          >
+                            <HelpCircle className="mr-2 inline h-4 w-4" />
+                            Help
+                          </Link>
+                          {onLogout ? (
+                            <>
+                              <div className={isDarkTheme ? 'my-1 border-t border-slate-800' : 'my-1 border-t border-gray-100'} />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  closeMenus();
+                                  onLogout();
+                                }}
+                                className="block w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-red-500/10"
+                              >
+                                <LogOut className="mr-2 inline h-4 w-4" />
+                                Logout
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <button
                       type="button"

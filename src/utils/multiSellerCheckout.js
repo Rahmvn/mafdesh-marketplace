@@ -1,7 +1,7 @@
 import { getProductPricing } from './flashSale';
 
 export function formatNaira(value) {
-  return `₦${Number(value || 0).toLocaleString()}`;
+  return `\u20A6${Number(value || 0).toLocaleString()}`;
 }
 
 export function normalizeSellerDiscounts(discounts) {

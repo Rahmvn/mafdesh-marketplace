@@ -45,6 +45,7 @@ const AdminRefundRequests = lazy(() => import('./pages/AdminRefundRequests'));
 const BuyerDispute = lazy(() => import('./pages/BuyerDispute.jsx'));
 const AdminConstitution = lazy(() => import('./pages/AdminConstitution'));
 const Policies = lazy(() => import('./pages/policies.jsx'));
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
 const Terms = lazy(() => import('./pages/Terms'));
 const AdminUserDetails = lazy(() => import('./pages/AdminUserDetails'));
 const OrderSuccess = lazy(() => import('./pages/OrderSuccess.jsx'));
@@ -55,6 +56,7 @@ const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const AdminAuditLog = lazy(() => import('./pages/AdminAuditLog'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const BuyerPayments = lazy(() => import('./pages/BuyerPayments'));
+const AddressBook = lazy(() => import('./pages/buyer/AddressBook'));
 
 function RouteFallback() {
   return <MarketplaceRouteLoader />;
@@ -112,6 +114,14 @@ export default function App() {
                 }}
               >
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account/addresses"
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <AddressBook />
               </ProtectedRoute>
             }
           />
@@ -396,6 +406,7 @@ export default function App() {
           />
 
           <Route path="/policies" element={<Policies />} />
+          <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/order-success/:id" element={<OrderSuccess />} />
           <Route

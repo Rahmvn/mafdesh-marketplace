@@ -32,6 +32,7 @@ export default function Policies() {
           <li>All payments are held securely until you confirm delivery.</li>
           <li>Funds are only released to the seller when you're satisfied.</li>
           <li>If a dispute arises, our admin team steps in to ensure fairness.</li>
+          <li>A buyer protection fund is planned for a future platform update.</li>
         </ul>
       ),
     },
@@ -59,17 +60,20 @@ export default function Policies() {
       content: (
         <ul className="list-disc pl-5 space-y-2 text-gray-700">
           <li>
-            <strong>Full refund:</strong> If the item never arrived, is damaged, wrong, or fake
-            – we'll help you return it for a full refund. The seller pays return shipping if they
-            are at fault.
+            <strong>Full refund:</strong> A full refund is awarded when the seller is clearly at
+            fault — wrong item, fake item, item never arrived, or significantly damaged.
           </li>
           <li>
-            <strong>Partial refund:</strong> For minor issues (e.g., missing accessories, slight
-            damage), you may receive up to 30% of the item value.
+            <strong>Partial refund:</strong> Admin may award a partial refund where fault is shared
+            or damage is minor. The amount is determined case by case.
           </li>
           <li>
-            If you change your mind or ordered the wrong item, you may still return it, but you
-            will be responsible for return shipping costs.
+            Mafdesh admin mediates all refund decisions based on evidence provided. Physical
+            returns may be required at admin discretion.
+          </li>
+          <li>
+            Refunds are processed by the Mafdesh team. Processing time is 5 to 7 business days
+            after admin approval. You will be notified when your refund is processed.
           </li>
         </ul>
       ),
@@ -80,8 +84,8 @@ export default function Policies() {
       content: (
         <ul className="list-disc pl-5 space-y-2 text-gray-700">
           <li>
-            Open a dispute within the inspection window if something's wrong. Provide clear
-            evidence (photos, videos, tracking numbers, message history).
+            Open a dispute within the inspection window if something's wrong. Providing photos or
+            videos strengthens your dispute but is not mandatory for submission.
           </li>
           <li>
             Our admins review all evidence and make a fair decision based on our constitution.
@@ -90,9 +94,7 @@ export default function Policies() {
             If you don't open a dispute within 5 days, the order completes automatically and
             funds are released to the seller.
           </li>
-          <li>
-            You may appeal a decision within 7 days if you have new, compelling evidence.
-          </li>
+          <li>If evidence supports the seller's position, funds are released to the seller and the dispute is closed.</li>
         </ul>
       ),
     },
@@ -138,7 +140,7 @@ export default function Policies() {
           <li>Ship within 2 business days of order, or arrange pickup promptly.</li>
           <li>Provide accurate product descriptions and clear photos.</li>
           <li>Respond to buyer messages within 24 hours.</li>
-          <li>Accept returns for valid issues and issue refunds promptly.</li>
+          <li>Cooperate with admin investigations and dispute resolution when issues arise.</li>
         </ul>
       ),
     },
@@ -150,8 +152,9 @@ export default function Policies() {
           <li>Use trackable shipping for proof of delivery.</li>
           <li>Delivery timelines are estimates; contact seller for updates.</li>
           <li>
-            If an item hasn't arrived after 14 days past the estimated delivery date, open a
-            dispute.
+            If your item has not arrived within 14 days of shipment, Mafdesh will automatically
+            initiate a refund review. You do not need to take action — you will be notified of the
+            outcome.
           </li>
         </ul>
       ),
@@ -167,6 +170,24 @@ export default function Policies() {
             Do not abuse the dispute system; fraudulent disputes may lead to account suspension.
           </li>
         </ul>
+      ),
+    },
+    {
+      icon: <Scale className="w-8 h-8 text-orange-600" />,
+      title: "How Disputes Are Resolved",
+      content: (
+        <div className="text-gray-700">
+          <p className="mb-3">
+            When you open a dispute, our admin team reviews all evidence including photos, order
+            details, and communication history.
+          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Award a full refund to the buyer</li>
+            <li>Award a partial refund to the buyer</li>
+            <li>Release funds to the seller</li>
+          </ul>
+          <p className="mt-3">All decisions are final. We aim to resolve disputes within 48 hours of submission.</p>
+        </div>
       ),
     },
     {
