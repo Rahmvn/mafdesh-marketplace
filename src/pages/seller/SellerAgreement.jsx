@@ -13,12 +13,14 @@ import {
 const AGREEMENT_VERSION = '1.0-2026';
 
 const AGREEMENT_SECTIONS = [
-  {
-    title: '1. Halal Compliance',
-    paragraphs: [
-      'As a seller on Mafdesh, you acknowledge that this is a halal-compliant marketplace. You agree to list only products that are permissible under Islamic commercial law. You take full responsibility for the halal status of every product you list. Mafdesh reserves the right to remove any listing and suspend any account found in violation of this principle without prior notice.',
-    ],
-  },
+{
+  title: '1. Marketplace Values and Seller Responsibility',
+  paragraphs: [
+    'Mafdesh is an ethics-driven marketplace that promotes lawful, honest, and halal-conscious trade. Sellers are expected to uphold transparency, fairness, and responsible conduct when listing products or interacting with buyers.',
+    'As a seller, you are responsible for ensuring that every product or service you list complies with Nigerian law, does not violate platform rules, and aligns with ethical trade standards. Mafdesh reserves the right to reject, remove, restrict, or suspend listings or accounts that violate these principles.',
+    'By using Mafdesh as a seller, you agree to maintain honesty in pricing, product quality, communication, and fulfilment. Repeated violations of trust, misleading behaviour, or prohibited listings may result in enforcement action without prior notice.',
+  ],
+},
   {
     title: '2. Product Listing Standards',
     paragraphs: [
