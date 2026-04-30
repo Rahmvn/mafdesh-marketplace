@@ -55,6 +55,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   const [storedUser, setStoredUser] = useState(() =>
     JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
   );
+  const [authUserId, setAuthUserId] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [adminNavOpen, setAdminNavOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(
@@ -112,6 +113,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     : 'bg-orange-50 text-orange-600';
   const adminDrawerOverlayClass = isDarkTheme ? 'bg-slate-950/70' : 'bg-slate-900/30';
   const isAdmin = userRole === 'admin';
+  const notificationUser = storedUser?.id ? storedUser : storedUser ? { ...storedUser, id: authUserId } : null;
 
   const adminLinks = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: Settings },
@@ -242,6 +244,25 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       window.removeEventListener('storage', handleStorageSync);
     };
   }, [storedUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (isMounted) {
+        setAuthUserId(data.user?.id || null);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserId(session?.user?.id || null);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const getHomePath = () => {
     if (userRole === 'seller') return '/seller/dashboard';
@@ -456,7 +477,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
               {isAdmin && (
                 <>
-                  <NotificationBell user={storedUser} theme={theme} />
+                  <NotificationBell user={notificationUser} theme={theme} />
                   <button
                     type="button"
                     onClick={() => {
@@ -591,7 +612,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               {!isAdmin && !isBuyerLike && !isSeller && (
                 <div className="relative">
                   <div className="flex items-center gap-3">
-                    <NotificationBell user={storedUser} theme={theme} />
+                    <NotificationBell user={notificationUser} theme={theme} />
                     <button
                       type="button"
                       onClick={() => {
@@ -690,7 +711,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
           <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
             {isBuyerLike ? (
               <>
-                {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
+                {isBuyer ? <NotificationBell user={notificationUser} theme={theme} /> : null}
                 <Link
                   to="/cart"
                   className={buyerIconButtonClass}
@@ -704,51 +725,62 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                   )}
                 </Link>
               </>
+            ) : isSeller ? (
+              <>
+                <NotificationBell user={notificationUser} theme={theme} />
+                <button
+                  type="button"
+                  onClick={() => setMobileMenu((current) => !current)}
+                  className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                  aria-expanded={mobileMenu}
+                  aria-controls="mobile-nav-menu"
+                  aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
+                >
+                  {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                </button>
+              </>
             ) : (
               <>
-            <div>
-              <NotificationBell user={storedUser} theme={theme} />
-            </div>
-            {themeToggle && !isSeller && (
-              <div>
-                <ThemeToggleButton
-                  darkMode={themeToggle.darkMode}
-                  onToggle={themeToggle.onToggle}
-                  compact
-                  isDarkTheme={isDarkTheme}
-                />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                if (isAdmin) {
-                  setAdminNavOpen((current) => !current);
-                  setShowUserMenu(false);
-                  return;
-                }
+                {themeToggle && (
+                  <div>
+                    <ThemeToggleButton
+                      darkMode={themeToggle.darkMode}
+                      onToggle={themeToggle.onToggle}
+                      compact
+                      isDarkTheme={isDarkTheme}
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAdmin) {
+                      setAdminNavOpen((current) => !current);
+                      setShowUserMenu(false);
+                      return;
+                    }
 
-                setMobileMenu((current) => !current);
-              }}
-              className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
-              aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
-              aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
-              aria-label={isAdmin
-                ? adminNavOpen
-                  ? 'Close admin navigation'
-                  : 'Open admin navigation'
-                : mobileMenu
-                  ? 'Close navigation menu'
-                  : 'Open navigation menu'}
-            >
-              {isAdmin
-                ? adminNavOpen
-                  ? <X className="h-6 w-6" />
-                  : <Menu className="h-6 w-6" />
-                : mobileMenu
-                  ? <X className="h-6 w-6" />
-                  : <Menu className="h-6 w-6" />}
-            </button>
+                    setMobileMenu((current) => !current);
+                  }}
+                  className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                  aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
+                  aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
+                  aria-label={isAdmin
+                    ? adminNavOpen
+                      ? 'Close admin navigation'
+                      : 'Open admin navigation'
+                    : mobileMenu
+                      ? 'Close navigation menu'
+                      : 'Open navigation menu'}
+                >
+                  {isAdmin
+                    ? adminNavOpen
+                      ? <X className="h-6 w-6" />
+                      : <Menu className="h-6 w-6" />
+                    : mobileMenu
+                      ? <X className="h-6 w-6" />
+                      : <Menu className="h-6 w-6" />}
+                </button>
               </>
             )}
           </div>
