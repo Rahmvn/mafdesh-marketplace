@@ -588,7 +588,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                 </>
               )}
 
-              {!isAdmin && !isBuyerLike && (
+              {!isAdmin && !isBuyerLike && !isSeller && (
                 <div className="relative">
                   <div className="flex items-center gap-3">
                     <NotificationBell user={storedUser} theme={theme} />
@@ -706,11 +706,11 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               </>
             ) : (
               <>
-            <div className={isSeller ? 'xl:hidden' : ''}>
+            <div>
               <NotificationBell user={storedUser} theme={theme} />
             </div>
-            {themeToggle && (
-              <div className={isSeller ? 'xl:hidden' : ''}>
+            {themeToggle && !isSeller && (
+              <div>
                 <ThemeToggleButton
                   darkMode={themeToggle.darkMode}
                   onToggle={themeToggle.onToggle}
