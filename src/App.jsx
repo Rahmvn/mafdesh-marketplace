@@ -80,7 +80,11 @@ export default function App() {
 
           <Route
             path="/marketplace"
-            element={<BuyerDashboard />}
+            element={
+              <ProtectedRoute allowedRoles={['buyer']}>
+                <BuyerDashboard />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/cart"

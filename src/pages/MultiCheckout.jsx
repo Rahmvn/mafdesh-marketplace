@@ -12,27 +12,34 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
+import AddressSelector from '../components/buyer/AddressSelector';
 import { supabase } from '../supabaseClient';
 import useModal from '../hooks/useModal';
-import { InlineLoadingSkeleton } from '../components/PageFeedback';
+import {
+  GenericContentSkeleton,
+  InlineLoadingSkeleton,
+} from '../components/PageFeedback';
 import {
   DELIVERY_TYPE,
   formatPickupLocationAddress,
   validateMultiSellerDelivery,
 } from '../services/deliveryService';
-import { NIGERIAN_STATES, NIGERIA_LGAS } from '../utils/nigeriaData';
+import { saveSavedAddress } from '../services/savedAddressService';
 import { buildProductSnapshot } from '../utils/productSnapshots';
 import {
-  formatDeliveryAddress,
   formatNaira,
   groupCartItemsBySeller,
-  isDeliveryAddressComplete,
   normalizeSellerDiscounts,
   toKobo,
 } from '../utils/multiSellerCheckout';
 import { getProductPricing } from '../utils/flashSale';
 import { clearCachedCart } from '../utils/cartStorage';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
+import {
+  formatSavedAddressForOrder,
+  getFirstSavedAddressError,
+  validateSavedAddress,
+} from '../utils/savedAddresses';
 
 function createCheckoutSessionId() {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
@@ -45,38 +52,6 @@ function createCheckoutSessionId() {
 function createPaymentReference(checkoutSessionId) {
   const compactSessionId = String(checkoutSessionId).replace(/-/g, '').slice(0, 16);
   return `mafdesh_${compactSessionId}_${Date.now()}`;
-}
-
-function getBuyerDisplayName(profile, userRecord, sessionUser) {
-  const fullName = String(profile?.full_name || '').trim();
-
-  if (fullName) {
-    const [firstName = '', ...rest] = fullName.split(/\s+/);
-    return {
-      firstName,
-      lastName: rest.join(' '),
-    };
-  }
-
-  const fallbackName = String(
-    userRecord?.full_name ||
-      userRecord?.business_name ||
-      sessionUser?.user_metadata?.full_name ||
-      ''
-  ).trim();
-
-  if (fallbackName) {
-    const [firstName = '', ...rest] = fallbackName.split(/\s+/);
-    return {
-      firstName,
-      lastName: rest.join(' '),
-    };
-  }
-
-  return {
-    firstName: 'Mafdesh',
-    lastName: 'Buyer',
-  };
 }
 
 function allocateGroupItemPricing(group) {
@@ -160,14 +135,10 @@ export default function MultiCheckout() {
 
   const [checkoutSessionId] = useState(() => createCheckoutSessionId());
   const [paymentReference] = useState(() => createPaymentReference(checkoutSessionId));
+  const [pageLoading, setPageLoading] = useState(true);
   const [sellerNames, setSellerNames] = useState({});
-  const [buyerAccount, setBuyerAccount] = useState(null);
-  const [address, setAddress] = useState({
-    state: '',
-    lga: '',
-    street: '',
-    landmark: '',
-  });
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState(null);
   const [groupSelections, setGroupSelections] = useState({});
   const [pickupValidation, setPickupValidation] = useState({
     allGroups: [],
@@ -198,9 +169,9 @@ export default function MultiCheckout() {
     () => groupCartItemsBySeller(cartItems, sellerNames, discountsBySellerId),
     [cartItems, sellerNames, discountsBySellerId]
   );
-  const availableLgas = useMemo(
-    () => NIGERIA_LGAS[address.state] || [],
-    [address.state]
+  const hasCompleteDeliveryAddress = useMemo(
+    () => Object.keys(validateSavedAddress(selectedDeliveryAddress || {})).length === 0,
+    [selectedDeliveryAddress]
   );
 
   useEffect(() => {
@@ -226,66 +197,41 @@ export default function MultiCheckout() {
   }, [sellerGroups]);
 
   useEffect(() => {
-    setAddress((current) => ({
-      ...current,
-      lga: '',
-    }));
-  }, [address.state]);
-
-  useEffect(() => {
     const loadPageContext = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (!session) {
-        navigate('/login', { replace: true });
-        return;
+        if (!session) {
+          navigate('/login', { replace: true });
+          return;
+        }
+
+        const nextSellerNames = {};
+
+        if (sellerIds.length > 0) {
+          const sellerDirectory = await fetchPublicSellerDirectory(sellerIds);
+
+          sellerIds.forEach((sellerId) => {
+            nextSellerNames[sellerId] =
+              sellerDirectory[String(sellerId)]?.display_name || 'Seller';
+          });
+        }
+
+        setSellerNames(nextSellerNames);
+      } finally {
+        setPageLoading(false);
       }
-
-      const nextSellerNames = {};
-
-      if (sellerIds.length > 0) {
-        const sellerDirectory = await fetchPublicSellerDirectory(sellerIds);
-
-        sellerIds.forEach((sellerId) => {
-          nextSellerNames[sellerId] =
-            sellerDirectory[String(sellerId)]?.display_name || 'Seller';
-        });
-      }
-
-      const [profileResponse, userResponse] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle(),
-        supabase
-          .from('users')
-          .select('business_name, phone_number')
-          .eq('id', session.user.id)
-          .maybeSingle(),
-      ]);
-
-      const buyerDisplayName = getBuyerDisplayName(
-        profileResponse.data,
-        userResponse.data,
-        session.user
-      );
-
-      setSellerNames(nextSellerNames);
-      setBuyerAccount({
-        email: session.user.email || '',
-        phone:
-          profileResponse.data?.phone_number ||
-          userResponse.data?.phone_number ||
-          '',
-        ...buyerDisplayName,
-      });
     };
 
     loadPageContext();
   }, [navigate, sellerIds]);
+
+  const handleAddressSelect = (address) => {
+    setSelectedDeliveryAddress(address);
+    setSelectedAddressId(address?.source === 'saved' ? address.id : null);
+  };
 
   useEffect(() => {
     const validatePickup = async () => {
@@ -351,7 +297,7 @@ export default function MultiCheckout() {
         return;
       }
 
-      if (!address.state.trim()) {
+      if (!selectedDeliveryAddress?.state?.trim()) {
         setDeliveryValidation({
           allGroups: groupsNeedingDelivery.map((group) => ({
             sellerId: group.sellerId,
@@ -384,7 +330,7 @@ export default function MultiCheckout() {
             productIds: group.items.map((item) => item.product_id),
           })),
           deliveryType: DELIVERY_TYPE.DELIVERY,
-          destinationState: address.state,
+          destinationState: selectedDeliveryAddress.state,
         });
 
         setDeliveryValidation(validation);
@@ -416,7 +362,7 @@ export default function MultiCheckout() {
     };
 
     validateDelivery();
-  }, [address.state, groupSelections, sellerGroups]);
+  }, [groupSelections, selectedDeliveryAddress?.state, sellerGroups]);
 
   const pickupQuoteBySellerId = useMemo(
     () =>
@@ -461,7 +407,7 @@ export default function MultiCheckout() {
             (pickupLocation) => pickupLocation.id === selection.pickupLocationId
           ) || null;
         const hasNoFulfillmentOption =
-          address.state &&
+          selectedDeliveryAddress?.state &&
           selection.deliveryType === DELIVERY_TYPE.DELIVERY &&
           deliveryQuote &&
           !deliveryQuote.available &&
@@ -481,7 +427,13 @@ export default function MultiCheckout() {
           hasNoFulfillmentOption,
         };
       }),
-    [address.state, deliveryQuoteBySellerId, groupSelections, pickupQuoteBySellerId, sellerGroups]
+    [
+      deliveryQuoteBySellerId,
+      groupSelections,
+      pickupQuoteBySellerId,
+      selectedDeliveryAddress?.state,
+      sellerGroups,
+    ]
   );
 
   const checkoutSummary = useMemo(() => {
@@ -510,7 +462,7 @@ export default function MultiCheckout() {
     () =>
       groups.map((group) => {
         if (group.selection.deliveryType === DELIVERY_TYPE.DELIVERY) {
-          if (!isDeliveryAddressComplete(address)) {
+          if (!hasCompleteDeliveryAddress) {
             return {
               sellerId: group.sellerId,
               sellerName: group.sellerName,
@@ -532,7 +484,7 @@ export default function MultiCheckout() {
             sellerId: group.sellerId,
             sellerName: group.sellerName,
             done: true,
-            label: `${group.sellerName} - Delivery to ${address.lga}`,
+            label: `${group.sellerName} - Delivery to ${selectedDeliveryAddress?.lga || selectedDeliveryAddress?.state || 'your address'}`,
           };
         }
 
@@ -561,7 +513,7 @@ export default function MultiCheckout() {
           label: `${group.sellerName} - choose delivery or pickup`,
         };
       }),
-    [address, groups]
+    [groups, hasCompleteDeliveryAddress, selectedDeliveryAddress]
   );
 
   const canSubmit = useMemo(() => {
@@ -577,7 +529,7 @@ export default function MultiCheckout() {
       groups.some(
         (group) =>
           group.selection.deliveryType === DELIVERY_TYPE.DELIVERY &&
-          (!isDeliveryAddressComplete(address) || !group.deliveryQuote?.available)
+          (!hasCompleteDeliveryAddress || !group.deliveryQuote?.available)
       )
     ) {
       return false;
@@ -594,10 +546,10 @@ export default function MultiCheckout() {
     }
 
     return true;
-  }, [address, groups]);
+  }, [groups, hasCompleteDeliveryAddress]);
 
   const buildOrderPayloads = () => {
-    const formattedAddress = formatDeliveryAddress(address);
+    const formattedAddress = formatSavedAddressForOrder(selectedDeliveryAddress || {});
 
     return groups.map((group) => ({
       seller_id: group.sellerId,
@@ -609,7 +561,9 @@ export default function MultiCheckout() {
       platform_fee: Number(group.platformFee || 0),
       delivery_method: group.selection.deliveryType,
       delivery_state:
-        group.selection.deliveryType === DELIVERY_TYPE.DELIVERY ? address.state : null,
+        group.selection.deliveryType === DELIVERY_TYPE.DELIVERY
+          ? selectedDeliveryAddress?.state || null
+          : null,
       delivery_address:
         group.selection.deliveryType === DELIVERY_TYPE.DELIVERY ? formattedAddress : null,
       selected_pickup_location:
@@ -704,6 +658,29 @@ export default function MultiCheckout() {
       clearCachedCart();
       window.dispatchEvent(new Event('cartUpdated'));
 
+      const hasDeliveryOrders = groups.some(
+        (group) => group.selection.deliveryType === DELIVERY_TYPE.DELIVERY
+      );
+
+      if (
+        hasDeliveryOrders &&
+        selectedDeliveryAddress?.source === 'manual' &&
+        selectedDeliveryAddress?.save_to_address_book
+      ) {
+        try {
+          await saveSavedAddress({
+            ...selectedDeliveryAddress,
+            is_default: selectedDeliveryAddress.should_set_as_default,
+          });
+        } catch (addressSaveError) {
+          console.error('Failed to save multi-checkout address:', addressSaveError);
+          showWarning(
+            'Address Not Saved',
+            'Your orders were created, but we could not save this address to your address book.'
+          );
+        }
+      }
+
       const nextCheckoutSessionId = result.checkoutSessionId || checkoutSessionId;
 
       navigate(
@@ -734,6 +711,19 @@ export default function MultiCheckout() {
       return;
     }
 
+    const hasDeliveryOrders = groups.some(
+      (group) => group.selection.deliveryType === DELIVERY_TYPE.DELIVERY
+    );
+
+    if (hasDeliveryOrders && !hasCompleteDeliveryAddress) {
+      showWarning(
+        'Delivery Address Required',
+        getFirstSavedAddressError(validateSavedAddress(selectedDeliveryAddress || {})) ||
+          'Please choose a delivery address.'
+      );
+      return;
+    }
+
     if (!canSubmit) {
       showWarning(
         'Checkout Not Ready',
@@ -754,126 +744,105 @@ export default function MultiCheckout() {
     return null;
   }
 
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <Navbar />
+        <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
+          <GenericContentSkeleton />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const hasAnyDeliverySelection = groups.some(
+    (group) => group.selection.deliveryType === DELIVERY_TYPE.DELIVERY
+  );
+  const unavailableDeliveryGroupCount = groups.filter(
+    (group) =>
+      group.selection.deliveryType === DELIVERY_TYPE.DELIVERY &&
+      group.deliveryQuote &&
+      !group.deliveryQuote.available
+  ).length;
+
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6 sm:py-8">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
         <button
           onClick={() => navigate('/cart')}
-          className="flex items-center gap-1 text-blue-600 hover:text-blue-800 mb-4"
+          className="mb-4 flex items-center gap-1 text-blue-600 hover:text-blue-800"
         >
           <ArrowLeft size={18} /> Back to Cart
         </button>
 
-        <div className="flex flex-col gap-2 mb-6">
-          <h1 className="text-2xl font-bold text-blue-900">
-            Multi-seller checkout ({cartItems.length} items)
-          </h1>
-          <p className="text-sm text-blue-700">
-            Your delivery address applies to every seller group that chooses delivery.
-          </p>
-        </div>
+        <h1 className="mb-2 text-2xl font-bold text-blue-900">Checkout</h1>
+        <p className="mb-6 text-sm text-blue-700">
+          Review each seller group below. Any group that chooses delivery will use the same buyer address.
+        </p>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_360px]">
-          <div className="space-y-6">
-            <section className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm">
-              <div className="flex items-start gap-3 mb-4">
-                <MapPin size={20} className="text-orange-500 mt-0.5" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <section className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-start gap-3">
+                <MapPin size={20} className="mt-0.5 text-orange-500" />
                 <div>
                   <h2 className="font-semibold text-blue-900">Delivery Address</h2>
                   <p className="text-sm text-blue-700">
-                    State drives delivery quotes in real time. LGA, street, and landmark are shared across delivery orders.
+                    This matches the single-product checkout flow. Saved addresses work here too, and one delivery address is shared across every seller group that chooses delivery.
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-blue-900">
-                  <span className="block font-medium mb-2">State</span>
-                  <select
-                    value={address.state}
-                    onChange={(event) =>
-                      setAddress((current) => ({
-                        ...current,
-                        state: event.target.value,
-                      }))
-                    }
-                    className="w-full border border-blue-200 rounded-xl p-3"
-                  >
-                    <option value="">Select State</option>
-                    {NIGERIAN_STATES.map((stateName) => (
-                      <option key={stateName} value={stateName}>
-                        {stateName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <AddressSelector
+                onSelect={handleAddressSelect}
+                selectedAddressId={selectedAddressId}
+                initialAddress={selectedDeliveryAddress}
+              />
 
-                <label className="block text-sm text-blue-900">
-                  <span className="block font-medium mb-2">LGA</span>
-                  <select
-                    value={address.lga}
-                    onChange={(event) =>
-                      setAddress((current) => ({
-                        ...current,
-                        lga: event.target.value,
-                      }))
-                    }
-                    disabled={!address.state}
-                    className="w-full border border-blue-200 rounded-xl p-3 disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    <option value="">Select Local Government Area</option>
-                    {availableLgas.map((lgaName) => (
-                      <option key={lgaName} value={lgaName}>
-                        {lgaName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {pickupLoading || deliveryLoading ? <InlineLoadingSkeleton className="mt-4 max-w-48" /> : null}
 
-                <label className="block text-sm text-blue-900 md:col-span-2">
-                  <span className="block font-medium mb-2">Street Address</span>
-                  <input
-                    type="text"
-                    value={address.street}
-                    onChange={(event) =>
-                      setAddress((current) => ({
-                        ...current,
-                        street: event.target.value,
-                      }))
-                    }
-                    placeholder="House number, street name, estate"
-                    className="w-full border border-blue-200 rounded-xl p-3"
-                  />
-                </label>
+              {!hasAnyDeliverySelection ? (
+                <p className="mt-4 text-sm text-blue-600">
+                  Choose delivery for any seller group below and we will calculate that seller&apos;s fee automatically.
+                </p>
+              ) : null}
 
-                <label className="block text-sm text-blue-900 md:col-span-2">
-                  <span className="block font-medium mb-2">Landmark</span>
-                  <input
-                    type="text"
-                    value={address.landmark}
-                    onChange={(event) =>
-                      setAddress((current) => ({
-                        ...current,
-                        landmark: event.target.value,
-                      }))
-                    }
-                    placeholder="Optional landmark to help delivery"
-                    className="w-full border border-blue-200 rounded-xl p-3"
-                  />
-                </label>
-              </div>
+              {hasAnyDeliverySelection && !selectedDeliveryAddress?.state ? (
+                <p className="mt-4 text-sm text-blue-600">
+                  Select your delivery state and we will calculate the delivery fee for each delivery seller group automatically.
+                </p>
+              ) : null}
+
+              {hasAnyDeliverySelection &&
+              selectedDeliveryAddress?.state &&
+              !deliveryLoading &&
+              unavailableDeliveryGroupCount === 0 ? (
+                <p className="mt-4 text-sm text-green-700">
+                  Delivery quotes calculated successfully for every seller group using delivery.
+                </p>
+              ) : null}
+
+              {hasAnyDeliverySelection &&
+              selectedDeliveryAddress?.state &&
+              !deliveryLoading &&
+              unavailableDeliveryGroupCount > 0 ? (
+                <p className="mt-4 text-sm text-red-600">
+                  {unavailableDeliveryGroupCount} seller group{unavailableDeliveryGroupCount === 1 ? '' : 's'} cannot deliver to this state. Switch those groups to pickup to continue.
+                </p>
+              ) : null}
             </section>
 
             {groups.map((group) => {
               const deliveryUnavailable =
                 group.selection.deliveryType === DELIVERY_TYPE.DELIVERY &&
-                address.state &&
+                selectedDeliveryAddress?.state &&
                 group.deliveryQuote &&
                 !group.deliveryQuote.available;
               const canPickUp = Boolean(group.pickupQuote?.available);
               const canDeliver =
-                !address.state ||
+                !selectedDeliveryAddress?.state ||
                 group.selection.deliveryType !== DELIVERY_TYPE.DELIVERY ||
                 Boolean(group.deliveryQuote?.available);
 
@@ -947,7 +916,7 @@ export default function MultiCheckout() {
                         </div>
                         <p className="text-xs mt-1">
                           {group.deliveryQuote?.available
-                            ? `Delivery to ${address.state}: ${formatNaira(group.deliveryQuote.fee)}`
+                            ? `Delivery to ${selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`
                             : 'Choose delivery to send this seller to your address'}
                         </p>
                       </button>
@@ -988,8 +957,8 @@ export default function MultiCheckout() {
                   ) : null}
 
                   {group.selection.deliveryType === DELIVERY_TYPE.DELIVERY && (
-                    <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                      {!address.state ? (
+                    <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                      {!selectedDeliveryAddress?.state ? (
                         <p className="text-sm text-blue-700">
                           Select your delivery state above to quote this seller.
                         </p>
@@ -1003,7 +972,7 @@ export default function MultiCheckout() {
                       ) : group.deliveryQuote?.available ? (
                         <p className="text-sm text-green-700">
                           {group.deliveryQuote.message ||
-                            `Delivery to ${address.lga || address.state}: ${formatNaira(group.deliveryQuote.fee)}`}
+                            `Delivery to ${selectedDeliveryAddress?.lga || selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`}
                         </p>
                       ) : (
                         <p className="text-sm text-blue-700">
@@ -1065,7 +1034,7 @@ export default function MultiCheckout() {
             })}
           </div>
 
-          <aside className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm h-fit xl:sticky xl:top-24">
+          <aside className="h-fit rounded-xl border border-blue-100 bg-white p-5 shadow-sm lg:sticky lg:top-24">
             <h2 className="font-semibold text-blue-900 mb-4">Order Summary</h2>
 
             <div className="space-y-3 text-sm">

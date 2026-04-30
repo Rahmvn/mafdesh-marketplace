@@ -63,7 +63,7 @@ export default function ResetPassword() {
               className="w-auto mx-auto"
               style={{ height: '200px' }}
             />
-            <h1 className="mt-4 text-xl font-bold text-blue-900">Mafdesh</h1>
+           
             <p className="mt-3 text-base font-medium text-gray-600">Create a new password</p>
           </div>
 

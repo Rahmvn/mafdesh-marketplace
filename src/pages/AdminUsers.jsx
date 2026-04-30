@@ -45,6 +45,48 @@ function AdminPageSkeleton() {
   );
 }
 
+function isOpenDisputeEntry(dispute) {
+  const disputeStatus = String(dispute?.dispute_status || "").toLowerCase();
+  const orderStatus = String(dispute?.status || "").toUpperCase();
+
+  return disputeStatus === "open" || (orderStatus === "DISPUTED" && disputeStatus !== "resolved");
+}
+
+function getOpenDisputeCount(history = {}) {
+  const combined = [...(history.buyer_disputes || []), ...(history.seller_disputes || [])];
+  const seenOrderIds = new Set();
+
+  return combined.reduce((count, dispute) => {
+    const orderId = String(dispute?.order_id || "");
+
+    if (!orderId || seenOrderIds.has(orderId)) {
+      return count;
+    }
+
+    seenOrderIds.add(orderId);
+    return isOpenDisputeEntry(dispute) ? count + 1 : count;
+  }, 0);
+}
+
+function getDisputeRoleSummary(user) {
+  const buyerCount = Number(user?.buyer_disputes || 0);
+  const sellerCount = Number(user?.seller_disputes || 0);
+
+  if (user?.role === "buyer") {
+    return sellerCount > 0
+      ? `Buyer: ${buyerCount} · Seller: ${sellerCount}`
+      : `Buyer: ${buyerCount}`;
+  }
+
+  if (user?.role === "seller") {
+    return buyerCount > 0
+      ? `Seller: ${sellerCount} · Buyer: ${buyerCount}`
+      : `Seller: ${sellerCount}`;
+  }
+
+  return `Buyer: ${buyerCount} · Seller: ${sellerCount}`;
+}
+
 export default function AdminUsers() {
   const navigate = useNavigate();
   useMemo(() => getCurrentAdminUser(), []);
@@ -113,27 +155,45 @@ export default function AdminUsers() {
         throw error;
       }
 
-      const usersWithHistory = await Promise.all(
-        (usersData || []).map(async (user) => {
-          const { data: history } = await supabase
-            .from("user_dispute_history")
-            .select("total_disputes_as_buyer, total_disputes_as_seller")
-            .eq("user_id", user.id)
-            .maybeSingle();
+      const userIds = (usersData || []).map((user) => user.id);
+      let disputeHistoryMap = {};
 
-          return {
-            ...user,
-            full_name: user.profiles?.full_name,
-            username: user.profiles?.username,
-            location: user.profiles?.location,
-            dispute_count:
-              (history?.total_disputes_as_buyer || 0) +
-              (history?.total_disputes_as_seller || 0),
-            buyer_disputes: history?.total_disputes_as_buyer || 0,
-            seller_disputes: history?.total_disputes_as_seller || 0,
-          };
-        })
-      );
+      if (userIds.length > 0) {
+        const { data: historiesData, error: historiesError } = await supabase
+          .from("user_dispute_history")
+          .select(
+            "user_id, total_disputes_as_buyer, total_disputes_as_seller, buyer_disputes, seller_disputes"
+          )
+          .in("user_id", userIds);
+
+        if (historiesError) {
+          throw historiesError;
+        }
+
+        disputeHistoryMap = Object.fromEntries(
+          (historiesData || []).map((history) => [history.user_id, history])
+        );
+      }
+
+      const usersWithHistory = (usersData || []).map((user) => {
+        const history = disputeHistoryMap[user.id] || {};
+        const buyerDisputes = Number(history?.total_disputes_as_buyer || 0);
+        const sellerDisputes = Number(history?.total_disputes_as_seller || 0);
+        const disputeHistoryCount = buyerDisputes + sellerDisputes;
+        const openDisputeCount = getOpenDisputeCount(history);
+
+        return {
+          ...user,
+          full_name: user.profiles?.full_name,
+          username: user.profiles?.username,
+          location: user.profiles?.location,
+          dispute_history_count: disputeHistoryCount,
+          dispute_count: disputeHistoryCount,
+          buyer_disputes: buyerDisputes,
+          seller_disputes: sellerDisputes,
+          open_dispute_count: openDisputeCount,
+        };
+      });
 
       setUsers(usersWithHistory);
       applyFilters(usersWithHistory, roleFilter, searchTerm);
@@ -274,6 +334,11 @@ export default function AdminUsers() {
     return <AdminPageSkeleton />;
   }
 
+  const usersWithOpenDisputes = filteredUsers.filter((user) => user.open_dispute_count > 0);
+  const usersWithHighDisputeHistory = filteredUsers.filter(
+    (user) => user.dispute_history_count > 3
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar onLogout={handleLogout} />
@@ -325,12 +390,22 @@ export default function AdminUsers() {
           </div>
         </div>
 
-        {filteredUsers.filter((user) => user.dispute_count > 3).length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+        {usersWithOpenDisputes.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex items-center gap-3">
             <AlertCircle size={20} className="text-red-600" />
             <p className="text-red-700 text-sm">
-              {filteredUsers.filter((user) => user.dispute_count > 3).length} users
-              have more than 3 disputes. Consider reviewing them.
+              {usersWithOpenDisputes.length} user{usersWithOpenDisputes.length === 1 ? "" : "s"} currently
+              {" "}have open dispute{usersWithOpenDisputes.length === 1 ? "" : "s"}. Review active cases.
+            </p>
+          </div>
+        )}
+
+        {usersWithHighDisputeHistory.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+            <AlertCircle size={20} className="text-amber-600" />
+            <p className="text-amber-700 text-sm">
+              {usersWithHighDisputeHistory.length} user{usersWithHighDisputeHistory.length === 1 ? "" : "s"}
+              {" "}have more than 3 historical disputes. Consider a trust or risk review.
             </p>
           </div>
         )}
@@ -344,7 +419,7 @@ export default function AdminUsers() {
                 <th className="p-3 text-left">Role</th>
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Verified</th>
-                <th className="p-3 text-left">Disputes</th>
+                <th className="p-3 text-left">Dispute History</th>
                 <th className="p-3 text-left">Joined</th>
                 <th className="p-3 text-left">Actions</th>
               </tr>
@@ -403,12 +478,25 @@ export default function AdminUsers() {
                       </td>
                       <td className="p-3">
                         <div className="text-sm">
-                          <span className={user.dispute_count > 3 ? "text-red-600 font-bold" : ""}>
-                            {user.dispute_count}
+                          <span
+                            className={
+                              user.open_dispute_count > 0
+                                ? "font-bold text-red-600"
+                                : user.dispute_history_count > 3
+                                  ? "font-bold text-amber-600"
+                                  : ""
+                            }
+                          >
+                            {user.dispute_history_count}
                           </span>
                           <span className="text-xs text-gray-500 ml-1">
-                            (B:{user.buyer_disputes} S:{user.seller_disputes})
+                            ({getDisputeRoleSummary(user)})
                           </span>
+                          {user.open_dispute_count > 0 && (
+                            <div className="text-xs font-medium text-red-600 mt-1">
+                              Open now: {user.open_dispute_count}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="p-3 text-gray-500">
