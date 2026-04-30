@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import VerificationBadge from "../components/VerificationBadge";
 import { supabase } from "../supabaseClient";
+import { getSessionWithRetry } from '../utils/authResilience';
 import {
   showGlobalConfirm,
   showGlobalError,
@@ -324,7 +325,7 @@ export default function Cart() {
       return;
     }
 
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await getSessionWithRetry(supabase.auth);
 
     if (!sessionData.session) {
       showGlobalLoginRequired(

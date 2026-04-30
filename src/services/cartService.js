@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import {
   enrichProductsWithPublicSellerData,
   isSellerMarketplaceActive,
@@ -139,7 +140,7 @@ async function loadCartItemsWithFallback(cartId) {
 }
 
 async function getAuthenticatedUserId() {
-  const { data, error } = await supabase.auth.getSession();
+  const { data, error } = await getSessionWithRetry(supabase.auth);
 
   if (error) {
     throw error;

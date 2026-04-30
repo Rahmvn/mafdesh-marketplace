@@ -1,10 +1,11 @@
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { normalizeSavedAddressPayload } from '../utils/savedAddresses';
 
 async function requireCurrentBuyerId() {
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = await getSessionWithRetry(supabase.auth);
 
   if (!session?.user?.id) {
     throw new Error('Please log in again to manage your saved addresses.');

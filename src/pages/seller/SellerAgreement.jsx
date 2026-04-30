@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, FileText, Shield } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import FooterSlim from '../../components/FooterSlim';
 import { supabase } from '../../supabaseClient';
+import { getSessionWithRetry } from '../../utils/authResilience';
 import useModal from '../../hooks/useModal';
 import {
   getSellerThemeClasses,
@@ -136,7 +137,7 @@ export default function SellerAgreement() {
 
     const loadUser = async () => {
       try {
-        const { data, error: sessionError } = await supabase.auth.getSession();
+        const { data, error: sessionError } = await getSessionWithRetry(supabase.auth);
 
         if (sessionError) {
           throw sessionError;

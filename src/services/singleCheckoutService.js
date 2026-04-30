@@ -1,8 +1,11 @@
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 
 export async function createSingleCheckoutOrder(payload) {
   // Get the current session token
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await getSessionWithRetry(supabase.auth);
 
   if (!session?.access_token) {
     throw new Error('You must be logged in to place an order.');

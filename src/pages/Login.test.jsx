@@ -218,6 +218,31 @@ describe('Login', () => {
     expect(mockShowError).not.toHaveBeenCalled();
   });
 
+  it('retries transient auth fetch failures instead of failing the login immediately', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
+    mockSignInWithPassword
+      .mockRejectedValueOnce(new Error('AuthRetryableFetchError: Failed to fetch'))
+      .mockResolvedValueOnce({
+        data: {
+          user: { id: 'buyer-1' },
+          session: { user: { id: 'buyer-1' } },
+        },
+        error: null,
+      });
+
+    renderLoginRoute();
+    fillAndSubmitLoginForm();
+
+    await waitFor(() => {
+      expect(mockSignInWithPassword).toHaveBeenCalledTimes(2);
+    });
+
+    expect(await screen.findByText('Marketplace')).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
   it('auto-routes even when the user picked the wrong login type first', async () => {
     mockGetSession.mockResolvedValue({
       data: { session: null },

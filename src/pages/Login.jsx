@@ -11,37 +11,11 @@ import {
   reconcileUserRole,
 } from '../services/accountBootstrapService';
 import { cartService } from '../services/cartService';
-
-const AUTH_LOCK_RETRY_DELAYS_MS = [150, 300];
-
-function isAuthLockConflictError(error) {
-  const message = String(error?.message || '').toLowerCase();
-  return message.includes('navigator lockmanager lock');
-}
-
-function wait(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function runAuthOperationWithRetry(operation) {
-  for (let attempt = 0; attempt <= AUTH_LOCK_RETRY_DELAYS_MS.length; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      const isLastAttempt = attempt === AUTH_LOCK_RETRY_DELAYS_MS.length;
-
-      if (!isAuthLockConflictError(error) || isLastAttempt) {
-        throw error;
-      }
-
-      await wait(AUTH_LOCK_RETRY_DELAYS_MS[attempt]);
-    }
-  }
-
-  throw new Error('AUTH_OPERATION_FAILED');
-}
+import {
+  getAuthFeedback,
+  runAuthOperationWithRetry,
+  runReadOperationWithRetry,
+} from '../utils/authResilience';
 
 function getNormalizedMetadataRole(authUser, fallbackRole = '') {
   return normalizeSelfServiceRole(
@@ -92,11 +66,13 @@ export default function Login() {
   }, []);
 
   const loadPublicUserRecord = useCallback(async (userId) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    const { data, error } = await runReadOperationWithRetry(() =>
+      supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+    );
 
     if (error) {
       throw error;
@@ -215,7 +191,7 @@ export default function Login() {
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } = await runAuthOperationWithRetry(() => supabase.auth.getSession());
 
         if (!session) {
           localStorage.removeItem('mafdesh_user');
@@ -288,15 +264,8 @@ export default function Login() {
       await storeAndRouteUser(profile, user.id);
     } catch (error) {
       console.error('Login error:', error);
-      const message = String(error?.message || '');
-      if (message.includes('Navigator LockManager lock')) {
-        showError(
-          'Login Delayed',
-          'Login was blocked by another auth request. Please try again, and if it keeps happening close other Mafdesh tabs first.'
-        );
-      } else {
-        showError('Login Failed', error.message || 'Login failed. Please check your credentials.');
-      }
+      const feedback = getAuthFeedback('log in', error);
+      showError(feedback.title, feedback.message);
     } finally {
       submitInFlightRef.current = false;
       setLoadingSafely(false);

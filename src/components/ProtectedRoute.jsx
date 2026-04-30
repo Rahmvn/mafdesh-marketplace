@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 
 function LoginRequiredFallback({ returnUrl, loginPrompt = null }) {
@@ -42,7 +43,7 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await getSessionWithRetry(supabase.auth);
 
       if (!data.session) {
         setStatus('unauthenticated');

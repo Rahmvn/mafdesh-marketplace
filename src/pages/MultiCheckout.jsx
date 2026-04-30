@@ -14,6 +14,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import AddressSelector from '../components/buyer/AddressSelector';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import useModal from '../hooks/useModal';
 import {
   GenericContentSkeleton,
@@ -201,7 +202,7 @@ export default function MultiCheckout() {
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } = await getSessionWithRetry(supabase.auth);
 
         if (!session) {
           navigate('/login', { replace: true });
@@ -603,7 +604,7 @@ export default function MultiCheckout() {
     try {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await getSessionWithRetry(supabase.auth);
 
       if (!session) {
         showWarning('Login Required', 'Please log in again before continuing.');

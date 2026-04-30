@@ -22,6 +22,7 @@ import {
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
+import { getUserWithRetry } from '../utils/authResilience';
 
 const SUPPORT_EMAIL = 'support@mafdesh.com';
 const SUPPORT_ATTACHMENTS_BUCKET = 'support-attachments';
@@ -240,7 +241,7 @@ export default function Support() {
     const {
       data: { user: authUser },
       error,
-    } = await supabase.auth.getUser();
+    } = await getUserWithRetry(supabase.auth);
 
     if (error) {
       throw error;

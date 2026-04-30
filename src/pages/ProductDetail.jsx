@@ -19,6 +19,7 @@ import VerificationBadge from "../components/VerificationBadge";
 import useCountdown from "../hooks/useCountdown";
 import { cartService } from "../services/cartService";
 import { supabase } from "../supabaseClient";
+import { getSessionWithRetry } from '../utils/authResilience';
 import { getProductFulfillmentOptions } from "../services/deliveryService";
 import {
   enrichProductsWithPublicSellerData,
@@ -559,7 +560,7 @@ export default function ProductDetail() {
   };
 
   const requireLogin = async (returnUrl) => {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await getSessionWithRetry(supabase.auth);
     if (!data.session) {
       showGlobalLoginRequired('Please log in to continue.', () => {
         redirectToLogin(returnUrl);

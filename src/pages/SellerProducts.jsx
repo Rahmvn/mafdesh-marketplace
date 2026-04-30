@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { getProductArchiveActionMessage, productService } from '../services/productService';
 import useModal from '../hooks/useModal';
 import {
@@ -59,7 +60,7 @@ export default function SellerProducts() {
   }, [showError]);
 
   const init = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await getSessionWithRetry(supabase.auth);
 
     if (!data.session) {
       navigate('/login');

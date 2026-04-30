@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock3, CreditCard, Wallet } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalConfirm } from '../hooks/modalService';
 import {
   formatSellerCurrency,
@@ -71,7 +72,7 @@ export default function SellerPayments() {
   }, []);
 
   const init = useCallback(async () => {
-    const { data: session } = await supabase.auth.getSession();
+    const { data: session } = await getSessionWithRetry(supabase.auth);
 
     if (!session.session) {
       navigate('/login');

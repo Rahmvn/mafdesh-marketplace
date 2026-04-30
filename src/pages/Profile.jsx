@@ -18,6 +18,7 @@ import {
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import VerificationBadge from '../components/VerificationBadge';
 import useModal from '../hooks/useModal';
 import { RetryablePageError } from '../components/PageFeedback';
@@ -288,7 +289,7 @@ export default function Profile() {
 
   const loadUserProfile = useCallback(async () => {
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await getSessionWithRetry(supabase.auth);
       if (!data.session) {
         navigate('/login');
         return;
@@ -424,7 +425,7 @@ export default function Profile() {
     }
 
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await getSessionWithRetry(supabase.auth);
       const session = data.session;
 
       if (!session) {

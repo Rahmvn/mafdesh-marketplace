@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { getUserWithRetry } from '../utils/authResilience';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
@@ -88,7 +89,7 @@ export default function BuyerOrders() {
 
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getUserWithRetry(supabase.auth);
 
     if (!user) {
       setLoading(false);

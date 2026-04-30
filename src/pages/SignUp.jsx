@@ -7,6 +7,11 @@ import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import { reconcileUserRole } from '../services/accountBootstrapService';
+import {
+  getAuthFeedback,
+  runAuthOperationWithRetry,
+  runReadOperationWithRetry,
+} from '../utils/authResilience';
 
 export default function SignUp() {
   const [userType, setUserType] = useState("buyer");
@@ -76,20 +81,35 @@ export default function SignUp() {
     }
 
     setIsCheckingUsername(true);
-    const { data } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', username)
-      .maybeSingle();
-    setIsCheckingUsername(false);
 
-    if (data) {
-      setUsernameError("Username already taken");
-      return false;
+    try {
+      const { data, error } = await runReadOperationWithRetry(() =>
+        supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle()
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        setUsernameError("Username already taken");
+        return false;
+      }
+
+      setUsernameError("");
+      return true;
+    } catch (error) {
+      console.error('Username availability check failed:', error);
+      const feedback = getAuthFeedback('continue sign up', error);
+      showError(feedback.title, feedback.message);
+      return null;
+    } finally {
+      setIsCheckingUsername(false);
     }
-
-    setUsernameError("");
-    return true;
   };
 
   const syncUserRecord = async (userId, nextFormData) => {
@@ -99,11 +119,13 @@ export default function SignUp() {
       business_name: userType === 'seller' ? nextFormData.business_name : null,
     };
 
-    const { data: existingUser, error: existingUserError } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', userId)
-      .maybeSingle();
+    const { data: existingUser, error: existingUserError } = await runReadOperationWithRetry(() =>
+      supabase
+        .from('users')
+        .select('id, role')
+        .eq('id', userId)
+        .maybeSingle()
+    );
 
     if (existingUserError) {
       throw existingUserError;
@@ -149,20 +171,22 @@ export default function SignUp() {
     try {
       const { email, password } = nextFormData;
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            role: userType,
-            full_name: nextFormData.full_name,
-            username: nextFormData.username,
-            phone_number: nextFormData.phone_number,
-            business_name: userType === 'seller' ? nextFormData.business_name : null,
-            location: nextFormData.location,
+      const { data, error } = await runAuthOperationWithRetry(() =>
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              role: userType,
+              full_name: nextFormData.full_name,
+              username: nextFormData.username,
+              phone_number: nextFormData.phone_number,
+              business_name: userType === 'seller' ? nextFormData.business_name : null,
+              location: nextFormData.location,
+            },
           },
-        },
-      });
+        })
+      );
 
       if (error) throw error;
       if (!data.user) {
@@ -212,7 +236,8 @@ export default function SignUp() {
         return false;
       }
 
-      showError('Signup Failed', message || 'Signup failed.');
+      const feedback = getAuthFeedback('sign up', error);
+      showError(feedback.title, feedback.message);
       return false;
     }
   };
@@ -378,8 +403,10 @@ export default function SignUp() {
                 }
 
                 const isUnique = await checkUsernameUnique(formData.username);
-                if (!isUnique) {
-                  setUsernameError('This username is already taken. Please choose another one.');
+                if (isUnique !== true) {
+                  if (isUnique === false) {
+                    setUsernameError('This username is already taken. Please choose another one.');
+                  }
                   return;
                 }
 

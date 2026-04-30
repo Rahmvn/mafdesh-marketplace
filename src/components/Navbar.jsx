@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getUserWithRetry } from '../utils/authResilience';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
 import { readCachedCartCount } from '../utils/cartStorage';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
@@ -248,11 +249,22 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (isMounted) {
-        setAuthUserId(data.user?.id || null);
+    const loadAuthUser = async () => {
+      try {
+        const { data } = await getUserWithRetry(supabase.auth);
+
+        if (isMounted) {
+          setAuthUserId(data.user?.id || null);
+        }
+      } catch (error) {
+        console.error('Navbar auth user load failed:', error);
+        if (isMounted) {
+          setAuthUserId(null);
+        }
       }
-    });
+    };
+
+    loadAuthUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthUserId(session?.user?.id || null);

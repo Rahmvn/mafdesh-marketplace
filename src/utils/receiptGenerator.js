@@ -1,4 +1,8 @@
 import { supabase } from '../supabaseClient';
+import {
+  getSessionWithRetry,
+  refreshSessionWithRetry,
+} from './authResilience';
 import { getOrderItemsMap } from './orderItems';
 import { getBuyerOrderAmounts } from './orderAmounts';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
@@ -82,9 +86,29 @@ function getPartyName(user, profile, fallback) {
 }
 
 async function getOrderCounterparty(orderId) {
-  const { data: sessionData } = await supabase.auth.getSession();
+  const { data: sessionData } = await getSessionWithRetry(supabase.auth);
   const accessToken = sessionData.session?.access_token;
 
+  if (!accessToken) {
+    const { data: refreshedSession, error } = await refreshSessionWithRetry(supabase.auth);
+
+    if (error) {
+      return null;
+    }
+
+    const refreshedToken = refreshedSession.session?.access_token;
+
+    if (!refreshedToken) {
+      return null;
+    }
+
+    return fetchOrderCounterparty(orderId, refreshedToken);
+  }
+
+  return fetchOrderCounterparty(orderId, accessToken);
+}
+
+async function fetchOrderCounterparty(orderId, accessToken) {
   if (!accessToken) {
     return null;
   }
@@ -775,7 +799,7 @@ export async function generateReceipt(orderId, receiptWindow = null) {
     const items = itemsMap[order.id] || [];
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await getSessionWithRetry(supabase.auth);
     const currentUserId = session?.user?.id || null;
     const isBuyerView = currentUserId === order.buyer_id;
     const isSellerView = currentUserId === order.seller_id;

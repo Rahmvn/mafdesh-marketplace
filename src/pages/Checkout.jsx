@@ -23,6 +23,7 @@ import {
 import { saveSavedAddress } from '../services/savedAddressService';
 import { createSingleCheckoutOrder } from '../services/singleCheckoutService';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { getProductPricing } from '../utils/flashSale';
 import { formatNaira } from '../utils/multiSellerCheckout';
 import {
@@ -191,7 +192,7 @@ export default function Checkout() {
 
     setIsSubmitting(true);
 
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await getSessionWithRetry(supabase.auth);
     if (!sessionData.session) {
       showGlobalWarning('Login Required', 'Please log in to continue.');
       setIsSubmitting(false);

@@ -1,4 +1,9 @@
 import { supabase } from "../supabaseClient";
+import {
+  getSessionWithRetry,
+  getUserWithRetry,
+  refreshSessionWithRetry,
+} from "../utils/authResilience";
 
 export const ADMIN_TARGET_TYPES = {
   USER: "user",
@@ -98,7 +103,7 @@ async function getValidAccessToken() {
   const {
     data: { session },
     error: sessionError,
-  } = await supabase.auth.getSession();
+  } = await getSessionWithRetry(supabase.auth);
 
   if (sessionError || !session?.access_token) {
     throw new Error("Your admin session has expired. Please log in again.");
@@ -107,7 +112,7 @@ async function getValidAccessToken() {
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser(session.access_token);
+  } = await getUserWithRetry(supabase.auth, session.access_token);
 
   if (!userError && user) {
     return session.access_token;
@@ -116,7 +121,7 @@ async function getValidAccessToken() {
   const {
     data: { session: refreshedSession },
     error: refreshError,
-  } = await supabase.auth.refreshSession();
+  } = await refreshSessionWithRetry(supabase.auth);
 
   if (refreshError || !refreshedSession?.access_token) {
     await supabase.auth.signOut();
@@ -127,7 +132,7 @@ async function getValidAccessToken() {
   const {
     data: { user: refreshedUser },
     error: refreshedUserError,
-  } = await supabase.auth.getUser(refreshedSession.access_token);
+  } = await getUserWithRetry(supabase.auth, refreshedSession.access_token);
 
   if (refreshedUserError || !refreshedUser) {
     await supabase.auth.signOut();

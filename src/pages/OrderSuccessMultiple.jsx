@@ -4,6 +4,7 @@ import { CheckCircle, MapPin, Package, Store, Truck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
+import { getUserWithRetry } from '../utils/authResilience';
 import { getOrderItemsMap } from '../utils/orderItems';
 import { formatNaira } from '../utils/multiSellerCheckout';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
@@ -56,7 +57,7 @@ export default function OrderSuccessMultiple() {
         : [];
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getUserWithRetry(supabase.auth);
 
       if (!user) {
         navigate('/login', { replace: true });

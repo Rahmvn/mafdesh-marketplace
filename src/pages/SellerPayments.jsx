@@ -14,6 +14,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
 import {
   formatSellerCurrency,
@@ -508,7 +509,7 @@ export default function SellerPayments() {
   }, [currentUser?.account_status, currentUser?.status, verificationPaymentSource]);
 
   const init = useCallback(async () => {
-    const { data: session } = await supabase.auth.getSession();
+    const { data: session } = await getSessionWithRetry(supabase.auth);
 
     if (!session.session) {
       navigate('/login');

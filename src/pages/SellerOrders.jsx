@@ -9,6 +9,7 @@ import {
   Search,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getSellerOrderPayout } from '../utils/sellerPayouts';
 import { getDeliveryDeadlineState } from '../services/sellerOrderTransitionService';
@@ -113,7 +114,7 @@ export default function SellerOrders() {
   }, []);
 
   const init = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await getSessionWithRetry(supabase.auth);
     if (!data.session) {
       navigate('/login');
       return;

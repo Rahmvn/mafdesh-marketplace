@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 
 export const NOTIFICATION_PANEL_LIMIT = 50;
 export const NOTIFICATION_PAGE_SIZE = 20;
@@ -91,7 +92,7 @@ export async function getCurrentNotificationUser() {
   const {
     data: { session },
     error: sessionError,
-  } = await supabase.auth.getSession();
+  } = await getSessionWithRetry(supabase.auth);
 
   if (sessionError || !session?.user?.id) {
     throw new Error('You need to be signed in to view notifications.');

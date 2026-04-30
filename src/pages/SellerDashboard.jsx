@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { productService } from '../services/productService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { showGlobalConfirm } from '../hooks/modalService';
@@ -209,7 +210,7 @@ export default function SellerDashboard() {
   }, []);
 
   const init = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await getSessionWithRetry(supabase.auth);
 
     if (!data.session) {
       navigate('/login');

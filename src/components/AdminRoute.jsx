@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from "react-router-dom";
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 
 export default function AdminRoute({ children }) {
@@ -11,7 +12,7 @@ export default function AdminRoute({ children }) {
     let isMounted = true;
 
     const checkAdminAccess = async () => {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const { data: sessionData, error: sessionError } = await getSessionWithRetry(supabase.auth);
 
       if (sessionError || !sessionData.session) {
         if (isMounted) {

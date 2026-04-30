@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalError, showGlobalWarning } from "../hooks/modalService";
 import { confirmOrder } from "../services/orderConfirmationService";
 import Footer from "../components/FooterSlim";
@@ -54,7 +55,7 @@ export default function Payment() {
     setProcessing(true);
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await getSessionWithRetry(supabase.auth);
 
       if (!sessionData.session?.access_token) {
         navigate("/login");

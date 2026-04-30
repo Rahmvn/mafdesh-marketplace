@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { RetryablePageError } from '../components/PageFeedback';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getBuyerOrderTotal } from '../utils/orderAmounts';
 import { generateReceipt, openReceiptWindow } from '../utils/receiptGenerator';
@@ -193,7 +194,7 @@ export default function BuyerPayments() {
     try {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await getSessionWithRetry(supabase.auth);
 
       if (!session?.user?.id) {
         navigate('/login');

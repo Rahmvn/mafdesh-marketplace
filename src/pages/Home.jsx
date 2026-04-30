@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { getSessionWithRetry } from '../utils/authResilience';
 import Marketplace from './Marketplace';
 
 export default function Home() {
@@ -21,7 +22,7 @@ export default function Home() {
     }
 
     const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await getSessionWithRetry(supabase.auth);
 
       if (!data.session) {
         return;

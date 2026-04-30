@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import {
+  getSessionWithRetry,
+  refreshSessionWithRetry,
+} from "../utils/authResilience";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
@@ -107,11 +111,14 @@ export default function SellerOrderDetails() {
       return { response, payload };
     };
 
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await getSessionWithRetry(supabase.auth);
     let accessToken = sessionData.session?.access_token;
 
     if (!accessToken) {
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      const {
+        data: refreshedSession,
+        error: refreshError,
+      } = await refreshSessionWithRetry(supabase.auth);
 
       if (refreshError) {
         console.error("Counterparty session refresh error:", refreshError);
@@ -129,7 +136,10 @@ export default function SellerOrderDetails() {
     let { response, payload } = await invokeCounterparty(accessToken);
 
     if (response.status === 401) {
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      const {
+        data: refreshedSession,
+        error: refreshError,
+      } = await refreshSessionWithRetry(supabase.auth);
 
       if (refreshError) {
         console.error("Counterparty session refresh error:", refreshError);
@@ -166,7 +176,7 @@ export default function SellerOrderDetails() {
   const loadOrder = useCallback(async () => {
     setLoading(true);
 
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await getSessionWithRetry(supabase.auth);
     const sellerId = sessionData.session?.user?.id;
 
     if (sellerId) {
