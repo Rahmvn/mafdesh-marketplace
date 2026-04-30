@@ -11,6 +11,7 @@ const {
   mockUsersMaybeSingle,
   mockUsersUpsert,
   mockProfilesUpsert,
+  mockFunctionsInvoke,
   mockMergeGuestCart,
   mockShowError,
   mockShowWarning,
@@ -22,6 +23,7 @@ const {
   const mockUsersMaybeSingle = vi.fn();
   const mockUsersUpsert = vi.fn();
   const mockProfilesUpsert = vi.fn();
+  const mockFunctionsInvoke = vi.fn();
   const mockMergeGuestCart = vi.fn();
   const mockShowError = vi.fn();
   const mockShowWarning = vi.fn();
@@ -53,6 +55,7 @@ const {
     mockUsersMaybeSingle,
     mockUsersUpsert,
     mockProfilesUpsert,
+    mockFunctionsInvoke,
     mockMergeGuestCart,
     mockShowError,
     mockShowWarning,
@@ -66,6 +69,9 @@ vi.mock('../supabaseClient', () => ({
       getSession: mockGetSession,
       signInWithPassword: mockSignInWithPassword,
       signOut: mockSignOut,
+    },
+    functions: {
+      invoke: mockFunctionsInvoke,
     },
     from: mockFrom,
   },
@@ -137,6 +143,16 @@ describe('Login', () => {
       error: null,
     });
     mockProfilesUpsert.mockResolvedValue({
+      error: null,
+    });
+    mockFunctionsInvoke.mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 'buyer-1',
+          role: 'buyer',
+        },
+      },
       error: null,
     });
     mockSignInWithPassword.mockResolvedValue({
@@ -215,8 +231,8 @@ describe('Login', () => {
     });
     mockSignInWithPassword.mockResolvedValue({
       data: {
-        user: { id: 'seller-1', email: 'seller@example.com' },
-        session: { user: { id: 'seller-1', email: 'seller@example.com' } },
+        user: { id: 'seller-1', email: 'seller@example.com', user_metadata: { role: 'seller' } },
+        session: { user: { id: 'seller-1', email: 'seller@example.com', user_metadata: { role: 'seller' } } },
       },
       error: null,
     });
@@ -281,6 +297,61 @@ describe('Login', () => {
     expect(await screen.findByText('Marketplace')).toBeInTheDocument();
     expect(mockProfilesUpsert).toHaveBeenCalled();
     expect(mockUsersUpsert).toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a mismatched buyer placeholder into a seller account during login', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: {
+        id: 'seller-1',
+        role: 'buyer',
+        phone_number: null,
+        business_name: null,
+      },
+      error: null,
+    });
+    mockFunctionsInvoke.mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 'seller-1',
+          role: 'seller',
+        },
+      },
+      error: null,
+    });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: {
+          id: 'seller-1',
+          email: 'seller@example.com',
+          user_metadata: {
+            role: 'seller',
+            business_name: 'Demo Store',
+          },
+        },
+        session: {
+          user: {
+            id: 'seller-1',
+            email: 'seller@example.com',
+            user_metadata: {
+              role: 'seller',
+              business_name: 'Demo Store',
+            },
+          },
+        },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    fillAndSubmitLoginForm();
+
+    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    expect(mockFunctionsInvoke).toHaveBeenCalled();
     expect(mockShowError).not.toHaveBeenCalled();
   });
 });

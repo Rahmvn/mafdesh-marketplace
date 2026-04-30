@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
+import { reconcileUserRole } from '../services/accountBootstrapService';
 
 export default function SignUp() {
   const [userType, setUserType] = useState("buyer");
@@ -36,6 +37,21 @@ export default function SignUp() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
   const { showError, showWarning, ModalComponent } = useModal();
+
+  const attemptRoleReconcile = async (nextFormData) => {
+    try {
+      const reconciledUser = await reconcileUserRole({
+        role: userType,
+        phoneNumber: nextFormData.phone_number,
+        businessName: nextFormData.business_name,
+      });
+
+      return Boolean(reconciledUser?.role === userType);
+    } catch (error) {
+      console.error('Signup role reconciliation failed:', error);
+      return false;
+    }
+  };
 
   const validateUsername = (username) => {
     if (username.length < 3) {
@@ -110,9 +126,13 @@ export default function SignUp() {
     }
 
     if (existingUser.role && existingUser.role !== userType) {
-      throw new Error(
-        `This account was created as ${existingUser.role}. Please use the matching login type or contact support if that is unexpected.`
-      );
+      const reconciled = await attemptRoleReconcile(nextFormData);
+
+      if (reconciled) {
+        return;
+      }
+
+      return "role_recovery_required";
     }
 
     const { error: updateError } = await supabase
@@ -167,7 +187,18 @@ export default function SignUp() {
         return false;
       }
 
-      await syncUserRecord(userId, nextFormData);
+      const syncResult = await syncUserRecord(userId, nextFormData);
+
+      if (syncResult === "role_recovery_required") {
+        return {
+          ok: true,
+          message:
+            userType === "seller"
+              ? "Account created. Log in once to finish activating your seller workspace."
+              : "Account created. Log in once to finish activating your account.",
+        };
+      }
+
       return true;
     } catch (error) {
       console.error(error);
@@ -359,7 +390,10 @@ export default function SignUp() {
                 if (success) {
                   navigate('/login', {
                     state: {
-                      message: 'Account created successfully! Please check your email to verify before logging in.'
+                      message:
+                        typeof success === 'object' && success?.message
+                          ? success.message
+                          : 'Account created successfully! Please check your email to verify before logging in.'
                     }
                   });
                 }

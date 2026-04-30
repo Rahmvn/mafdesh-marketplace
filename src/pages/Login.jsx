@@ -6,6 +6,10 @@ import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
+import {
+  normalizeSelfServiceRole,
+  reconcileUserRole,
+} from '../services/accountBootstrapService';
 import { cartService } from '../services/cartService';
 
 const AUTH_LOCK_RETRY_DELAYS_MS = [150, 300];
@@ -40,16 +44,11 @@ async function runAuthOperationWithRetry(operation) {
 }
 
 function getNormalizedMetadataRole(authUser, fallbackRole = '') {
-  const metadataRole = String(
+  return normalizeSelfServiceRole(
     authUser?.user_metadata?.role ||
       authUser?.raw_user_meta_data?.role ||
-      fallbackRole ||
-      ''
-  )
-    .trim()
-    .toLowerCase();
-
-  return ['buyer', 'seller', 'admin'].includes(metadataRole) ? metadataRole : '';
+      fallbackRole
+  );
 }
 
 export default function Login() {
@@ -113,6 +112,28 @@ export default function Login() {
 
     const existingUser = await loadPublicUserRecord(authUser.id);
     if (existingUser?.role) {
+      const desiredRole = getNormalizedMetadataRole(authUser);
+
+      if (desiredRole && desiredRole !== existingUser.role) {
+        try {
+          const reconciledUser = await reconcileUserRole({
+            role: desiredRole,
+            phoneNumber: authUser.user_metadata?.phone_number || existingUser.phone_number || null,
+            businessName: authUser.user_metadata?.business_name || existingUser.business_name || null,
+          });
+
+          if (reconciledUser?.role) {
+            return reconciledUser;
+          }
+        } catch (reconcileError) {
+          console.error('Role reconciliation failed during login:', reconcileError);
+        }
+
+        throw new Error(
+          `We found your account, but its ${desiredRole} setup is still incomplete. Please try again in a moment.`
+        );
+      }
+
       return existingUser;
     }
 
