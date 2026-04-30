@@ -685,7 +685,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               )}
             </div>
 
-          <div className={`${isBuyerLike ? "flex lg:hidden" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
+          <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
             {isBuyerLike ? (
               <>
                 {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
@@ -704,14 +704,18 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               </>
             ) : (
               <>
-            <NotificationBell user={storedUser} theme={theme} />
+            <div className={isSeller ? 'xl:hidden' : ''}>
+              <NotificationBell user={storedUser} theme={theme} />
+            </div>
             {themeToggle && (
-              <ThemeToggleButton
-                darkMode={themeToggle.darkMode}
-                onToggle={themeToggle.onToggle}
-                compact
-                isDarkTheme={isDarkTheme}
-              />
+              <div className={isSeller ? 'xl:hidden' : ''}>
+                <ThemeToggleButton
+                  darkMode={themeToggle.darkMode}
+                  onToggle={themeToggle.onToggle}
+                  compact
+                  isDarkTheme={isDarkTheme}
+                />
+              </div>
             )}
             <button
               type="button"
@@ -751,7 +755,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       </nav>
 
       {mobileMenu && !isAdmin && !isBuyer && (
-        <div id="mobile-nav-menu" className={`px-4 py-4 xl:hidden ${mobilePanelClass}`}>
+        <div id="mobile-nav-menu" className={`px-4 py-4 ${isSeller ? '' : 'xl:hidden'} ${mobilePanelClass}`}>
           <div className="flex flex-col space-y-2">
             {userRole === 'seller' && (
               <>
