@@ -8,7 +8,9 @@ const {
   mockGetSession,
   mockSignInWithPassword,
   mockSignOut,
-  mockUsersSingle,
+  mockUsersMaybeSingle,
+  mockUsersUpsert,
+  mockProfilesUpsert,
   mockMergeGuestCart,
   mockShowError,
   mockShowWarning,
@@ -17,7 +19,9 @@ const {
   const mockGetSession = vi.fn();
   const mockSignInWithPassword = vi.fn();
   const mockSignOut = vi.fn();
-  const mockUsersSingle = vi.fn();
+  const mockUsersMaybeSingle = vi.fn();
+  const mockUsersUpsert = vi.fn();
+  const mockProfilesUpsert = vi.fn();
   const mockMergeGuestCart = vi.fn();
   const mockShowError = vi.fn();
   const mockShowWarning = vi.fn();
@@ -26,9 +30,16 @@ const {
       return {
         select: () => ({
           eq: () => ({
-            single: mockUsersSingle,
+            maybeSingle: mockUsersMaybeSingle,
           }),
         }),
+        upsert: mockUsersUpsert,
+      };
+    }
+
+    if (table === 'profiles') {
+      return {
+        upsert: mockProfilesUpsert,
       };
     }
 
@@ -39,7 +50,9 @@ const {
     mockGetSession,
     mockSignInWithPassword,
     mockSignOut,
-    mockUsersSingle,
+    mockUsersMaybeSingle,
+    mockUsersUpsert,
+    mockProfilesUpsert,
     mockMergeGuestCart,
     mockShowError,
     mockShowWarning,
@@ -113,11 +126,17 @@ function createDeferred() {
 
 describe('Login', () => {
   beforeEach(() => {
-    mockUsersSingle.mockResolvedValue({
+    mockUsersMaybeSingle.mockResolvedValue({
       data: {
         id: 'buyer-1',
         role: 'buyer',
       },
+      error: null,
+    });
+    mockUsersUpsert.mockResolvedValue({
+      error: null,
+    });
+    mockProfilesUpsert.mockResolvedValue({
       error: null,
     });
     mockSignInWithPassword.mockResolvedValue({
@@ -180,6 +199,88 @@ describe('Login', () => {
     });
 
     expect(await screen.findByText('Marketplace')).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('auto-routes even when the user picked the wrong login type first', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: {
+        id: 'seller-1',
+        role: 'seller',
+      },
+      error: null,
+    });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'seller-1', email: 'seller@example.com' },
+        session: { user: { id: 'seller-1', email: 'seller@example.com' } },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    fillAndSubmitLoginForm();
+
+    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds the public user record from auth metadata when it is missing', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
+    mockUsersMaybeSingle
+      .mockResolvedValueOnce({
+        data: null,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          id: 'buyer-1',
+          role: 'buyer',
+        },
+        error: null,
+      });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: {
+          id: 'buyer-1',
+          email: 'buyer@example.com',
+          user_metadata: {
+            role: 'buyer',
+            full_name: 'Buyer Demo',
+            username: 'buyerdemo',
+            location: 'Lagos',
+            phone_number: '08012345678',
+          },
+        },
+        session: {
+          user: {
+            id: 'buyer-1',
+            email: 'buyer@example.com',
+            user_metadata: {
+              role: 'buyer',
+              full_name: 'Buyer Demo',
+              username: 'buyerdemo',
+              location: 'Lagos',
+              phone_number: '08012345678',
+            },
+          },
+        },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    fillAndSubmitLoginForm();
+
+    expect(await screen.findByText('Marketplace')).toBeInTheDocument();
+    expect(mockProfilesUpsert).toHaveBeenCalled();
+    expect(mockUsersUpsert).toHaveBeenCalled();
     expect(mockShowError).not.toHaveBeenCalled();
   });
 });

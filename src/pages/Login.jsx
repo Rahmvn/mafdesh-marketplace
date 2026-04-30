@@ -39,6 +39,19 @@ async function runAuthOperationWithRetry(operation) {
   throw new Error('AUTH_OPERATION_FAILED');
 }
 
+function getNormalizedMetadataRole(authUser, fallbackRole = '') {
+  const metadataRole = String(
+    authUser?.user_metadata?.role ||
+      authUser?.raw_user_meta_data?.role ||
+      fallbackRole ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
+
+  return ['buyer', 'seller', 'admin'].includes(metadataRole) ? metadataRole : '';
+}
+
 export default function Login() {
   const [userType, setUserType] = useState("buyer");
   const [email, setEmail] = useState("");
@@ -68,6 +81,115 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const setLoadingSafely = useCallback((nextValue) => {
+    if (isMountedRef.current) {
+      setIsLoading(nextValue);
+    }
+  }, []);
+
+  const loadPublicUserRecord = useCallback(async (userId) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  }, []);
+
+  const ensurePublicUserRecord = useCallback(async (authUser, fallbackRole = '') => {
+    if (!authUser?.id) {
+      throw new Error('Login failed');
+    }
+
+    const existingUser = await loadPublicUserRecord(authUser.id);
+    if (existingUser?.role) {
+      return existingUser;
+    }
+
+    const role = getNormalizedMetadataRole(authUser, fallbackRole);
+    if (!role) {
+      throw new Error(
+        'Your account is missing a role setup. Please contact support so we can restore it.'
+      );
+    }
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert(
+        {
+          id: authUser.id,
+          full_name: authUser.user_metadata?.full_name || null,
+          username: authUser.user_metadata?.username || null,
+          location: authUser.user_metadata?.location || null,
+        },
+        { onConflict: 'id' }
+      );
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert(
+        {
+          id: authUser.id,
+          email: authUser.email || existingUser?.email || null,
+          role: existingUser?.role || role,
+          phone_number: authUser.user_metadata?.phone_number || existingUser?.phone_number || null,
+          business_name:
+            role === 'seller'
+              ? authUser.user_metadata?.business_name || existingUser?.business_name || null
+              : null,
+        },
+        { onConflict: 'id' }
+      );
+
+    if (userError) {
+      throw userError;
+    }
+
+    const restoredUser = await loadPublicUserRecord(authUser.id);
+    if (!restoredUser?.role) {
+      throw new Error('We could not finish restoring your account. Please try again.');
+    }
+
+    return restoredUser;
+  }, [loadPublicUserRecord]);
+
+  const storeAndRouteUser = useCallback(async (profile, userId) => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({
+      id: userId,
+      role: profile.role
+    }));
+
+    await mergeGuestCartIfBuyer(profile.role, userId);
+
+    if (returnUrl && returnUrl.startsWith('/')) {
+      navigate(returnUrl);
+      return;
+    }
+
+    if (profile.role === 'buyer') {
+      navigate('/marketplace');
+    } else if (profile.role === 'seller') {
+      navigate('/seller/dashboard');
+    } else if (profile.role === 'admin') {
+      navigate('/admin/dashboard');
+    }
+  }, [mergeGuestCartIfBuyer, navigate, returnUrl]);
+
+  useEffect(() => {
     const checkExistingSession = async () => {
       try {
         const {
@@ -80,37 +202,8 @@ export default function Login() {
         }
 
         const userId = session.user.id;
-
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', userId)
-          .single();
-
-        if (error || !userData) {
-          localStorage.removeItem('mafdesh_user');
-          return;
-        }
-
-        localStorage.setItem('mafdesh_user', JSON.stringify({
-          id: userId,
-          role: userData.role
-        }));
-
-        await mergeGuestCartIfBuyer(userData.role, userId);
-
-        if (returnUrl && returnUrl.startsWith('/')) {
-          navigate(returnUrl);
-          return;
-        }
-
-        if (userData.role === 'buyer') {
-          navigate('/marketplace');
-        } else if (userData.role === 'seller') {
-          navigate('/seller/dashboard');
-        } else if (userData.role === 'admin') {
-          navigate('/admin/dashboard');
-        }
+        const userData = await ensurePublicUserRecord(session.user);
+        await storeAndRouteUser(userData, userId);
       } catch (error) {
         console.error('Failed to check existing auth session:', error);
         localStorage.removeItem('mafdesh_user');
@@ -126,19 +219,7 @@ export default function Login() {
 
     initialSessionCheckRef.current = checkExistingSession();
     handleSignupSuccess();
-  }, [mergeGuestCartIfBuyer, navigate, returnUrl, signupMessage]);
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const setLoadingSafely = useCallback((nextValue) => {
-    if (isMountedRef.current) {
-      setIsLoading(nextValue);
-    }
-  }, []);
+  }, [ensurePublicUserRecord, signupMessage, storeAndRouteUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -173,47 +254,17 @@ export default function Login() {
       if (!user) {
         throw new Error("Login failed");
       }
-      
-
-      // 2. Fetch role from public.users
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError) throw profileError;
-
+      const profile = await ensurePublicUserRecord(user, userType);
       const role = profile.role;
       if (!role) {
         throw new Error("User role not found.");
       }
 
       if (role !== userType) {
-        await supabase.auth.signOut();
-        localStorage.removeItem('mafdesh_user');
-        showError('Wrong Login Type', `This account is registered as ${role}. Please select the correct login type.`);
-        return;
+        setUserType(role);
       }
 
-      // 3. Store session locally
-      localStorage.setItem('mafdesh_user', JSON.stringify({
-        id: user.id,
-        role: profile.role,
-      }));
-
-      await mergeGuestCartIfBuyer(profile.role, user.id);
-
-      // 4. Redirect
-      if (returnUrl && returnUrl.startsWith('/')) {
-        navigate(returnUrl);
-      } else if (role === "buyer") {
-        navigate('/marketplace');
-      } else if (role === "seller") {
-        navigate('/seller/dashboard');
-      } else if (role === "admin") {
-        navigate('/admin/dashboard');
-      }
+      await storeAndRouteUser(profile, user.id);
     } catch (error) {
       console.error('Login error:', error);
       const message = String(error?.message || '');

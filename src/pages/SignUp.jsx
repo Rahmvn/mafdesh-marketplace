@@ -9,6 +9,7 @@ import Footer from '../components/FooterSlim';
 
 export default function SignUp() {
   const [userType, setUserType] = useState("buyer");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -74,64 +75,116 @@ export default function SignUp() {
     setUsernameError("");
     return true;
   };
-const handleSignUp = async (formData) => {
-  try {
-    const { email, password } = formData;
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+  const syncUserRecord = async (userId, nextFormData) => {
+    const basePayload = {
+      email: nextFormData.email,
+      phone_number: nextFormData.phone_number,
+      business_name: userType === 'seller' ? nextFormData.business_name : null,
+    };
 
-    if (error) throw error;
-    if (!data.user) {
-      showError("Signup Failed", "Signup failed.");
-      return false;
-    }
-
-    const userId = data.user.id;
-
-    // Insert into profiles
-   // Insert into profiles
-const { error: profileError } = await supabase
-  .from('profiles')
-  .upsert({
-    id: userId,
-    full_name: formData.full_name,
-    username: formData.username,
-    location: formData.location
-  }, { onConflict: 'id' });
-
-    if (profileError) {
-      console.error('Profile insert error:', profileError);
-      showError('Profile Creation Failed', `Failed to create profile: ${profileError.message}`);
-      return false;
-    }
-
-    // Insert into users
-    const { error: userError } = await supabase
+    const { data: existingUser, error: existingUserError } = await supabase
       .from('users')
-      .upsert({
-        id: userId,
-        email: formData.email,
-        role: userType,
-        phone_number: formData.phone_number,
-        business_name: userType === 'seller' ? formData.business_name : null
-      }, { onConflict: 'id' });
+      .select('id, role')
+      .eq('id', userId)
+      .maybeSingle();
 
-    if (userError) {
-      console.error('User insert error:', userError);
-      showError('User Creation Failed', `Failed to create user record: ${userError.message}`);
-      return false;
+    if (existingUserError) {
+      throw existingUserError;
     }
 
-    return true;
-  } catch (error) {
-    console.error(error);
-    showError('Signup Failed', error.message);
-    return false;
-  }
-};
+    if (!existingUser) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          role: userType,
+          ...basePayload,
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return;
+    }
+
+    if (existingUser.role && existingUser.role !== userType) {
+      throw new Error(
+        `This account was created as ${existingUser.role}. Please use the matching login type or contact support if that is unexpected.`
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update(basePayload)
+      .eq('id', userId);
+
+    if (updateError) {
+      throw updateError;
+    }
+  };
+
+  const handleSignUp = async (nextFormData) => {
+    try {
+      const { email, password } = nextFormData;
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role: userType,
+            full_name: nextFormData.full_name,
+            username: nextFormData.username,
+            phone_number: nextFormData.phone_number,
+            business_name: userType === 'seller' ? nextFormData.business_name : null,
+            location: nextFormData.location,
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data.user) {
+        showError("Signup Failed", "Signup failed.");
+        return false;
+      }
+
+      const userId = data.user.id;
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: userId,
+          full_name: nextFormData.full_name,
+          username: nextFormData.username,
+          location: nextFormData.location
+        }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error('Profile insert error:', profileError);
+        showError('Profile Creation Failed', `Failed to create profile: ${profileError.message}`);
+        return false;
+      }
+
+      await syncUserRecord(userId, nextFormData);
+      return true;
+    } catch (error) {
+      console.error(error);
+      const message = String(error?.message || '');
+
+      if (message.includes('Changing account roles directly is not allowed')) {
+        showError(
+          'Signup Failed',
+          'This account was created with a different role than the one selected here. Please sign up again with the correct account type, or contact support if this keeps happening.'
+        );
+        return false;
+      }
+
+      showError('Signup Failed', message || 'Signup failed.');
+      return false;
+    }
+  };
 
   return (
     <div
@@ -264,6 +317,10 @@ const { error: profileError } = await supabase
               onSubmit={async (e) => {
                 e.preventDefault();
 
+                if (isSubmitting) {
+                  return;
+                }
+
                 if (!formData.full_name || !formData.email || !formData.username || !formData.password || !formData.location) {
                   showWarning('Missing Details', 'Please fill in all required fields including location.');
                   return;
@@ -295,7 +352,9 @@ const { error: profileError } = await supabase
                   return;
                 }
 
+                setIsSubmitting(true);
                 const success = await handleSignUp(formData);
+                setIsSubmitting(false);
 
                 if (success) {
                   navigate('/login', {
@@ -775,6 +834,7 @@ const { error: profileError } = await supabase
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="hover:shadow-lg"
                 style={{
                   width: "100%",
@@ -785,12 +845,14 @@ const { error: profileError } = await supabase
                   border: "none",
                   fontSize: "15px",
                   fontWeight: "700",
-                  cursor: "pointer",
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
                   marginTop: "24px",
                   transition: "all 0.3s ease",
                   letterSpacing: "0.3px",
+                  opacity: isSubmitting ? 0.7 : 1,
                 }}
                 onMouseOver={(e) => {
+                  if (isSubmitting) return;
                   e.target.style.transform = "translateY(-2px)";
                   e.target.style.boxShadow =
                     userType === "buyer"
@@ -802,7 +864,7 @@ const { error: profileError } = await supabase
                   e.target.style.boxShadow = "none";
                 }}
               >
-                Create Account
+                {isSubmitting ? "Creating Account..." : "Create Account"}
               </button>
             </form>
 
