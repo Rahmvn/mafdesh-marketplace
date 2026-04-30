@@ -386,7 +386,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
             )}
 
             {isSeller && (
-              <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 xl:flex">
+              <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2">
                 <>
                   <Link to="/seller/dashboard" className={navBase}>
                     <LayoutDashboard className="mr-1.5 h-4 w-4" />
@@ -441,7 +441,9 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
               className={
                 isBuyerLike
                   ? "hidden shrink-0 items-center gap-3 lg:flex"
-                  : "hidden shrink-0 items-center gap-3 xl:flex"
+                  : isSeller
+                    ? "hidden"
+                    : "hidden shrink-0 items-center gap-3 xl:flex"
               }
             >
               {themeToggle && !isBuyerLike && (
