@@ -4,6 +4,7 @@ import {
   getUserWithRetry,
   refreshSessionWithRetry,
 } from "../utils/authResilience";
+import { clearStoredUser, getStoredUser } from "../utils/storage";
 
 export const ADMIN_TARGET_TYPES = {
   USER: "user",
@@ -66,7 +67,7 @@ export const ADMIN_TARGET_LABELS = {
 };
 
 export function getCurrentAdminUser() {
-  const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "null");
+  const storedUser = getStoredUser();
 
   if (!storedUser || storedUser.role !== "admin") {
     throw new Error("Only admins can perform this action.");
@@ -125,7 +126,7 @@ async function getValidAccessToken() {
 
   if (refreshError || !refreshedSession?.access_token) {
     await supabase.auth.signOut();
-    localStorage.removeItem("mafdesh_user");
+    clearStoredUser();
     throw new Error("Your admin session has expired. Please log in again.");
   }
 
@@ -136,7 +137,7 @@ async function getValidAccessToken() {
 
   if (refreshedUserError || !refreshedUser) {
     await supabase.auth.signOut();
-    localStorage.removeItem("mafdesh_user");
+    clearStoredUser();
     throw new Error("Your admin session is invalid. Please log in again.");
   }
 

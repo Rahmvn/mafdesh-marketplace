@@ -30,6 +30,7 @@ import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png
 import { readCachedCartCount } from '../utils/cartStorage';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
 import { showGlobalLoginRequired } from '../hooks/modalService';
+import { getStoredUser } from '../utils/storage';
 import NotificationBell from './NotificationBell';
 
 function ThemeToggleButton({ darkMode, onToggle, compact, isDarkTheme }) {
@@ -53,9 +54,7 @@ function ThemeToggleButton({ darkMode, onToggle, compact, isDarkTheme }) {
 }
 
 export default function Navbar({ onLogout, theme = 'light', themeToggle = null }) {
-  const [storedUser, setStoredUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [storedUser, setStoredUser] = useState(() => getStoredUser());
   const [authUserId, setAuthUserId] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [adminNavOpen, setAdminNavOpen] = useState(false);
@@ -131,7 +130,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
   async function loadCartCount() {
     try {
-      const user = JSON.parse(localStorage.getItem('mafdesh_user'));
+      const user = getStoredUser();
       if (!user) {
         return;
       }
@@ -231,7 +230,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
       }
     };
     const handleStorageSync = () => {
-      setStoredUser(JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
+      setStoredUser(getStoredUser());
       setCartCount(readCachedCartCount());
     };
     window.addEventListener('cartUpdated', handleCartUpdate);

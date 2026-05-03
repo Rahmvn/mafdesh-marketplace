@@ -16,6 +16,7 @@ import {
   runAuthOperationWithRetry,
   runReadOperationWithRetry,
 } from '../utils/authResilience';
+import { clearStoredUser, setStoredUser } from '../utils/storage';
 
 function getNormalizedMetadataRole(authUser, fallbackRole = '') {
   return normalizeSelfServiceRole(
@@ -165,10 +166,10 @@ export default function Login() {
   }, [loadPublicUserRecord]);
 
   const storeAndRouteUser = useCallback(async (profile, userId) => {
-    localStorage.setItem('mafdesh_user', JSON.stringify({
+    setStoredUser({
       id: userId,
       role: profile.role
-    }));
+    });
 
     await mergeGuestCartIfBuyer(profile.role, userId);
 
@@ -194,7 +195,7 @@ export default function Login() {
         } = await runAuthOperationWithRetry(() => supabase.auth.getSession());
 
         if (!session) {
-          localStorage.removeItem('mafdesh_user');
+          clearStoredUser();
           return;
         }
 
@@ -203,7 +204,7 @@ export default function Login() {
         await storeAndRouteUser(userData, userId);
       } catch (error) {
         console.error('Failed to check existing auth session:', error);
-        localStorage.removeItem('mafdesh_user');
+        clearStoredUser();
       }
     };
 

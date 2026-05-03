@@ -1,6 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const jsonHeaders = {
+  ...corsHeaders,
+  'Content-Type': 'application/json',
+}
+
 async function assertSellerIsActive(
   supabaseAdmin: ReturnType<typeof createClient>,
   sellerId: string
@@ -9,143 +20,158 @@ async function assertSellerIsActive(
     .from('users')
     .select('id, status, account_status')
     .eq('id', sellerId)
-    .single();
+    .single()
 
   if (error || !sellerRecord) {
-    throw new Error('Seller not found');
+    throw new Error('Seller not found')
   }
 
   const sellerStatus = String(
     sellerRecord.account_status || sellerRecord.status || 'active'
-  ).toLowerCase();
+  ).toLowerCase()
 
   if (sellerStatus !== 'active') {
-    throw new Error('This seller account is not active for marketplace orders.');
+    throw new Error('This seller account is not active for marketplace orders.')
   }
 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    console.log('Auth header present:', !!req.headers.get('Authorization'));
+    console.log('[confirm-order-multi] Processing request')
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      console.log('No auth header');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
+      })
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      return new Response(JSON.stringify({ error: 'Supabase configuration is missing.' }), {
+        status: 500,
+        headers: jsonHeaders,
       })
     }
 
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+      supabaseUrl,
+      supabaseAnonKey,
       { global: { headers: { Authorization: authHeader } } }
     )
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
     if (userError || !user) {
-      console.log('User auth error:', userError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
-    console.log('Authenticated user:', user.id);
 
-    const body = await req.json().catch(e => {
-      console.log('JSON parse error:', e);
-      return null;
-    });
+    const body = await req.json().catch((error) => {
+      console.error('[confirm-order-multi] Invalid JSON body:', error)
+      return null
+    })
+
     if (!body) {
       return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
         status: 400,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
-    const { orderId } = body;
-    console.log('Order ID:', orderId);
+    const { orderId } = body
     if (!orderId) {
       return new Response(JSON.stringify({ error: 'Missing orderId' }), {
         status: 400,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
-    // Check if order exists and is PENDING
     const { data: orderCheck, error: checkError } = await supabaseAdmin
       .from('orders')
       .select('buyer_id, seller_id, status')
       .eq('id', orderId)
-      .single();
+      .single()
 
-    if (checkError) {
-      console.log('Order check error:', checkError);
+    if (checkError || !orderCheck) {
+      console.error('[confirm-order-multi] Order lookup failed:', checkError)
       return new Response(JSON.stringify({ error: 'Order not found' }), {
         status: 404,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
     if (orderCheck.status !== 'PENDING') {
-      console.log('Order status not PENDING:', orderCheck.status);
       return new Response(JSON.stringify({ error: 'Order already processed' }), {
         status: 409,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
     if (orderCheck.buyer_id !== user.id) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), {
         status: 403,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
     await assertSellerIsActive(supabaseAdmin, orderCheck.seller_id)
 
-    // Call the RPC
-    console.log('Calling deduct_stock_bulk RPC');
-    const { data: success, error: rpcError } = await supabaseAdmin.rpc('deduct_stock_bulk', {
-      p_order_id: orderId,
-    });
+    const { data: orderItems, error: orderItemsError } = await supabaseAdmin
+      .from('order_items')
+      .select('product_id, quantity')
+      .eq('order_id', orderId)
+
+    if (orderItemsError || !orderItems?.length) {
+      console.error('[confirm-order-multi] Order items lookup failed:', orderItemsError)
+      return new Response(
+        JSON.stringify({ error: 'Order confirmation failed. Please try again.' }),
+        {
+          status: 500,
+          headers: jsonHeaders,
+        }
+      )
+    }
+
+    const { error: rpcError } = await supabaseAdmin.rpc('deduct_stock_bulk', {
+      p_items: orderItems.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      })),
+    })
+
     if (rpcError) {
-      console.error('RPC error details:', rpcError);
-      return new Response(JSON.stringify({ 
-        error: rpcError.message, 
-        details: rpcError,
-        hint: 'Check RPC function logic and database logs'
-      }), {
-        status: 500,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+      console.error('[confirm-order-multi] RPC error:', rpcError)
 
-    if (!success) {
-      console.log('RPC returned false – insufficient stock or order not PENDING');
-      return new Response(JSON.stringify({ error: 'Cannot complete order' }), {
-        status: 409,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-      })
-    }
+      const status = /insufficient stock|only has|product .* not found|no longer available/i.test(
+        String(rpcError.message || '')
+      )
+        ? 409
+        : 500
 
-    console.log('Stock deducted successfully');
+      return new Response(
+        JSON.stringify({
+          error: status === 409
+            ? 'One or more items are out of stock.'
+            : 'Order confirmation failed. Please try again.',
+        }),
+        {
+          status,
+          headers: jsonHeaders,
+        }
+      )
+    }
 
     const { data: flashSaleItems, error: flashSaleItemsError } = await supabaseAdmin
       .from('order_items')
@@ -153,32 +179,32 @@ serve(async (req) => {
       .eq('order_id', orderId)
 
     if (flashSaleItemsError) {
-      console.error('Flash sale lookup error:', flashSaleItemsError);
+      console.error('[confirm-order-multi] Flash sale lookup error:', flashSaleItemsError)
       return new Response(JSON.stringify({ error: 'Internal server error' }), {
         status: 500,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
 
     for (const item of flashSaleItems || []) {
-      const confirmedProductPrice = Number(item.product?.price ?? 0);
-      const orderItemPrice = Number(item.price_at_time ?? 0);
-      const flashSaleQuantity = Number(item.quantity ?? 0);
+      const confirmedProductPrice = Number(item.product?.price ?? 0)
+      const orderItemPrice = Number(item.price_at_time ?? 0)
+      const flashSaleQuantity = Number(item.quantity ?? 0)
 
       if (!item.product_id || orderItemPrice <= 0 || orderItemPrice >= confirmedProductPrice) {
-        continue;
+        continue
       }
 
       for (let index = 0; index < flashSaleQuantity; index += 1) {
         const { error: incrementError } = await supabaseAdmin.rpc('increment_sale_quantity', {
           product_id: item.product_id,
-        });
+        })
 
         if (incrementError) {
-          console.error('Flash sale increment error:', incrementError);
+          console.error('[confirm-order-multi] Flash sale increment error:', incrementError)
           return new Response(JSON.stringify({ error: 'Internal server error' }), {
             status: 500,
-            headers: { 'Access-Control-Allow-Origin': '*' },
+            headers: jsonHeaders,
           })
         }
       }
@@ -186,19 +212,24 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: jsonHeaders,
     })
   } catch (err) {
-    console.error('Unexpected error in edge function:', err);
+    console.error('[confirm-order-multi] Unexpected error:', err)
+
     if (String(err?.message || '').includes('not active for marketplace orders')) {
       return new Response(JSON.stringify({ error: String(err.message) }), {
         status: 409,
-        headers: { 'Access-Control-Allow-Origin': '*' },
+        headers: jsonHeaders,
       })
     }
-    return new Response(JSON.stringify({ error: 'Internal server error: ' + err.message }), {
-      status: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-    })
+
+    return new Response(
+      JSON.stringify({ error: 'Order confirmation failed. Please try again.' }),
+      {
+        status: 500,
+        headers: jsonHeaders,
+      }
+    )
   }
 })

@@ -9,6 +9,7 @@ import { supabase } from '../supabaseClient';
 import useModal from '../hooks/useModal';
 import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
 import { getSellerPickupLocations, PICKUP_MODE } from '../services/deliveryService';
+import { getStoredUser, setStoredUser } from '../utils/storage';
 import {
   getFlashSaleValidationErrors,
   getProductPricing,
@@ -258,9 +259,7 @@ export default function EditProduct() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
-  const [currentUser, setCurrentUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRestocking, setIsRestocking] = useState(false);
@@ -357,14 +356,13 @@ export default function EditProduct() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
-      if (!storedUser) {
+      const userData = getStoredUser();
+      if (!userData) {
         showError('Authentication Required', 'Please log in to access this page.');
         navigate('/login');
         return;
       }
 
-      const userData = JSON.parse(storedUser);
       if (userData.role !== 'seller') {
         showError('Access Denied', 'Only sellers can edit products.');
         navigate('/login');
@@ -379,7 +377,7 @@ export default function EditProduct() {
 
       const nextUser = sellerData || userData;
       setCurrentUser(nextUser);
-      localStorage.setItem('mafdesh_user', JSON.stringify(nextUser));
+      setStoredUser(nextUser);
 
       if (!nextUser.seller_agreement_accepted) {
         navigate('/seller/agreement', { state: { from: location.pathname } });

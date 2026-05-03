@@ -1,15 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
+import { getStoredUser } from '../utils/storage';
 
 export default function FooterSlim() {
-  const [storedUser] = React.useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('mafdesh_user') || 'null');
-    } catch {
-      return null;
-    }
-  });
+  const [storedUser] = React.useState(() => getStoredUser());
   const year = new Date().getFullYear();
   const isBuyer = storedUser?.role === 'buyer';
 

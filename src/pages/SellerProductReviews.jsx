@@ -3,10 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageSquare, Star } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
+import SafeImage from "../components/SafeImage";
 import { supabase } from "../supabaseClient";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import { showGlobalConfirm, showGlobalError } from "../hooks/modalService";
 import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
+import { getStoredUser, setStoredUser } from "../utils/storage";
 
 function ReviewStars({ rating, size = 18 }) {
   return (
@@ -25,7 +27,7 @@ function ReviewStars({ rating, size = 18 }) {
 export default function SellerProductReviews() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("mafdesh_user") || "null"));
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export default function SellerProductReviews() {
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const loadPage = useCallback(async () => {
-    const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "null");
+    const storedUser = getStoredUser();
 
     if (!storedUser || storedUser.role !== "seller") {
       navigate("/login");
@@ -52,7 +54,7 @@ export default function SellerProductReviews() {
 
       if (sellerData) {
         setCurrentUser(sellerData);
-        localStorage.setItem("mafdesh_user", JSON.stringify(sellerData));
+        setStoredUser(sellerData);
       }
 
       const { data: productData, error: productError } = await supabase
@@ -176,7 +178,7 @@ export default function SellerProductReviews() {
 
         <div className={`rounded-xl p-4 sm:p-6 mb-8 ${theme.panel}`}>
           <div className="flex flex-col md:flex-row gap-5 md:items-start">
-            <img
+            <SafeImage
               src={product.images?.[0] || "https://placehold.co/600x600"}
               alt={product.name}
               className="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-xl border border-blue-100"

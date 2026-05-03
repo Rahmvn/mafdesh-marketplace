@@ -1,4 +1,5 @@
 import React from "react";
+import SafeImage from "./SafeImage";
 
 export default function ProductForm({
   formData,
@@ -9,6 +10,12 @@ export default function ProductForm({
   submitLabel,
   isLoading
 }) {
+  const safeFormData = {
+    images: [],
+    ...formData,
+    images: Array.isArray(formData?.images) ? formData.images : [],
+  };
+
   return (
     <form onSubmit={onSubmit} className="space-y-6">
 
@@ -20,7 +27,7 @@ export default function ProductForm({
         <input
           type="text"
           name="name"
-          value={formData.name}
+          value={safeFormData.name || ""}
           onChange={handleChange}
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
         />
@@ -35,7 +42,7 @@ export default function ProductForm({
         <input
           type="number"
           name="price"
-          value={formData.price}
+          value={safeFormData.price || ""}
           onChange={handleChange}
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
         />
@@ -49,7 +56,7 @@ export default function ProductForm({
         <input
           type="number"
           name="stock"
-          value={formData.stock}
+          value={safeFormData.stock || ""}
           onChange={handleChange}
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
         />
@@ -62,7 +69,7 @@ export default function ProductForm({
         </label>
         <textarea
           name="overview"
-          value={formData.overview}
+          value={safeFormData.overview || ""}
           onChange={handleChange}
           rows="3"
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
@@ -76,7 +83,7 @@ export default function ProductForm({
         </label>
         <textarea
           name="features"
-          value={formData.features}
+          value={safeFormData.features || ""}
           onChange={handleChange}
           rows="4"
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
@@ -90,7 +97,7 @@ export default function ProductForm({
         </label>
         <textarea
           name="specs"
-          value={formData.specs}
+          value={safeFormData.specs || ""}
           onChange={handleChange}
           rows="3"
           className="w-full px-4 py-2 border border-blue-200 rounded-lg"
@@ -103,7 +110,7 @@ export default function ProductForm({
           Images (Min 3)
         </label>
 
-        {formData.images.map((img, index) => (
+        {(safeFormData.images || []).map((img, index) => (
           <div key={index} className="mb-3">
             <input
               type="file"
@@ -114,7 +121,7 @@ export default function ProductForm({
             />
 
             {img && (
-              <img
+              <SafeImage
                 src={typeof img === "string" ? img : URL.createObjectURL(img)}
                 alt=""
                 className="mt-2 w-24 h-24 object-contain border"

@@ -2,13 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { getSessionWithRetry } from '../utils/authResilience';
+import { getStoredUser } from '../utils/storage';
 import Marketplace from './Marketplace';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [storedUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [storedUser] = useState(() => getStoredUser());
 
   useEffect(() => {
     if (storedUser?.role === 'seller') {

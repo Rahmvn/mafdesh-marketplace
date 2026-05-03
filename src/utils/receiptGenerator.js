@@ -3,6 +3,7 @@ import {
   getSessionWithRetry,
   refreshSessionWithRetry,
 } from './authResilience';
+import { fetchWithTimeout } from './fetchWithTimeout';
 import { getOrderItemsMap } from './orderItems';
 import { getBuyerOrderAmounts } from './orderAmounts';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
@@ -113,8 +114,13 @@ async function fetchOrderCounterparty(orderId, accessToken) {
     return null;
   }
 
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) {
+    throw new Error('Supabase URL is not configured.');
+  }
+
+  const response = await fetchWithTimeout(
+    `${supabaseUrl}/functions/v1/get-order-counterparty`,
     {
       method: 'POST',
       headers: {
@@ -617,7 +623,7 @@ function buildReceiptHtml({
 
 async function getReceiptLogoSrc() {
   try {
-    const response = await fetch(landscapeLogo)
+    const response = await fetchWithTimeout(landscapeLogo, {}, 10000)
 
     if (!response.ok) {
       throw new Error('Logo request failed.')

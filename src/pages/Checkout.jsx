@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
+import SafeImage from '../components/SafeImage';
 import AddressSelector from '../components/buyer/AddressSelector';
 import {
   GenericContentSkeleton,
@@ -26,6 +27,7 @@ import { supabase } from '../supabaseClient';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { getProductPricing } from '../utils/flashSale';
 import { formatNaira } from '../utils/multiSellerCheckout';
+import { navigateBack } from '../utils/navigation';
 import {
   formatSavedAddressForOrder,
   getFirstSavedAddressError,
@@ -46,6 +48,7 @@ export default function Checkout() {
   const [deliveryQuote, setDeliveryQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const loadProduct = useCallback(async (productId = id) => {
     const { data, error } = await supabase
@@ -55,11 +58,12 @@ export default function Checkout() {
         pickup_locations
       `)
       .eq('id', productId)
-      .single();
+      .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error(error);
-      navigate('/marketplace');
+      setNotFound(true);
+      setLoading(false);
       return;
     }
 
@@ -307,6 +311,21 @@ export default function Checkout() {
     );
   }
 
+  if (notFound) {
+    return (
+      <div className="min-h-screen flex flex-col bg-blue-50">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-blue-900">Product not found</h1>
+            <p className="mt-2 text-slate-600">This checkout item is no longer available.</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   if (!product) {
     return null;
   }
@@ -322,7 +341,7 @@ export default function Checkout() {
       <Navbar />
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack(navigate, '/marketplace')}
           className="mb-4 flex items-center gap-1 text-blue-600 hover:text-blue-800"
         >
           <ArrowLeft size={18} /> Back
@@ -335,7 +354,7 @@ export default function Checkout() {
             <div className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
               <h2 className="mb-4 font-semibold text-blue-900">Product</h2>
               <div className="flex flex-col gap-4 sm:flex-row">
-                <img
+                <SafeImage
                   src={product.images?.[0] || '/placeholder.png'}
                   alt={product.name}
                   className="h-24 w-24 rounded-lg border object-contain"

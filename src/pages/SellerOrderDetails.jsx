@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
@@ -35,6 +35,12 @@ import {
   markSellerOrderDelivered,
   markSellerOrderShipped,
 } from "../services/sellerOrderTransitionService";
+import {
+  getOrderDeadlineProcessingKey,
+  processOrderDeadline,
+} from "../services/orderDeadlineService";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { getStoredUser, setStoredUser } from "../utils/storage";
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -77,11 +83,12 @@ export default function SellerOrderDetails() {
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [buyer, setBuyer] = useState(null);
-  const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("mafdesh_user") || "null"));
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [refundRequests, setRefundRequests] = useState([]);
   const [adminHolds, setAdminHolds] = useState([]);
+  const attemptedAutoProcessingRef = useRef(new Set());
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
 
@@ -95,8 +102,13 @@ export default function SellerOrderDetails() {
 
   const loadBuyerDetails = useCallback(async (orderId) => {
     const invokeCounterparty = async (accessToken) => {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error('Supabase URL is not configured.');
+      }
+
+      const response = await fetchWithTimeout(
+        `${supabaseUrl}/functions/v1/get-order-counterparty`,
         {
           method: "POST",
           headers: {
@@ -188,7 +200,7 @@ export default function SellerOrderDetails() {
 
       if (sellerData) {
         setCurrentUser(sellerData);
-        localStorage.setItem("mafdesh_user", JSON.stringify(sellerData));
+        setStoredUser(sellerData);
       }
     }
 
@@ -333,6 +345,49 @@ export default function SellerOrderDetails() {
     return () => supabase.removeChannel(subscription);
   }, [id, loadOrder]);
 
+  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const isRefundProcessing = Boolean(pendingRefundRequest);
+  const isAdminHoldProcessing = Boolean(activeAdminHold);
+
+  useEffect(() => {
+    if (!order) {
+      return;
+    }
+
+    const autoProcessKey = getOrderDeadlineProcessingKey(order, {
+      now,
+      hasActiveHold: isAdminHoldProcessing,
+      hasPendingRefund: isRefundProcessing,
+    });
+
+    if (!autoProcessKey || attemptedAutoProcessingRef.current.has(autoProcessKey)) {
+      return;
+    }
+
+    attemptedAutoProcessingRef.current.add(autoProcessKey);
+
+    let cancelled = false;
+
+    const runAutoProcessing = async () => {
+      try {
+        const result = await processOrderDeadline(order.id);
+
+        if (!cancelled && result?.processed) {
+          await loadOrder();
+        }
+      } catch (error) {
+        console.error("Seller order auto-processing failed:", error);
+      }
+    };
+
+    runAutoProcessing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminHoldProcessing, isRefundProcessing, loadOrder, now, order]);
+
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
     if (getActiveOrderAdminHold(adminHolds)) {
@@ -427,11 +482,7 @@ export default function SellerOrderDetails() {
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
   const pickupDeadlineExpired = order.auto_cancel_at && new Date(order.auto_cancel_at) <= now;
   const disputeDeadlineExpired = order.dispute_deadline && new Date(order.dispute_deadline) <= now;
-  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
-  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
   const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
-  const isRefundProcessing = Boolean(pendingRefundRequest);
-  const isAdminHoldProcessing = Boolean(activeAdminHold);
   const displayStatusLabel = isRefundProcessing
     ? "REFUND PROCESSING"
     : order.status.replaceAll("_", " ");

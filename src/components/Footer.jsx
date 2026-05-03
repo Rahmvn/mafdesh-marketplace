@@ -2,15 +2,10 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Phone, MapPin, Shield, Lock, CreditCard, Facebook, Twitter, Instagram, Linkedin } from 'lucide-react';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
+import { getStoredUser } from '../utils/storage';
 
 export default function Footer() {
-  const [storedUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('mafdesh_user') || 'null');
-    } catch {
-      return null;
-    }
-  });
+  const [storedUser] = useState(() => getStoredUser());
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterMessage, setNewsletterMessage] = useState('');
   const isBuyer = storedUser?.role === 'buyer';

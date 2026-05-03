@@ -15,6 +15,7 @@ import {
 import AuthNavbarWrapper from "../components/AuthNavbarWrapper";
 import Footer from "../components/FooterSlim";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
+import SafeImage from "../components/SafeImage";
 import VerificationBadge from "../components/VerificationBadge";
 import useCountdown from "../hooks/useCountdown";
 import { cartService } from "../services/cartService";
@@ -33,7 +34,9 @@ import {
   showGlobalWarning,
 } from "../hooks/modalService";
 import { getProductPricing } from "../utils/flashSale";
+import { navigateBack } from "../utils/navigation";
 import { getAttributesForCategory } from "../utils/productAttributes";
+import { getStoredUser } from "../utils/storage";
 
 const SWIPE_THRESHOLD = 48;
 
@@ -282,7 +285,7 @@ function RelatedProductCard({ product, onOpen }) {
       className="group overflow-hidden rounded-[22px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
     >
       <div className="relative aspect-square overflow-hidden bg-slate-50 p-4">
-        <img
+        <SafeImage
           src={product.images?.[0] || "https://placehold.co/600x600"}
           alt={product.name}
           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
@@ -329,7 +332,7 @@ export default function ProductDetail() {
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [touchStartX, setTouchStartX] = useState(null);
 
-  const storedUser = JSON.parse(localStorage.getItem("mafdesh_user") || "{}");
+  const storedUser = getStoredUser() || {};
   const isAdmin = storedUser.role === "admin";
   const sellerBusinessName = getSellerBusinessName(seller);
 
@@ -344,18 +347,23 @@ export default function ProductDetail() {
         productQuery = productQuery.is("deleted_at", null);
       }
 
-      let { data, error } = await productQuery.single();
+      let { data, error } = await productQuery.maybeSingle();
 
       if (!isAdmin && isMissingDeletedAtColumn(error)) {
         ({ data, error } = await supabase
           .from("products")
           .select("*")
           .eq("id", id)
-          .single());
+          .maybeSingle());
       }
 
       if (error) {
         throw error;
+      }
+
+      if (!data) {
+        setProduct(null);
+        return;
       }
 
       setProduct(data);
@@ -638,7 +646,7 @@ export default function ProductDetail() {
 
       <main className="mx-auto flex-1 w-full max-w-[1180px] px-4 py-5 sm:py-8 lg:px-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack(navigate, '/marketplace')}
           className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/90 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:text-blue-900"
         >
           <ArrowLeft size={18} /> Back
@@ -679,7 +687,7 @@ export default function ProductDetail() {
                 )}
 
                 <div className="aspect-square flex items-center justify-center overflow-hidden lg:aspect-[5/4] lg:max-h-[360px]">
-                  <img
+                  <SafeImage
                     src={galleryImages[activeImage]}
                     alt={product.name}
                     className="max-h-full max-w-full select-none object-contain"
@@ -716,7 +724,7 @@ export default function ProductDetail() {
                             : "border-slate-200 hover:border-orange-300"
                         }`}
                       >
-                        <img
+                        <SafeImage
                           src={img}
                           alt={`${product.name} preview ${index + 1}`}
                           className="h-full w-full rounded-xl object-contain"

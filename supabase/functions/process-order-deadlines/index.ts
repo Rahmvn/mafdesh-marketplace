@@ -4,8 +4,23 @@ const SYSTEM_SOURCE = 'system_cron'
 const CRON_SCHEDULE = '*/5 * * * *'
 const DELIVERY_REVIEW_ACTION = 'DELIVERY_DEADLINE_REVIEW'
 const DELIVERY_REVIEW_BUFFER_MS = 24 * 60 * 60 * 1000
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 type SupabaseClient = ReturnType<typeof createClient>
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  })
+}
 
 async function logSystemOrderAction(
   supabase: SupabaseClient,
@@ -79,6 +94,8 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
     auto_cancel_at: null,
     auto_complete_at: null,
     dispute_deadline: null,
+    review_required: false,
+    review_deadline_at: null,
   }
 
   const completeFields = {
@@ -89,6 +106,8 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
     auto_cancel_at: null,
     auto_complete_at: null,
     dispute_deadline: null,
+    review_required: false,
+    review_deadline_at: null,
   }
 
   const { data: activeHolds, error: activeHoldError } = await supabase
@@ -281,6 +300,21 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
       const reviewDeadline = new Date(nowDate.getTime() + DELIVERY_REVIEW_BUFFER_MS).toISOString()
       const orderNumber = String(order.order_number || order.id.slice(0, 8))
 
+      const { error: reviewUpdateError } = await supabase
+        .from('orders')
+        .update({
+          review_required: true,
+          review_deadline_at: reviewDeadline,
+        })
+        .eq('id', order.id)
+        .eq('status', 'SHIPPED')
+        .eq('delivery_type', 'delivery')
+
+      if (reviewUpdateError) {
+        console.error(`Error opening delivery review for ${order.id}:`, reviewUpdateError)
+        continue
+      }
+
       await logSystemOrderAction(
         supabase,
         order.id,
@@ -365,6 +399,299 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
   return results
 }
 
+async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: string) {
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
+  const results: string[] = []
+  const orderNumberFallback = String(orderId).slice(0, 8)
+
+  const refundFields = {
+    status: 'REFUNDED',
+    cancelled_at: now,
+    ship_deadline: null,
+    delivery_deadline: null,
+    auto_cancel_at: null,
+    auto_complete_at: null,
+    dispute_deadline: null,
+    review_required: false,
+    review_deadline_at: null,
+  }
+
+  const completeFields = {
+    status: 'COMPLETED',
+    completed_at: now,
+    ship_deadline: null,
+    delivery_deadline: null,
+    auto_cancel_at: null,
+    auto_complete_at: null,
+    dispute_deadline: null,
+    review_required: false,
+    review_deadline_at: null,
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select(
+      'id, order_number, status, delivery_type, ship_deadline, delivery_deadline, auto_cancel_at, dispute_deadline, picked_up_at, review_deadline_at'
+    )
+    .eq('id', orderId)
+    .maybeSingle()
+
+  if (orderError) {
+    throw orderError
+  }
+
+  if (!order) {
+    return results
+  }
+
+  const { data: activeHold, error: activeHoldError } = await supabase
+    .from('order_admin_holds')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+
+  if (activeHoldError) {
+    throw activeHoldError
+  }
+
+  const { data: pendingRefundRequest, error: pendingRefundError } = await supabase
+    .from('refund_requests')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('status', 'pending')
+    .limit(1)
+    .maybeSingle()
+
+  if (pendingRefundError) {
+    throw pendingRefundError
+  }
+
+  const isHeld = Boolean(activeHold)
+  const hasPendingRefund = Boolean(pendingRefundRequest)
+
+  if (
+    order.status === 'PAID_ESCROW' &&
+    !isHeld &&
+    !hasPendingRefund &&
+    order.ship_deadline &&
+    new Date(order.ship_deadline).getTime() <= nowDate.getTime()
+  ) {
+    const { data: refundedOrders, error: refundError } = await supabase
+      .from('orders')
+      .update(refundFields)
+      .eq('id', orderId)
+      .eq('status', 'PAID_ESCROW')
+      .select('id')
+
+    if (refundError) {
+      throw refundError
+    }
+
+    if (refundedOrders?.length) {
+      results.push('Refunded 1 order that missed the fulfillment deadline')
+      await logSystemOrderAction(
+        supabase,
+        orderId,
+        'AUTO_REFUND',
+        'Seller did not prepare order within 2 business days',
+        { cancelled_at: now, trigger: 'ship_deadline_expired' },
+        refundFields
+      )
+    }
+
+    return results
+  }
+
+  if (
+    order.status === 'DELIVERED' &&
+    !isHeld &&
+    !hasPendingRefund &&
+    order.dispute_deadline &&
+    new Date(order.dispute_deadline).getTime() <= nowDate.getTime()
+  ) {
+    const { data: completedOrders, error: completeError } = await supabase
+      .from('orders')
+      .update(completeFields)
+      .eq('id', orderId)
+      .eq('status', 'DELIVERED')
+      .select('id')
+
+    if (completeError) {
+      throw completeError
+    }
+
+    if (completedOrders?.length) {
+      results.push('Completed 1 delivered order after the dispute deadline')
+      await logSystemOrderAction(
+        supabase,
+        orderId,
+        'AUTO_COMPLETE',
+        'Buyer did not dispute within 5 days of delivery',
+        { completed_at: now, trigger: 'dispute_deadline_expired' },
+        completeFields
+      )
+    }
+
+    return results
+  }
+
+  if (
+    order.status === 'READY_FOR_PICKUP' &&
+    !isHeld &&
+    !hasPendingRefund &&
+    !order.picked_up_at &&
+    order.auto_cancel_at &&
+    new Date(order.auto_cancel_at).getTime() <= nowDate.getTime()
+  ) {
+    const { data: refundedOrders, error: refundError } = await supabase
+      .from('orders')
+      .update(refundFields)
+      .eq('id', orderId)
+      .eq('status', 'READY_FOR_PICKUP')
+      .is('picked_up_at', null)
+      .select('id')
+
+    if (refundError) {
+      throw refundError
+    }
+
+    if (refundedOrders?.length) {
+      results.push('Refunded 1 pickup order the buyer did not collect')
+      await logSystemOrderAction(
+        supabase,
+        orderId,
+        'AUTO_REFUND',
+        'Buyer did not pick up within 2 business days',
+        { cancelled_at: now, trigger: 'pickup_window_expired' },
+        refundFields
+      )
+    }
+
+    return results
+  }
+
+  if (
+    order.status === 'SHIPPED' &&
+    order.delivery_type === 'delivery' &&
+    !isHeld &&
+    order.delivery_deadline &&
+    new Date(order.delivery_deadline).getTime() <= nowDate.getTime()
+  ) {
+    let reviewDeadlineAt = order.review_deadline_at
+      ? new Date(order.review_deadline_at).getTime()
+      : null
+
+    if (!reviewDeadlineAt) {
+      const { data: latestReviewAction, error: latestReviewError } = await supabase
+        .from('admin_actions')
+        .select('created_at')
+        .eq('target_type', 'order')
+        .eq('target_id', orderId)
+        .eq('action_type', DELIVERY_REVIEW_ACTION)
+        .eq('source', SYSTEM_SOURCE)
+        .eq('automated', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (latestReviewError) {
+        throw latestReviewError
+      }
+
+      if (latestReviewAction?.created_at) {
+        reviewDeadlineAt =
+          new Date(latestReviewAction.created_at).getTime() + DELIVERY_REVIEW_BUFFER_MS
+      }
+    }
+
+    if (reviewDeadlineAt && reviewDeadlineAt > nowDate.getTime()) {
+      return results
+    }
+
+    if (!reviewDeadlineAt) {
+      const reviewDeadline = new Date(nowDate.getTime() + DELIVERY_REVIEW_BUFFER_MS).toISOString()
+      const orderNumber = String(order.order_number || orderNumberFallback)
+
+      const { error: updateReviewError } = await supabase
+        .from('orders')
+        .update({
+          review_required: true,
+          review_deadline_at: reviewDeadline,
+        })
+        .eq('id', orderId)
+        .eq('status', 'SHIPPED')
+        .eq('delivery_type', 'delivery')
+
+      if (updateReviewError) {
+        throw updateReviewError
+      }
+
+      await logSystemOrderAction(
+        supabase,
+        orderId,
+        DELIVERY_REVIEW_ACTION,
+        'Seller missed the 14-day delivery deadline. Admin review window opened for 24 hours.',
+        {
+          delivery_deadline: order.delivery_deadline,
+          review_deadline_at: reviewDeadline,
+          trigger: 'delivery_deadline_expired',
+        },
+        {
+          status: 'SHIPPED',
+          review_required: true,
+          review_deadline_at: reviewDeadline,
+        }
+      )
+
+      await notifyAdmins(
+        supabase,
+        'delivery_deadline_review',
+        'Delivery deadline needs review',
+        `Order ${orderNumber} missed the 14-day delivery target. Review it within 24 hours before the buyer is refunded automatically.`,
+        '/admin/orders',
+        {
+          order_id: orderId,
+          order_number: order.order_number,
+          delivery_deadline: order.delivery_deadline,
+          review_deadline_at: reviewDeadline,
+        }
+      )
+
+      results.push('Flagged 1 delivery order for admin review after the delivery deadline passed')
+      return results
+    }
+
+    const { data: refundedOrders, error: refundError } = await supabase
+      .from('orders')
+      .update(refundFields)
+      .eq('id', orderId)
+      .eq('status', 'SHIPPED')
+      .eq('delivery_type', 'delivery')
+      .select('id')
+
+    if (refundError) {
+      throw refundError
+    }
+
+    if (refundedOrders?.length) {
+      results.push('Refunded 1 delivery order after the 24-hour review buffer expired')
+      await logSystemOrderAction(
+        supabase,
+        orderId,
+        'AUTO_REFUND',
+        'Seller did not mark order as delivered within 14 days of shipping, and the 24-hour admin review buffer expired.',
+        { cancelled_at: now, trigger: 'delivery_deadline_review_expired' },
+        refundFields
+      )
+    }
+  }
+
+  return results
+}
+
 async function runDeadlineProcessor() {
   const supabase = createSupabaseClient()
   return processOrderDeadlines(supabase)
@@ -383,25 +710,87 @@ Deno.cron('process-order-deadlines', CRON_SCHEDULE, async () => {
 })
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405)
+  }
+
   try {
-    // Validate secret (if provided) for manual invocations.
     const authHeader = req.headers.get('Authorization')
     const expectedSecret = Deno.env.get('CRON_SECRET')
-    if (expectedSecret && authHeader !== `Bearer ${expectedSecret}`) {
-      return new Response('Unauthorized', { status: 401 })
+    const serviceSupabase = createSupabaseClient()
+
+    if (expectedSecret && authHeader === `Bearer ${expectedSecret}`) {
+      const results = await processOrderDeadlines(serviceSupabase)
+
+      return jsonResponse({ success: true, processed: results.length > 0, results }, 200)
     }
 
-    const results = await runDeadlineProcessor()
+    if (!authHeader) {
+      return jsonResponse({ error: 'Unauthorized' }, 401)
+    }
 
-    return new Response(JSON.stringify({ success: true, results }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    const authSupabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const {
+      data: { user },
+      error: authError,
+    } = await authSupabase.auth.getUser()
+
+    if (authError || !user) {
+      return jsonResponse({ error: 'Unauthorized' }, 401)
+    }
+
+    const body = await req.json().catch(() => null)
+    const orderId = String(body?.orderId || '').trim()
+
+    if (!orderId) {
+      return jsonResponse({ error: 'Missing orderId' }, 400)
+    }
+
+    const { data: order, error: orderError } = await serviceSupabase
+      .from('orders')
+      .select('id, buyer_id, seller_id')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    if (orderError) {
+      console.error('Order lookup failed:', orderError)
+      return jsonResponse({ error: 'Failed to load order.' }, 500)
+    }
+
+    if (!order) {
+      return jsonResponse({ error: 'Order not found' }, 404)
+    }
+
+    const isParticipant = order.buyer_id === user.id || order.seller_id === user.id
+
+    if (!isParticipant) {
+      return jsonResponse({ error: 'Forbidden' }, 403)
+    }
+
+    const results = await processSingleOrderDeadline(serviceSupabase, orderId)
+
+    return jsonResponse(
+      {
+        success: true,
+        processed: results.length > 0,
+        results,
+      },
+      200
+    )
   } catch (err) {
     console.error('Fatal error:', err)
-    return new Response(
-      `Internal server error: ${err instanceof Error ? err.message : 'unknown error'}`,
-      { status: 500 }
+    return jsonResponse(
+      { error: err instanceof Error ? err.message : 'Internal server error' },
+      500
     )
   }
 })

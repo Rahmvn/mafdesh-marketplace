@@ -3,11 +3,10 @@ import { useEffect, useState } from "react";
 import Navbar from "./Navbar";
 import { supabase } from "../supabaseClient";
 import { getSessionWithRetry } from "../utils/authResilience";
+import { getStoredUser } from "../utils/storage";
 
 export default function AuthNavbarWrapper() {
-  const [user, setUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [user, setUser] = useState(() => getStoredUser());
 
   useEffect(() => {
     const loadSession = async () => {
@@ -16,14 +15,14 @@ export default function AuthNavbarWrapper() {
         const nextUser = data?.session?.user || null;
 
         if (!nextUser) {
-          setUser(JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
+          setUser(getStoredUser());
           return;
         }
 
         setUser(nextUser);
       } catch (error) {
         console.error('Navbar auth session load failed:', error);
-        setUser(JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
+        setUser(getStoredUser());
       }
     };
 
@@ -32,7 +31,7 @@ export default function AuthNavbarWrapper() {
     // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUser(session?.user || JSON.parse(localStorage.getItem('mafdesh_user') || 'null'));
+        setUser(session?.user || getStoredUser());
       }
     );
 

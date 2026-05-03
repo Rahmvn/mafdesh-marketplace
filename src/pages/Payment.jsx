@@ -36,15 +36,26 @@ export default function Payment() {
     setLoading(true);
     setLoadFailed(false);
 
-    const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
 
-    if (error) {
+      if (error || !data) {
+        setOrder(null);
+        setLoadFailed(true);
+      } else {
+        setOrder(data);
+      }
+    } catch (error) {
+      console.error('Payment load error:', error);
       setOrder(null);
       setLoadFailed(true);
-    } else {
-      setOrder(data);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [id]);
 
   useEffect(() => {

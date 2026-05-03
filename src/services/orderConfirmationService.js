@@ -4,6 +4,7 @@ import {
   getUserWithRetry,
   refreshSessionWithRetry,
 } from '../utils/authResilience';
+import { clearStoredUser } from '../utils/storage';
 
 async function getValidAccessToken() {
   const {
@@ -31,7 +32,7 @@ async function getValidAccessToken() {
 
   if (refreshError || !refreshedSession?.access_token) {
     await supabase.auth.signOut();
-    localStorage.removeItem('mafdesh_user');
+    clearStoredUser();
     throw new Error('Your session has expired. Please log in again.');
   }
 
@@ -42,7 +43,7 @@ async function getValidAccessToken() {
 
   if (refreshedUserError || !refreshedUser) {
     await supabase.auth.signOut();
-    localStorage.removeItem('mafdesh_user');
+    clearStoredUser();
     throw new Error('Your session is invalid. Please log in again.');
   }
 

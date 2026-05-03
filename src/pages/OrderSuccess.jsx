@@ -18,9 +18,13 @@ export default function OrderSuccess() {
       .from('orders')
       .select('*, products!orders_product_id_fkey(name)')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (!error) setOrder(data);
+    if (!error && data) {
+      setOrder(data);
+    } else {
+      setOrder(null);
+    }
     setLoading(false);
   }, [id]);
 

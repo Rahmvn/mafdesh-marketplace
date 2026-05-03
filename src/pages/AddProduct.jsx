@@ -28,6 +28,7 @@ import {
   setAddProductPreviewCache,
   validateAddProductForm,
 } from '../utils/addProductFlow';
+import { getStoredUser, setStoredUser } from '../utils/storage';
 
 const ADD_PRODUCT_PREVIEW_ROUTE = '/seller/products/add/preview';
 
@@ -123,9 +124,7 @@ export default function AddProduct() {
   }
 
   const restoredPreviewCache = previewCacheRef.current;
-  const [currentUser, setCurrentUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [checkingBank, setCheckingBank] = useState(true);
   const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
   const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
@@ -162,14 +161,13 @@ export default function AddProduct() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
-      if (!storedUser) {
+      const parsedUser = getStoredUser();
+      if (!parsedUser) {
         showError('Authentication Required', 'Please log in to access this page.');
         navigate('/login');
         return;
       }
 
-      const parsedUser = JSON.parse(storedUser);
       if (parsedUser.role !== 'seller') {
         showError('Access Denied', 'Only sellers can add products.');
         navigate('/login');
@@ -181,7 +179,7 @@ export default function AddProduct() {
       try {
         const context = await loadSellerAddProductContext(parsedUser.id);
         setCurrentUser(context.user);
-        localStorage.setItem('mafdesh_user', JSON.stringify(context.user));
+        setStoredUser(context.user);
         setSellerPickupLocations(context.pickupLocations);
         setBankDetailsApproved(context.bankDetailsApproved);
 

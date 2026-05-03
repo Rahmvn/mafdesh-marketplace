@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
@@ -43,6 +43,11 @@ import {
 } from "../services/orderAdminHoldService";
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
 import { fetchPublicSellerDirectory } from "../services/publicSellerService";
+import {
+  getOrderDeadlineProcessingKey,
+  processOrderDeadline,
+} from "../services/orderDeadlineService";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -92,12 +97,18 @@ export default function BuyerOrderDetails() {
   const [refundRequestModalOpen, setRefundRequestModalOpen] = useState(false);
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [cancelingRefund, setCancelingRefund] = useState(false);
+  const attemptedAutoProcessingRef = useRef(new Set());
   const { showConfirm, showError, showSuccess, showWarning, ModalComponent } = useModal();
 
   const loadSellerDetails = useCallback(async (orderId) => {
     const invokeCounterparty = async (accessToken) => {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-counterparty`,
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error('Supabase URL is not configured.');
+      }
+
+      const response = await fetchWithTimeout(
+        `${supabaseUrl}/functions/v1/get-order-counterparty`,
         {
           method: "POST",
           headers: {
@@ -321,6 +332,49 @@ export default function BuyerOrderDetails() {
     setRefreshing(false);
   };
 
+  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const isRefundProcessing = Boolean(pendingRefundRequest);
+  const isAdminHoldProcessing = Boolean(activeAdminHold);
+
+  useEffect(() => {
+    if (!order) {
+      return;
+    }
+
+    const autoProcessKey = getOrderDeadlineProcessingKey(order, {
+      now,
+      hasActiveHold: isAdminHoldProcessing,
+      hasPendingRefund: isRefundProcessing,
+    });
+
+    if (!autoProcessKey || attemptedAutoProcessingRef.current.has(autoProcessKey)) {
+      return;
+    }
+
+    attemptedAutoProcessingRef.current.add(autoProcessKey);
+
+    let cancelled = false;
+
+    const runAutoProcessing = async () => {
+      try {
+        const result = await processOrderDeadline(order.id);
+
+        if (!cancelled && result?.processed) {
+          await loadOrder();
+        }
+      } catch (error) {
+        console.error("Buyer order auto-processing failed:", error);
+      }
+    };
+
+    runAutoProcessing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminHoldProcessing, isRefundProcessing, loadOrder, now, order]);
+
   const openProductDetails = (productId) => {
     if (!productId) {
       return;
@@ -533,16 +587,12 @@ export default function BuyerOrderDetails() {
   const orderAmounts = getBuyerOrderAmounts(order, items);
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
   const latestRefundRequest = getLatestRefundRequest(refundRequests);
-  const pendingRefundRequest = getPendingRefundRequest(refundRequests);
   const latestRejectedRefundRequest =
     latestRefundRequest?.status === REFUND_REQUEST_STATUS.REJECTED
       ? latestRefundRequest
       : null;
-  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
   const refundEligibility = getRefundEligibility(order, refundRequests, now);
   const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
-  const isRefundProcessing = Boolean(pendingRefundRequest);
-  const isAdminHoldProcessing = Boolean(activeAdminHold);
   const displayStatusLabel = isRefundProcessing
     ? "REFUND PROCESSING"
     : order.status.replaceAll("_", " ");

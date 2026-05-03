@@ -4,6 +4,7 @@ import Fuse from 'fuse.js';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
+import SafeImage from '../components/SafeImage';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
 import {
@@ -62,7 +63,7 @@ function ProductCard({ product, onOpen, featured = false }) {
       }`}
     >
       <div className={`relative overflow-hidden bg-white p-0 ${featured ? 'aspect-video' : 'aspect-square'}`}>
-        <img
+        <SafeImage
           src={product.images?.[0] || 'https://placehold.co/600x600'}
           alt={product.name}
           className="h-full w-full object-contain transition-transform duration-200"

@@ -16,6 +16,7 @@ import {
   CheckCircle,
   ArrowLeft,
 } from "lucide-react";
+import { getStoredUser } from "../utils/storage";
 
 export default function AdminConstitution() {
   const navigate = useNavigate();
@@ -25,14 +26,7 @@ export default function AdminConstitution() {
   });
 
   useEffect(() => {
-    let role = null;
-
-    try {
-      const storedUser = localStorage.getItem("mafdesh_user");
-      role = storedUser ? JSON.parse(storedUser)?.role : null;
-    } catch {
-      role = null;
-    }
+    const role = getStoredUser()?.role || null;
 
     if (role !== "admin") {
       navigate("/login", { replace: true });

@@ -1,8 +1,10 @@
+import { getStoredUser } from '../utils/storage';
+
 const API_URL = '/api';
 
 const getAuthToken = () => {
-  const user = JSON.parse(localStorage.getItem('mafdesh_user') || '{}');
-  return user.access_token || null;
+  const user = getStoredUser();
+  return user?.access_token || null;
 };
 
 export const apiRequest = async (endpoint, options = {}) => {

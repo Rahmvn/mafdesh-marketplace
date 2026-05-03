@@ -18,6 +18,7 @@ import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import useModal from '../hooks/useModal';
 import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
+import { getStoredUser, setStoredUser } from '../utils/storage';
 
 const PLANS = {
   monthly: {
@@ -153,15 +154,13 @@ export default function VerificationSubscription() {
   const { showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('mafdesh_user');
+    const userData = getStoredUser();
 
-    if (!storedUser) {
+    if (!userData) {
       showError('Authentication Required', 'Please log in to access this page.');
       navigate('/login');
       return;
     }
-
-    const userData = JSON.parse(storedUser);
 
     if (userData.role !== 'seller') {
       showError('Access Denied', 'Only sellers can subscribe for verification.');
@@ -178,7 +177,7 @@ export default function VerificationSubscription() {
 
       if (sellerData) {
         setCurrentUser(sellerData);
-        localStorage.setItem('mafdesh_user', JSON.stringify(sellerData));
+        setStoredUser(sellerData);
       } else {
         setCurrentUser(userData);
       }
@@ -315,7 +314,7 @@ Website: www.mafdesh.com
       }
 
       const updatedUser = { ...currentUser, is_verified: true };
-      localStorage.setItem('mafdesh_user', JSON.stringify(updatedUser));
+      setStoredUser(updatedUser);
       setCurrentUser(updatedUser);
 
       const receiptData = {

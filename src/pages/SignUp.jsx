@@ -62,8 +62,8 @@ export default function SignUp() {
     if (username.length < 3) {
       return "Username must be at least 3 characters";
     }
-    if (username.length > 20) {
-      return "Username must not exceed 20 characters";
+    if (username.length > 30) {
+      return "Username must not exceed 30 characters";
     }
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       return "Username can only contain letters, numbers, and underscores";
@@ -377,12 +377,31 @@ export default function SignUp() {
                   return;
                 }
 
-                if (!formData.full_name || !formData.email || !formData.username || !formData.password || !formData.location) {
+                const trimmed = {
+                  fullName: formData.full_name?.trim() || '',
+                  email: formData.email?.trim().toLowerCase() || '',
+                  username: formData.username?.trim().toLowerCase() || '',
+                  phone: formData.phone_number?.trim() || '',
+                  businessName: formData.business_name?.trim() || '',
+                  location: formData.location?.trim() || '',
+                };
+
+                const normalizedFormData = {
+                  ...formData,
+                  full_name: trimmed.fullName,
+                  email: trimmed.email,
+                  username: trimmed.username,
+                  phone_number: trimmed.phone,
+                  business_name: trimmed.businessName,
+                  location: trimmed.location,
+                };
+
+                if (!trimmed.fullName || !trimmed.email || !trimmed.username || !formData.password || !trimmed.location) {
                   showWarning('Missing Details', 'Please fill in all required fields including location.');
                   return;
                 }
 
-                if (userType === "seller" && !formData.business_name) {
+                if (userType === "seller" && !trimmed.businessName) {
                   showWarning('Business Name Required', 'Please enter your business name.');
                   return;
                 }
@@ -402,7 +421,7 @@ export default function SignUp() {
                   return;
                 }
 
-                const isUnique = await checkUsernameUnique(formData.username);
+                const isUnique = await checkUsernameUnique(trimmed.username);
                 if (isUnique !== true) {
                   if (isUnique === false) {
                     setUsernameError('This username is already taken. Please choose another one.');
@@ -411,7 +430,7 @@ export default function SignUp() {
                 }
 
                 setIsSubmitting(true);
-                const success = await handleSignUp(formData);
+                const success = await handleSignUp(normalizedFormData);
                 setIsSubmitting(false);
 
                 if (success) {
@@ -443,6 +462,7 @@ export default function SignUp() {
                   type="text"
                   placeholder="John Doe"
                   value={formData.full_name}
+                  maxLength={100}
                   onChange={(e) =>
                     setFormData({ ...formData, full_name: e.target.value })
                   }
@@ -486,6 +506,7 @@ export default function SignUp() {
                   type="email"
                   placeholder="you@example.com"
                   value={formData.email}
+                  maxLength={254}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
@@ -529,6 +550,7 @@ export default function SignUp() {
                   type="text"
                   placeholder="johndoe123"
                   value={formData.username}
+                  maxLength={30}
                   onChange={(e) => {
                     setFormData({ ...formData, username: e.target.value });
                     if (usernameError) setUsernameError("");
@@ -638,6 +660,7 @@ export default function SignUp() {
                   type="tel"
                   placeholder="08012345678"
                   value={formData.phone_number}
+                  maxLength={11}
                   onChange={(e) =>
                     setFormData({ ...formData, phone_number: e.target.value })
                   }
@@ -812,6 +835,7 @@ export default function SignUp() {
                     type="text"
                     placeholder="Your store name"
                     value={formData.business_name}
+                    maxLength={100}
                     onChange={(e) =>
                       setFormData({
                         ...formData,

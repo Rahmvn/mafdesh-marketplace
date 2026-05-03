@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/FooterSlim';
+import SafeImage from '../../components/SafeImage';
 import useModal from '../../hooks/useModal';
 import {
   formatSellerCurrency,
@@ -28,6 +29,8 @@ import {
 import {
   getAttributesForCategory,
 } from '../../utils/productAttributes';
+import { navigateBack } from '../../utils/navigation';
+import { getStoredUser, setStoredUser } from '../../utils/storage';
 
 const ADD_PRODUCT_ROUTE = '/seller/products/add';
 
@@ -59,9 +62,7 @@ export default function AddProductPreview() {
   const location = useLocation();
   const previewState = location.state?.formData || getAddProductPreviewCache();
 
-  const [currentUser, setCurrentUser] = useState(() =>
-    JSON.parse(localStorage.getItem('mafdesh_user') || 'null')
-  );
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
   const [checkingBank, setCheckingBank] = useState(true);
   const [bankDetailsApproved, setBankDetailsApproved] = useState(false);
   const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
@@ -113,14 +114,13 @@ export default function AddProductPreview() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const storedUser = localStorage.getItem('mafdesh_user');
-      if (!storedUser) {
+      const parsedUser = getStoredUser();
+      if (!parsedUser) {
         showError('Authentication Required', 'Please log in to access this page.');
         navigate('/login');
         return;
       }
 
-      const parsedUser = JSON.parse(storedUser);
       if (parsedUser.role !== 'seller') {
         showError('Access Denied', 'Only sellers can add products.');
         navigate('/login');
@@ -132,7 +132,7 @@ export default function AddProductPreview() {
       try {
         const context = await loadSellerAddProductContext(parsedUser.id);
         setCurrentUser(context.user);
-        localStorage.setItem('mafdesh_user', JSON.stringify(context.user));
+        setStoredUser(context.user);
         setSellerPickupLocations(context.pickupLocations);
         setBankDetailsApproved(context.bankDetailsApproved);
 
@@ -159,7 +159,7 @@ export default function AddProductPreview() {
     const validationErrors = validateAddProductForm(previewState, sellerPickupLocations, 'all');
     if (Object.keys(validationErrors).length > 0) {
       showError('Preview Out of Date', 'Please return to edit and resolve the highlighted fields.');
-      navigate(-1);
+      navigateBack(navigate, '/seller/products/add');
       return;
     }
 
@@ -224,7 +224,7 @@ export default function AddProductPreview() {
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => navigateBack(navigate, '/seller/products/add')}
           className={`mb-6 inline-flex items-center gap-2 self-start rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${theme.actionGhost}`}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -255,7 +255,7 @@ export default function AddProductPreview() {
           <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
             <div className={`overflow-hidden rounded-2xl border ${theme.panelSoft}`}>
               {activeImageUrl ? (
-                <img
+                <SafeImage
                   src={activeImageUrl}
                   alt={previewState.name}
                   className="aspect-square w-full object-cover"
@@ -294,7 +294,7 @@ export default function AddProductPreview() {
                         Main
                       </span>
                     ) : null}
-                    <img
+                    <SafeImage
                       src={url}
                       alt={`${previewState.name} ${index + 1}`}
                       className="aspect-square w-full object-cover"
@@ -427,7 +427,7 @@ export default function AddProductPreview() {
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={() => navigateBack(navigate, '/seller/products/add')}
               className={`rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${theme.action}`}
             >
               {'<- Back to edit'}

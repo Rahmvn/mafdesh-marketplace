@@ -27,6 +27,7 @@ import {
 } from '../services/deliveryService';
 import { saveSavedAddress } from '../services/savedAddressService';
 import { buildProductSnapshot } from '../utils/productSnapshots';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import {
   formatNaira,
   groupCartItemsBySeller,
@@ -612,8 +613,13 @@ export default function MultiCheckout() {
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/finalize-multi-seller-checkout`,
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error('Supabase URL is not configured.');
+      }
+
+      const response = await fetchWithTimeout(
+        `${supabaseUrl}/functions/v1/finalize-multi-seller-checkout`,
         {
           method: 'POST',
           headers: {

@@ -16,9 +16,11 @@ const [order,setOrder] = useState(null);
 const [reason,setReason] = useState("");
 const [images,setImages] = useState([]);
 const [loading,setLoading] = useState(true);
+const [loadError, setLoadError] = useState("");
+const [submitting, setSubmitting] = useState(false);
 
 const loadOrder = useCallback(async () => {
-
+try {
 const {data,error} = await supabase
 .from("orders")
 .select("*")
@@ -26,12 +28,17 @@ const {data,error} = await supabase
 .single();
 
 if(error){
-console.error(error);
-return;
+throw error;
 }
 
 setOrder(data);
+setLoadError("");
+} catch (error) {
+console.error(error);
+setLoadError(error.message || "Failed to load order.");
+} finally {
 setLoading(false);
+}
 
 }, [id]);
 
@@ -64,6 +71,9 @@ files: images,
 
 };
 const submitDispute = async()=>{
+if(submitting){
+return;
+}
 
 if(!reason.trim()){
 showGlobalWarning("Description Required", "Please explain the problem.");
@@ -75,14 +85,16 @@ showGlobalWarning("Evidence Required", "Please upload at least one image.");
 return;
 }
 
-const imagePaths = await uploadImages();
-
 try{
+setSubmitting(true);
+const imagePaths = await uploadImages();
 await openBuyerDispute(order.id, reason.trim(), imagePaths);
 } catch (error) {
 console.error(error);
-showGlobalError("Submission Failed", "Failed to submit dispute. Please try again.");
+showGlobalError("Submission Failed", error.message || "Failed to submit dispute. Please try again.");
 return;
+} finally {
+setSubmitting(false);
 }
 
 showGlobalSuccess("Dispute Submitted", "Your dispute was submitted successfully.");
@@ -92,6 +104,21 @@ navigate("/orders");
 };
 if(loading){
 return <MarketplaceDetailSkeleton />;
+}
+
+if(loadError || !order){
+return (
+<div className="min-h-screen flex flex-col bg-blue-50">
+<Navbar/>
+<main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+<div className="bg-white p-6 rounded-lg border">
+<h1 className="text-2xl font-bold text-blue-900 mb-3">Unable to load order</h1>
+<p className="text-slate-600">{loadError || "This order could not be loaded."}</p>
+</div>
+</main>
+<Footer/>
+</div>
+);
 }
 
 return(
@@ -134,9 +161,10 @@ className="mb-4"
 
 <button
 onClick={submitDispute}
+disabled={submitting}
 className="bg-red-600 text-white px-6 py-2 rounded"
 >
-Submit Dispute
+{submitting ? "Submitting..." : "Submit Dispute"}
 </button>
 
 </div>

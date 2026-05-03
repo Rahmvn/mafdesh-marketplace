@@ -10,6 +10,7 @@ import {
   getSellerThemeClasses,
   useSellerTheme,
 } from '../../components/seller/SellerShell';
+import { getStoredUser, setStoredUser } from '../../utils/storage';
 
 const AGREEMENT_VERSION = '1.0-2026';
 
@@ -241,7 +242,7 @@ export default function SellerAgreement() {
         throw error;
       }
 
-      const storedUser = JSON.parse(localStorage.getItem('mafdesh_user') || 'null') || {};
+      const storedUser = getStoredUser() || {};
       const nextUser = {
         ...storedUser,
         seller_agreement_accepted: true,
@@ -251,7 +252,7 @@ export default function SellerAgreement() {
           updatedUser?.seller_agreement_version || storedUser.seller_agreement_version,
       };
 
-      localStorage.setItem('mafdesh_user', JSON.stringify(nextUser));
+      setStoredUser(nextUser);
       setCurrentUser((previousUser) => ({
         ...(previousUser || {}),
         ...nextUser,

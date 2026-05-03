@@ -57,6 +57,7 @@ const AdminAuditLog = lazy(() => import('./pages/AdminAuditLog'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const BuyerPayments = lazy(() => import('./pages/BuyerPayments'));
 const AddressBook = lazy(() => import('./pages/buyer/AddressBook'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function RouteFallback() {
   return <MarketplaceRouteLoader />;
@@ -410,6 +411,7 @@ export default function App() {
           />
 
           <Route path="/policies" element={<Policies />} />
+          <Route path="/privacy" element={<Navigate to="/policies" replace />} />
           <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/order-success/:id" element={<OrderSuccess />} />
@@ -422,7 +424,7 @@ export default function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </RouteChunkBoundary>

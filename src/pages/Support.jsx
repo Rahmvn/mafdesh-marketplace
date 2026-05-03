@@ -23,6 +23,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import { getUserWithRetry } from '../utils/authResilience';
+import { getStoredUser } from '../utils/storage';
 
 const SUPPORT_EMAIL = 'support@mafdesh.com';
 const SUPPORT_ATTACHMENTS_BUCKET = 'support-attachments';
@@ -171,7 +172,7 @@ function PathCard({ title, body, steps }) {
 
 export default function Support() {
   const navigate = useNavigate();
-  const [user] = useState(() => JSON.parse(localStorage.getItem('mafdesh_user') || '{}'));
+  const [user] = useState(() => getStoredUser());
   const [faqSearch, setFaqSearch] = useState('');
   const [issueType, setIssueType] = useState('general');
   const [subject, setSubject] = useState('');
