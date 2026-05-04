@@ -143,38 +143,15 @@ async function getValidAccessToken() {
   return refreshedSession.access_token;
 }
 
-export async function executeGuardedAdminAction({
-  actionType,
-  targetId,
-  reason,
-  context = {},
-}) {
-  const normalizedReason = normalizeReason(reason);
-
-  if (!GUARDED_ADMIN_ACTION_TYPES.has(actionType)) {
-    throw new Error("Unsupported guarded admin action.");
-  }
-
-  if (!validateAdminReason(normalizedReason)) {
-    throw new Error("A reason is required for this admin action.");
-  }
-
+async function invokeAdminEdgeFunction(functionName, body) {
   const accessToken = await getValidAccessToken();
 
-  const { data, error, response } = await supabase.functions.invoke(
-    "admin-moderation-action",
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: {
-        actionType,
-        targetId,
-        reason: normalizedReason,
-        context,
-      },
-    }
-  );
+  const { data, error, response } = await supabase.functions.invoke(functionName, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body,
+  });
 
   if (error) {
     const status = response?.status || error.context?.status;
@@ -202,6 +179,72 @@ export async function executeGuardedAdminAction({
   }
 
   return data;
+}
+
+export async function executeGuardedAdminAction({
+  actionType,
+  targetId,
+  reason,
+  context = {},
+}) {
+  const normalizedReason = normalizeReason(reason);
+
+  if (!GUARDED_ADMIN_ACTION_TYPES.has(actionType)) {
+    throw new Error("Unsupported guarded admin action.");
+  }
+
+  if (!validateAdminReason(normalizedReason)) {
+    throw new Error("A reason is required for this admin action.");
+  }
+
+  return invokeAdminEdgeFunction("admin-moderation-action", {
+    actionType,
+    targetId,
+    reason: normalizedReason,
+    context,
+  });
+}
+
+export async function fetchPendingBankChanges() {
+  const { data, error } = await supabase
+    .from("users")
+    .select(
+      "id, email, business_name, bank_details_pending, bank_details_approved, bank_name, account_number, account_name, business_address, bvn, tax_id"
+    )
+    .eq("role", "seller")
+    .not("bank_details_pending", "is", null);
+
+  if (error) {
+    throw error;
+  }
+
+  return [...(data || [])].sort((left, right) => {
+    const leftLabel = String(left.business_name || left.email || "").toLowerCase();
+    const rightLabel = String(right.business_name || right.email || "").toLowerCase();
+    return leftLabel.localeCompare(rightLabel);
+  });
+}
+
+export async function reviewPendingBankChange({
+  sellerId,
+  decision,
+  reason = "",
+}) {
+  const normalizedDecision = String(decision || "").trim().toLowerCase();
+
+  if (!sellerId) {
+    throw new Error("A seller id is required.");
+  }
+
+  if (!["approve", "reject"].includes(normalizedDecision)) {
+    throw new Error("Decision must be approve or reject.");
+  }
+
+  return invokeAdminEdgeFunction("admin-approve-bank-change", {
+    sellerId,
+    decision: normalizedDecision,
+    reason: normalizeReason(reason) || null,
+  });
 }
 
 export async function recordAdminAction({

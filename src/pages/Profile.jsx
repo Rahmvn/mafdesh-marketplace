@@ -35,6 +35,7 @@ import {
   pickDefaultSavedAddress,
 } from '../utils/savedAddresses';
 import {
+  buildApprovedBankDetailsUpdate,
   buildBankDetailsPendingUpdate,
   sanitizeBankDetailsRequest,
   validateBankDetailsRequest,
@@ -147,10 +148,20 @@ function DetailItem({ label, value, accent = 'blue' }) {
   );
 }
 
-function BankDetailsForm({ values, onChange, onSubmit, onCancel, saving, title }) {
-  const submitLabel = title?.toLowerCase().includes('change')
-    ? 'Submit Request'
-    : 'Submit for Approval';
+function BankDetailsForm({
+  values,
+  onChange,
+  onSubmit,
+  onCancel,
+  saving,
+  title,
+  submitLabel = '',
+}) {
+  const resolvedSubmitLabel =
+    submitLabel ||
+    (title?.toLowerCase().includes('change')
+      ? 'Submit Request'
+      : 'Save Bank Details');
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
@@ -233,7 +244,7 @@ function BankDetailsForm({ values, onChange, onSubmit, onCancel, saving, title }
           disabled={saving}
           className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
         >
-          {saving ? 'Submitting...' : submitLabel}
+          {saving ? 'Submitting...' : resolvedSubmitLabel}
         </button>
 
         {onCancel ? (
@@ -270,7 +281,7 @@ function ProfileSkeleton() {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { showConfirm, ModalComponent } = useModal();
+  const { showConfirm, showError, showSuccess, ModalComponent } = useModal();
   const [profile, setProfile] = useState(null);
   const [defaultAddress, setDefaultAddress] = useState(null);
   const [addressPreviewLoading, setAddressPreviewLoading] = useState(false);
@@ -365,6 +376,34 @@ export default function Profile() {
   useEffect(() => {
     loadUserProfile();
   }, [loadUserProfile]);
+
+  useEffect(() => {
+    if (!profile?.id || profile.role !== 'seller') {
+      return undefined;
+    }
+
+    const channel = supabase
+      .channel(`profile-bank-details-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${profile.id}`,
+        },
+        () => {
+          loadUserProfile().catch((error) => {
+            console.error('Failed to refresh seller bank details:', error);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadUserProfile, profile?.id, profile?.role]);
 
   const handlePendingDetailsChange = (field, value) => {
     const nextValue =
@@ -531,26 +570,37 @@ export default function Profile() {
 
     const sanitizedPendingDetails = validation.sanitized;
     setSaving(true);
+    const isFirstTimeSetup = !hasActiveDetails;
+    const updatePayload = isFirstTimeSetup
+      ? buildApprovedBankDetailsUpdate(sanitizedPendingDetails)
+      : buildBankDetailsPendingUpdate(sanitizedPendingDetails);
 
     const { error } = await supabase
       .from('users')
-      .update(buildBankDetailsPendingUpdate(sanitizedPendingDetails))
+      .update(updatePayload)
       .eq('id', profile.id);
 
     if (error) {
+      const errorMessage = error.message || 'Failed to update bank details.';
       setBankMessage({
         type: 'error',
-        text: error.message || 'Failed to submit request.',
+        text: errorMessage,
       });
+      showError('Bank Details Update Failed', errorMessage);
       console.error(error);
     } else {
       await loadUserProfile();
+      const successText = isFirstTimeSetup
+        ? 'Bank details saved successfully. They are now active for payouts.'
+        : 'Change request submitted. Your current approved payout account stays active until admin approves the new one.';
       setBankMessage({
         type: 'success',
-        text: hasActiveDetails
-          ? 'Change request submitted. Your current payout details stay active until admin approves the new ones.'
-          : 'Request submitted. Admin will review your payout details.',
+        text: successText,
       });
+      showSuccess(
+        isFirstTimeSetup ? 'Bank Details Saved' : 'Change Request Submitted',
+        successText
+      );
       setShowChangeForm(false);
       setPendingDetails(sanitizeBankDetailsRequest(sanitizedPendingDetails));
     }
@@ -842,8 +892,7 @@ export default function Profile() {
                           Set up your payout details
                         </p>
                         <p className="text-sm text-blue-700">
-                          Please provide your bank and business information. Admin will review
-                          and approve.
+                          Your first bank setup is saved immediately and becomes your active payout account.
                         </p>
                       </div>
                       <BankDetailsForm
@@ -851,7 +900,8 @@ export default function Profile() {
                         onChange={handlePendingDetailsChange}
                         onSubmit={submitChangeRequest}
                         saving={saving}
-                        title="Payout details"
+                        title="Active payout details"
+                        submitLabel="Save Bank Details"
                       />
                     </>
                   ) : null}
@@ -874,21 +924,53 @@ export default function Profile() {
                           type="button"
                           onClick={() => {
                             setBankMessage(null);
+                            setPendingDetails(
+                              sanitizeBankDetailsRequest({
+                                bank_name: profile.bank_name,
+                                account_number: profile.account_number,
+                                account_name: profile.account_name,
+                                business_address: profile.business_address,
+                                bvn: profile.bvn,
+                                tax_id: profile.tax_id,
+                              })
+                            );
                             setShowChangeForm(true);
                           }}
                           className="rounded bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
                         >
-                          Change Details
+                          Request Change
                         </button>
                       ) : (
                         <div className="border-t pt-4">
+                          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <p className="font-semibold">Admin review is required for bank changes.</p>
+                            <p className="mt-1">
+                              Your current approved payout account remains active until this request is approved.
+                            </p>
+                            <p className="mt-1">
+                              Orders that were already completed keep paying to the bank snapshot captured at completion time.
+                            </p>
+                          </div>
                           <BankDetailsForm
                             values={pendingDetails}
                             onChange={handlePendingDetailsChange}
                             onSubmit={submitChangeRequest}
-                            onCancel={() => setShowChangeForm(false)}
+                            onCancel={() => {
+                              setPendingDetails(
+                                sanitizeBankDetailsRequest({
+                                  bank_name: profile.bank_name,
+                                  account_number: profile.account_number,
+                                  account_name: profile.account_name,
+                                  business_address: profile.business_address,
+                                  bvn: profile.bvn,
+                                  tax_id: profile.tax_id,
+                                })
+                              );
+                              setShowChangeForm(false);
+                            }}
                             saving={saving}
                             title="Request change"
+                            submitLabel="Submit Change Request"
                           />
                         </div>
                       )}
@@ -901,23 +983,38 @@ export default function Profile() {
                         <div>
                           <p className="text-sm font-semibold text-yellow-800">Pending Approval</p>
                           <p className="mt-1 text-sm text-yellow-700">
-                            Your request to update your business &amp; bank details is under
-                            review.
+                            Your bank-details change request is under admin review. Your current approved payout account stays active until a decision is made.
+                          </p>
+                          <p className="mt-1 text-sm text-yellow-700">
+                            Completed orders that already captured a payout snapshot will continue paying to that older snapshot.
                           </p>
                         </div>
                         <span className="inline-flex items-center rounded-full bg-yellow-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-800">
                           Under Review
                         </span>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {pendingRequestDetails.map((item) => (
-                          <DetailItem
-                            key={item.label}
-                            label={item.label}
-                            value={item.value}
-                            accent="yellow"
-                          />
-                        ))}
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div>
+                          <p className="mb-3 text-sm font-semibold text-gray-700">Current active details</p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {activeDetails.map((item) => (
+                              <DetailItem key={`active-${item.label}`} label={item.label} value={item.value} />
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="mb-3 text-sm font-semibold text-yellow-800">Requested changes</p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {pendingRequestDetails.map((item) => (
+                              <DetailItem
+                                key={`pending-${item.label}`}
+                                label={item.label}
+                                value={item.value}
+                                accent="yellow"
+                              />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ) : null}

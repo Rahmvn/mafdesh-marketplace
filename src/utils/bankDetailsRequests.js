@@ -55,3 +55,11 @@ export function buildBankDetailsPendingUpdate(values = {}) {
     bank_details_pending: sanitizeBankDetailsRequest(values),
   };
 }
+
+export function buildApprovedBankDetailsUpdate(values = {}) {
+  return {
+    ...sanitizeBankDetailsRequest(values),
+    bank_details_pending: null,
+    bank_details_approved: true,
+  };
+}

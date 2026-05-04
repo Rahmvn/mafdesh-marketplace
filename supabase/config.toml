@@ -49,6 +49,12 @@ verify_jwt = false
 import_map = "./functions/admin-moderation-action/deno.json"
 entrypoint = "./functions/admin-moderation-action/index.ts"
 
+[functions.admin-approve-bank-change]
+enabled = true
+verify_jwt = false
+import_map = "./functions/admin-approve-bank-change/deno.json"
+entrypoint = "./functions/admin-approve-bank-change/index.ts"
+
 [functions.submit-product-edit-request]
 enabled = true
 verify_jwt = true

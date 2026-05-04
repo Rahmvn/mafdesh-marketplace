@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildApprovedBankDetailsUpdate,
   buildBankDetailsPendingUpdate,
   sanitizeBankDetailsRequest,
   validateBankDetailsRequest,
@@ -42,6 +43,28 @@ describe('bankDetailsRequests', () => {
         bvn: '',
         tax_id: '',
       },
+    });
+  });
+
+  it('builds a first-time approved update payload for initial seller setup', () => {
+    expect(
+      buildApprovedBankDetailsUpdate({
+        bank_name: 'Access Bank',
+        account_number: '0123456789',
+        account_name: 'Jane Store',
+        business_address: '12 Marina',
+        bvn: '12345678901',
+        tax_id: 'TIN-44',
+      })
+    ).toEqual({
+      bank_name: 'Access Bank',
+      account_number: '0123456789',
+      account_name: 'Jane Store',
+      business_address: '12 Marina',
+      bvn: '12345678901',
+      tax_id: 'TIN-44',
+      bank_details_pending: null,
+      bank_details_approved: true,
     });
   });
 

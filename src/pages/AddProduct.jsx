@@ -49,7 +49,8 @@ function BankDetailsRequiredPanel({ theme, navigate }) {
         </div>
         <h2 className="mb-2 text-2xl font-bold">Bank Details Required</h2>
         <p className={`mb-6 text-sm leading-7 ${theme.mutedText}`}>
-          Add bank details before listing products. Admin will review them for payouts.
+          Add bank details before listing products. Your first bank setup becomes active
+          immediately, while later bank-detail changes go through admin review.
         </p>
         <button
           type="button"
