@@ -7,24 +7,17 @@ import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import {
-  normalizeSelfServiceRole,
-  reconcileUserRole,
-} from '../services/accountBootstrapService';
+  ensureCurrentUserContext,
+  loadAuthenticatedUserContext,
+  routeAuthenticatedUser,
+  storeAuthenticatedUser,
+} from '../services/authSessionService';
 import { cartService } from '../services/cartService';
 import {
   getAuthFeedback,
   runAuthOperationWithRetry,
-  runReadOperationWithRetry,
 } from '../utils/authResilience';
-import { clearStoredUser, setStoredUser } from '../utils/storage';
-
-function getNormalizedMetadataRole(authUser, fallbackRole = '') {
-  return normalizeSelfServiceRole(
-    authUser?.user_metadata?.role ||
-      authUser?.raw_user_meta_data?.role ||
-      fallbackRole
-  );
-}
+import { clearStoredUser } from '../utils/storage';
 
 export default function Login() {
   const [userType, setUserType] = useState("buyer");
@@ -66,125 +59,10 @@ export default function Login() {
     }
   }, []);
 
-  const loadPublicUserRecord = useCallback(async (userId) => {
-    const { data, error } = await runReadOperationWithRetry(() =>
-      supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    return data || null;
-  }, []);
-
-  const ensurePublicUserRecord = useCallback(async (authUser, fallbackRole = '') => {
-    if (!authUser?.id) {
-      throw new Error('Login failed');
-    }
-
-    const existingUser = await loadPublicUserRecord(authUser.id);
-    if (existingUser?.role) {
-      const desiredRole = getNormalizedMetadataRole(authUser);
-
-      if (desiredRole && desiredRole !== existingUser.role) {
-        try {
-          const reconciledUser = await reconcileUserRole({
-            role: desiredRole,
-            phoneNumber: authUser.user_metadata?.phone_number || existingUser.phone_number || null,
-            businessName: authUser.user_metadata?.business_name || existingUser.business_name || null,
-          });
-
-          if (reconciledUser?.role) {
-            return reconciledUser;
-          }
-        } catch (reconcileError) {
-          console.error('Role reconciliation failed during login:', reconcileError);
-        }
-
-        throw new Error(
-          `We found your account, but its ${desiredRole} setup is still incomplete. Please try again in a moment.`
-        );
-      }
-
-      return existingUser;
-    }
-
-    const role = getNormalizedMetadataRole(authUser, fallbackRole);
-    if (!role) {
-      throw new Error(
-        'Your account is missing a role setup. Please contact support so we can restore it.'
-      );
-    }
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert(
-        {
-          id: authUser.id,
-          full_name: authUser.user_metadata?.full_name || null,
-          username: authUser.user_metadata?.username || null,
-          location: authUser.user_metadata?.location || null,
-        },
-        { onConflict: 'id' }
-      );
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    const { error: userError } = await supabase
-      .from('users')
-      .upsert(
-        {
-          id: authUser.id,
-          email: authUser.email || existingUser?.email || null,
-          role: existingUser?.role || role,
-          phone_number: authUser.user_metadata?.phone_number || existingUser?.phone_number || null,
-          business_name:
-            role === 'seller'
-              ? authUser.user_metadata?.business_name || existingUser?.business_name || null
-              : null,
-        },
-        { onConflict: 'id' }
-      );
-
-    if (userError) {
-      throw userError;
-    }
-
-    const restoredUser = await loadPublicUserRecord(authUser.id);
-    if (!restoredUser?.role) {
-      throw new Error('We could not finish restoring your account. Please try again.');
-    }
-
-    return restoredUser;
-  }, [loadPublicUserRecord]);
-
   const storeAndRouteUser = useCallback(async (profile, userId) => {
-    setStoredUser({
-      id: userId,
-      role: profile.role
-    });
-
+    storeAuthenticatedUser(profile);
     await mergeGuestCartIfBuyer(profile.role, userId);
-
-    if (returnUrl && returnUrl.startsWith('/')) {
-      navigate(returnUrl);
-      return;
-    }
-
-    if (profile.role === 'buyer') {
-      navigate('/marketplace');
-    } else if (profile.role === 'seller') {
-      navigate('/seller/dashboard');
-    } else if (profile.role === 'admin') {
-      navigate('/admin/dashboard');
-    }
+    routeAuthenticatedUser(navigate, profile, { returnUrl });
   }, [mergeGuestCartIfBuyer, navigate, returnUrl]);
 
   useEffect(() => {
@@ -200,7 +78,7 @@ export default function Login() {
         }
 
         const userId = session.user.id;
-        const userData = await ensurePublicUserRecord(session.user);
+        const { user: userData } = await loadAuthenticatedUserContext();
         await storeAndRouteUser(userData, userId);
       } catch (error) {
         console.error('Failed to check existing auth session:', error);
@@ -217,7 +95,7 @@ export default function Login() {
 
     initialSessionCheckRef.current = checkExistingSession();
     handleSignupSuccess();
-  }, [ensurePublicUserRecord, signupMessage, storeAndRouteUser]);
+  }, [signupMessage, storeAndRouteUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -252,7 +130,10 @@ export default function Login() {
       if (!user) {
         throw new Error("Login failed");
       }
-      const profile = await ensurePublicUserRecord(user, userType);
+      const profile = await ensureCurrentUserContext({
+        authUser: user,
+        desiredRole: userType,
+      });
       const role = profile.role;
       if (!role) {
         throw new Error("User role not found.");

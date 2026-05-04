@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock3, CreditCard, Wallet } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalConfirm } from '../hooks/modalService';
 import {
@@ -33,8 +34,7 @@ export default function SellerPayments() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = '/login';
     });
   };

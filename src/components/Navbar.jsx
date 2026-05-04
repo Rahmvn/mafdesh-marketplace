@@ -24,10 +24,13 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
-import { getUserWithRetry } from '../utils/authResilience';
 import landscapeLogo from '../../mafdesh-img/landscape-logo-removebg-preview.png';
+import { supabase } from '../supabaseClient';
 import { readCachedCartCount } from '../utils/cartStorage';
+import {
+  getActiveAuthUser,
+  subscribeToAuthStateChanges,
+} from '../services/authSessionService';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 import { getStoredUser } from '../utils/storage';
@@ -250,10 +253,9 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
     const loadAuthUser = async () => {
       try {
-        const { data } = await getUserWithRetry(supabase.auth);
-
         if (isMounted) {
-          setAuthUserId(data.user?.id || null);
+          const authUser = await getActiveAuthUser();
+          setAuthUserId(authUser?.id || null);
         }
       } catch (error) {
         console.error('Navbar auth user load failed:', error);
@@ -265,13 +267,13 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
 
     loadAuthUser();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
       setAuthUserId(session?.user?.id || null);
     });
 
     return () => {
       isMounted = false;
-      authListener.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 

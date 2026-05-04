@@ -1,31 +1,110 @@
-import React from 'react';
-import { useState } from "react";
+import React, { useEffect, useState } from 'react';
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
-import { reconcileUserRole } from '../services/accountBootstrapService';
+import {
+  ensureCurrentUserContext,
+  getAuthCallbackUrl,
+} from '../services/authSessionService';
 import {
   getAuthFeedback,
   runAuthOperationWithRetry,
   runReadOperationWithRetry,
 } from '../utils/authResilience';
+import { safeParseJSON } from '../utils/storage';
+
+const SIGNUP_DRAFT_STORAGE_KEY = 'mafdesh_signup_draft';
+const EMPTY_SIGNUP_FORM = {
+  full_name: "",
+  email: "",
+  username: "",
+  phone_number: "",
+  password: "",
+  confirmPassword: "",
+  business_name: "",
+  location: "",
+};
+
+function hasSignupDraftContent({ formData, userType, agreedToTerms }) {
+  return (
+    agreedToTerms ||
+    userType === 'seller' ||
+    Object.values(formData || {}).some((value) => String(value || '').trim() !== '')
+  );
+}
+
+function readSignupDraft() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const parsedDraft = safeParseJSON(window.sessionStorage.getItem(SIGNUP_DRAFT_STORAGE_KEY));
+  if (!parsedDraft || typeof parsedDraft !== 'object') {
+    return null;
+  }
+
+  const nextFormData = { ...EMPTY_SIGNUP_FORM };
+  if (parsedDraft.formData && typeof parsedDraft.formData === 'object') {
+    Object.keys(EMPTY_SIGNUP_FORM).forEach((fieldName) => {
+      const fieldValue = parsedDraft.formData[fieldName];
+      nextFormData[fieldName] = typeof fieldValue === 'string' ? fieldValue : EMPTY_SIGNUP_FORM[fieldName];
+    });
+  }
+
+  return {
+    userType: parsedDraft.userType === 'seller' ? 'seller' : 'buyer',
+    agreedToTerms: Boolean(parsedDraft.agreedToTerms),
+    formData: nextFormData,
+  };
+}
+
+function persistSignupDraft(draftState) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!hasSignupDraftContent(draftState)) {
+      window.sessionStorage.removeItem(SIGNUP_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      SIGNUP_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        userType: draftState.userType === 'seller' ? 'seller' : 'buyer',
+        agreedToTerms: Boolean(draftState.agreedToTerms),
+        formData: {
+          ...EMPTY_SIGNUP_FORM,
+          ...(draftState.formData || {}),
+        },
+      })
+    );
+  } catch {
+    // Ignore draft persistence errors so signup remains usable.
+  }
+}
+
+function clearSignupDraft() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(SIGNUP_DRAFT_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup issues.
+  }
+}
 
 export default function SignUp() {
   const [userType, setUserType] = useState("buyer");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    username: "",
-    phone_number: "",
-    password: "",
-    confirmPassword: "",
-    business_name: "",
-    location: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_SIGNUP_FORM);
+  const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
 
   const nigeriaStates = [
     "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -40,23 +119,29 @@ export default function SignUp() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const location = useLocation();
   const navigate = useNavigate();
   const { showError, showWarning, ModalComponent } = useModal();
 
-  const attemptRoleReconcile = async (nextFormData) => {
-    try {
-      const reconciledUser = await reconcileUserRole({
-        role: userType,
-        phoneNumber: nextFormData.phone_number,
-        businessName: nextFormData.business_name,
-      });
+  useEffect(() => {
+    const storedDraft = readSignupDraft();
 
-      return Boolean(reconciledUser?.role === userType);
-    } catch (error) {
-      console.error('Signup role reconciliation failed:', error);
-      return false;
+    if (storedDraft) {
+      setUserType(storedDraft.userType);
+      setFormData(storedDraft.formData);
+      setAgreedToTerms(storedDraft.agreedToTerms);
     }
-  };
+
+    setHasHydratedDraft(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedDraft) {
+      return;
+    }
+
+    persistSignupDraft({ userType, agreedToTerms, formData });
+  }, [agreedToTerms, formData, hasHydratedDraft, userType]);
 
   const validateUsername = (username) => {
     if (username.length < 3) {
@@ -112,70 +197,31 @@ export default function SignUp() {
     }
   };
 
-  const syncUserRecord = async (userId, nextFormData) => {
-    const basePayload = {
-      email: nextFormData.email,
-      phone_number: nextFormData.phone_number,
-      business_name: userType === 'seller' ? nextFormData.business_name : null,
-    };
+  const getSignupRecoveryMessage = () =>
+    'Your account was created successfully. Please check your email to verify it, then log in. If login does not work right away, try Forgot Password or contact support.';
 
-    const { data: existingUser, error: existingUserError } = await runReadOperationWithRetry(() =>
-      supabase
-        .from('users')
-        .select('id, role')
-        .eq('id', userId)
-        .maybeSingle()
-    );
-
-    if (existingUserError) {
-      throw existingUserError;
-    }
-
-    if (!existingUser) {
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({
-          id: userId,
-          role: userType,
-          ...basePayload,
-        });
-
-      if (insertError) {
-        throw insertError;
-      }
-
-      return;
-    }
-
-    if (existingUser.role && existingUser.role !== userType) {
-      const reconciled = await attemptRoleReconcile(nextFormData);
-
-      if (reconciled) {
-        return;
-      }
-
-      return "role_recovery_required";
-    }
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update(basePayload)
-      .eq('id', userId);
-
-    if (updateError) {
-      throw updateError;
-    }
+  const navigateToLegalPage = (path) => {
+    persistSignupDraft({ userType, agreedToTerms, formData });
+    navigate(path, {
+      state: {
+        fromSignup: true,
+        returnTo: location.pathname,
+      },
+    });
   };
 
   const handleSignUp = async (nextFormData) => {
-    try {
-      const { email, password } = nextFormData;
+    const { email, password } = nextFormData;
+    let authUser = null;
+    let signUpData = null;
 
+    try {
       const { data, error } = await runAuthOperationWithRetry(() =>
         supabase.auth.signUp({
           email,
           password,
           options: {
+            emailRedirectTo: getAuthCallbackUrl("signup"),
             data: {
               role: userType,
               full_name: nextFormData.full_name,
@@ -188,42 +234,16 @@ export default function SignUp() {
         })
       );
 
-      if (error) throw error;
-      if (!data.user) {
+      if (error) {
+        throw error;
+      }
+
+      signUpData = data;
+      authUser = data.user || data.session?.user || null;
+      if (!authUser) {
         showError("Signup Failed", "Signup failed.");
         return false;
       }
-
-      const userId = data.user.id;
-
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: userId,
-          full_name: nextFormData.full_name,
-          username: nextFormData.username,
-          location: nextFormData.location
-        }, { onConflict: 'id' });
-
-      if (profileError) {
-        console.error('Profile insert error:', profileError);
-        showError('Profile Creation Failed', `Failed to create profile: ${profileError.message}`);
-        return false;
-      }
-
-      const syncResult = await syncUserRecord(userId, nextFormData);
-
-      if (syncResult === "role_recovery_required") {
-        return {
-          ok: true,
-          message:
-            userType === "seller"
-              ? "Account created. Log in once to finish activating your seller workspace."
-              : "Account created. Log in once to finish activating your account.",
-        };
-      }
-
-      return true;
     } catch (error) {
       console.error(error);
       const message = String(error?.message || '');
@@ -239,6 +259,23 @@ export default function SignUp() {
       const feedback = getAuthFeedback('sign up', error);
       showError(feedback.title, feedback.message);
       return false;
+    }
+
+    try {
+      if (signUpData?.session?.user) {
+        await ensureCurrentUserContext({
+          authUser: signUpData.session.user,
+          desiredRole: userType,
+        });
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Signup bootstrap failed after auth account creation:', error);
+      return {
+        ok: true,
+        message: getSignupRecoveryMessage(),
+      };
     }
   };
 
@@ -434,6 +471,7 @@ export default function SignUp() {
                 setIsSubmitting(false);
 
                 if (success) {
+                  clearSignupDraft();
                   navigate('/login', {
                     state: {
                       message:
@@ -898,21 +936,23 @@ export default function SignUp() {
                   }}
                 >
                   I agree to the{" "}
-                  <Link
-                    to="/terms"
+                  <button
+                    type="button"
+                    onClick={() => navigateToLegalPage('/terms')}
                     style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
-                    onClick={(e) => e.stopPropagation()}
+                    className="cursor-pointer bg-transparent p-0"
                   >
                     Terms & Conditions
-                  </Link>{" "}
+                  </button>{" "}
                   and{" "}
-                  <Link
-                    to="/policies"
+                  <button
+                    type="button"
+                    onClick={() => navigateToLegalPage('/policies')}
                     style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
-                    onClick={(e) => e.stopPropagation()}
+                    className="cursor-pointer bg-transparent p-0"
                   >
                     Privacy Policy
-                  </Link>
+                  </button>
                   {" "}<span style={{ color: "#dc2626" }}>*</span>
                 </div>
               </div>

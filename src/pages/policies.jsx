@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import {
@@ -17,7 +17,10 @@ import {
 } from "lucide-react";
 
 export default function Policies() {
+  const location = useLocation();
   const navigate = useNavigate();
+  const fromSignup = location.state?.fromSignup === true;
+  const returnTo = location.state?.returnTo || "/signup";
   const effectiveDate = new Date().toLocaleDateString("en-NG", {
     month: "long",
     year: "numeric",
@@ -217,6 +220,15 @@ export default function Policies() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+        {fromSignup && (
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="mb-4 rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-50"
+          >
+            Back to sign up
+          </button>
+        )}
         <h1 className="text-3xl font-bold text-blue-900 mb-2">Marketplace Policies</h1>
         <p className="text-gray-600 mb-8">Our commitment to safe, fair, and halal commerce.</p>
 

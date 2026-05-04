@@ -9,6 +9,7 @@ import {
   Search,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getSellerOrderPayout } from '../utils/sellerPayouts';
@@ -77,8 +78,7 @@ export default function SellerOrders() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = '/login';
     });
   };

@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from "react-router-dom";
-import { supabase } from '../supabaseClient';
-import { getSessionWithRetry } from '../utils/authResilience';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { clearStoredUser } from '../utils/storage';
+import {
+  loadAuthenticatedUserContext,
+  signOutAndClearAuthState,
+  subscribeToAuthStateChanges,
+} from '../services/authSessionService';
 
 export default function AdminRoute({ children }) {
   const [status, setStatus] = useState('loading');
@@ -14,24 +17,9 @@ export default function AdminRoute({ children }) {
 
     const checkAdminAccess = async () => {
       try {
-        const { data: sessionData, error: sessionError } = await getSessionWithRetry(supabase.auth);
+        const { session, user } = await loadAuthenticatedUserContext();
 
-        if (sessionError || !sessionData.session) {
-          if (isMounted) {
-            setStatus('unauthenticated');
-          }
-          return;
-        }
-
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('role, status, account_status')
-          .eq('id', sessionData.session.user.id)
-          .single();
-
-        if (userError || !userData) {
-          await supabase.auth.signOut();
-          clearStoredUser();
+        if (!session || !user) {
           if (isMounted) {
             setStatus('unauthenticated');
           }
@@ -39,12 +27,11 @@ export default function AdminRoute({ children }) {
         }
 
         const accountStatus = String(
-          userData.account_status || userData.status || 'active'
+          user.account_status || user.status || 'active'
         ).toLowerCase();
 
         if (accountStatus !== 'active') {
-          await supabase.auth.signOut();
-          clearStoredUser();
+          await signOutAndClearAuthState();
           if (isMounted) {
             setStatus('unauthenticated');
           }
@@ -52,8 +39,8 @@ export default function AdminRoute({ children }) {
         }
 
         if (isMounted) {
-          setRole(userData.role);
-          setStatus(userData.role === 'admin' ? 'authorized' : 'unauthorized');
+          setRole(user.role);
+          setStatus(user.role === 'admin' ? 'authorized' : 'unauthorized');
         }
       } catch (error) {
         console.error('Auth guard error:', error);
@@ -65,7 +52,7 @@ export default function AdminRoute({ children }) {
 
     checkAdminAccess();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
       if (!session) {
         clearStoredUser();
         if (isMounted) {
@@ -77,7 +64,7 @@ export default function AdminRoute({ children }) {
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 

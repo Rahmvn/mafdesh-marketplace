@@ -1,10 +1,10 @@
 import { supabase } from '../supabaseClient';
+import { signOutAndClearAuthState } from './authSessionService';
 import {
   getSessionWithRetry,
   getUserWithRetry,
   refreshSessionWithRetry,
 } from '../utils/authResilience';
-import { clearStoredUser } from '../utils/storage';
 
 async function getValidAccessToken() {
   const {
@@ -31,8 +31,7 @@ async function getValidAccessToken() {
   } = await refreshSessionWithRetry(supabase.auth);
 
   if (refreshError || !refreshedSession?.access_token) {
-    await supabase.auth.signOut();
-    clearStoredUser();
+    await signOutAndClearAuthState();
     throw new Error('Your session has expired. Please log in again.');
   }
 
@@ -42,8 +41,7 @@ async function getValidAccessToken() {
   } = await getUserWithRetry(supabase.auth, refreshedSession.access_token);
 
   if (refreshedUserError || !refreshedUser) {
-    await supabase.auth.signOut();
-    clearStoredUser();
+    await signOutAndClearAuthState();
     throw new Error('Your session is invalid. Please log in again.');
   }
 

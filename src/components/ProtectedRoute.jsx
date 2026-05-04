@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
-import { supabase } from '../supabaseClient';
-import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 import { clearStoredUser } from '../utils/storage';
+import {
+  loadAuthenticatedUserContext,
+  signOutAndClearAuthState,
+  subscribeToAuthStateChanges,
+} from '../services/authSessionService';
 
 function LoginRequiredFallback({ returnUrl, loginPrompt = null }) {
   const navigate = useNavigate();
@@ -47,27 +50,9 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
     const checkAuth = async () => {
       try {
-        const { data } = await getSessionWithRetry(supabase.auth);
+        const { session, user } = await loadAuthenticatedUserContext();
 
-        if (!data.session) {
-          if (isMounted) {
-            setStatus('unauthenticated');
-          }
-          return;
-        }
-
-        const userId = data.session.user.id;
-
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('role, status, account_status')
-          .eq('id', userId)
-          .single();
-
-        if (error || !userData) {
-          console.error("No user role found, logging out");
-          await supabase.auth.signOut();
-          clearStoredUser();
+        if (!session || !user) {
           if (isMounted) {
             setStatus('unauthenticated');
           }
@@ -75,16 +60,15 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
         }
 
         if (isMounted) {
-          setRole(userData.role);
+          setRole(user.role);
         }
 
         const accountStatus = String(
-          userData.account_status || userData.status || 'active'
+          user.account_status || user.status || 'active'
         ).toLowerCase();
 
         if (accountStatus !== 'active') {
-          await supabase.auth.signOut();
-          clearStoredUser();
+          await signOutAndClearAuthState();
           if (isMounted) {
             setStatus('unauthenticated');
           }
@@ -92,7 +76,7 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
         }
 
         if (isMounted) {
-          if (allowedRoles.length && !allowedRoles.includes(userData.role)) {
+          if (allowedRoles.length && !allowedRoles.includes(user.role)) {
             setStatus('unauthorized');
           } else {
             setStatus('authenticated');
@@ -108,7 +92,7 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
     checkAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
       if (!session) {
         clearStoredUser();
         if (isMounted) {
@@ -120,7 +104,7 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, [allowedRoles]);
 

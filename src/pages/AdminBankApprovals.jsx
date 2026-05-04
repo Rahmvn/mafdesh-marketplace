@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle, XCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar";
@@ -10,6 +10,7 @@ import {
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from "../services/adminActionService";
+import { signOutAndClearAuthState } from "../services/authSessionService";
 
 function AdminPageSkeleton() {
   return (
@@ -47,13 +48,12 @@ export default function AdminBankApprovals() {
 
   const handleLogout = async () => {
     showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = "/login";
     });
   };
 
-  async function loadPendingRequests(showLoading = true) {
+  const loadPendingRequests = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoading(true);
     }
@@ -63,7 +63,6 @@ export default function AdminBankApprovals() {
       .select(
         "id, email, business_name, bank_details_pending, bank_details_approved, bank_name, account_number, account_name, business_address, bvn, tax_id"
       )
-      .eq("bank_details_approved", false)
       .not("bank_details_pending", "is", null);
 
     if (error) {
@@ -75,7 +74,7 @@ export default function AdminBankApprovals() {
     }
 
     setLoading(false);
-  }
+  }, [showError]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -83,7 +82,7 @@ export default function AdminBankApprovals() {
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, []);
+  }, [loadPendingRequests]);
 
   const openApproveModal = (user) => {
     setPendingAction({
@@ -203,6 +202,15 @@ export default function AdminBankApprovals() {
                 <div className="grid md:grid-cols-2 gap-4 mt-4">
                   <div className="border rounded p-3">
                     <h4 className="font-semibold text-gray-700 mb-2">Current Details</h4>
+                    {user.bank_details_approved ? (
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700">
+                        Active payout details remain live until this request is approved.
+                      </p>
+                    ) : (
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                        No payout details are active yet.
+                      </p>
+                    )}
                     <p><span className="font-medium">Bank:</span> {user.bank_name || "—"}</p>
                     <p><span className="font-medium">Account:</span> {user.account_number || "—"}</p>
                     <p><span className="font-medium">Name:</span> {user.account_name || "—"}</p>

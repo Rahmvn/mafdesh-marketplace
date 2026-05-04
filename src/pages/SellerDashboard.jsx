@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { productService } from '../services/productService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
@@ -162,8 +163,7 @@ export default function SellerDashboard() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = '/login';
     });
   };

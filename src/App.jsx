@@ -10,6 +10,7 @@ const Home = lazy(() => import('./pages/Home'));
 const PublicProducts = lazy(() => import('./pages/PublicProducts'));
 const SignUp = lazy(() => import('./pages/SignUp'));
 const Login = lazy(() => import('./pages/Login'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const EmailVerified = lazy(() => import('./pages/EmailVerified'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
@@ -75,6 +76,7 @@ export default function App() {
 
           <Route path="/signup" element={<SignUp />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/email-verified" element={<EmailVerified />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />

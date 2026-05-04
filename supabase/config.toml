@@ -89,3 +89,9 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/reconcile-user-role/deno.json"
 entrypoint = "./functions/reconcile-user-role/index.ts"
+
+[functions.ensure-auth-user-context]
+enabled = true
+verify_jwt = true
+import_map = "./functions/ensure-auth-user-context/deno.json"
+entrypoint = "./functions/ensure-auth-user-context/index.ts"

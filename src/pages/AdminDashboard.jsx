@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import useModal from "../hooks/useModal";
 import { supabase } from "../supabaseClient";
+import { signOutAndClearAuthState } from "../services/authSessionService";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
 
 function AdminPageSkeleton() {
@@ -56,8 +57,7 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = "/login";
     });
   };

@@ -34,3 +34,21 @@ Example:
 supabase secrets set MOCK_PAYMENT=true
 supabase secrets set PAYSTACK_SECRET_KEY=sk_test_xxxxx
 ```
+
+## Auth Callback Settings
+
+Set Supabase Auth to use the shared callback route so email confirmation and password recovery
+return through the app's recovery flow:
+
+- Site URL: your deployed app URL
+- Additional redirect URLs:
+  - `http://127.0.0.1:5173/auth/callback`
+  - `http://localhost:5173/auth/callback`
+  - `http://127.0.0.1:4173/auth/callback`
+  - your production `/auth/callback` URL
+
+The auth hardening flow also expects these backend secrets for authenticated recovery/bootstrap:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`

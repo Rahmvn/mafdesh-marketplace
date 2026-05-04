@@ -7,73 +7,31 @@ import Login from './Login';
 const {
   mockGetSession,
   mockSignInWithPassword,
-  mockSignOut,
-  mockUsersMaybeSingle,
-  mockUsersUpsert,
-  mockProfilesUpsert,
-  mockFunctionsInvoke,
   mockMergeGuestCart,
   mockShowError,
   mockShowWarning,
-  mockFrom,
-} = vi.hoisted(() => {
-  const mockGetSession = vi.fn();
-  const mockSignInWithPassword = vi.fn();
-  const mockSignOut = vi.fn();
-  const mockUsersMaybeSingle = vi.fn();
-  const mockUsersUpsert = vi.fn();
-  const mockProfilesUpsert = vi.fn();
-  const mockFunctionsInvoke = vi.fn();
-  const mockMergeGuestCart = vi.fn();
-  const mockShowError = vi.fn();
-  const mockShowWarning = vi.fn();
-  const mockFrom = vi.fn((table) => {
-    if (table === 'users') {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: mockUsersMaybeSingle,
-          }),
-        }),
-        upsert: mockUsersUpsert,
-      };
-    }
-
-    if (table === 'profiles') {
-      return {
-        upsert: mockProfilesUpsert,
-      };
-    }
-
-    throw new Error(`Unexpected table: ${table}`);
-  });
-
-  return {
-    mockGetSession,
-    mockSignInWithPassword,
-    mockSignOut,
-    mockUsersMaybeSingle,
-    mockUsersUpsert,
-    mockProfilesUpsert,
-    mockFunctionsInvoke,
-    mockMergeGuestCart,
-    mockShowError,
-    mockShowWarning,
-    mockFrom,
-  };
-});
+  mockEnsureCurrentUserContext,
+  mockLoadAuthenticatedUserContext,
+  mockRouteAuthenticatedUser,
+  mockStoreAuthenticatedUser,
+} = vi.hoisted(() => ({
+  mockGetSession: vi.fn(),
+  mockSignInWithPassword: vi.fn(),
+  mockMergeGuestCart: vi.fn(),
+  mockShowError: vi.fn(),
+  mockShowWarning: vi.fn(),
+  mockEnsureCurrentUserContext: vi.fn(),
+  mockLoadAuthenticatedUserContext: vi.fn(),
+  mockRouteAuthenticatedUser: vi.fn(),
+  mockStoreAuthenticatedUser: vi.fn(),
+}));
 
 vi.mock('../supabaseClient', () => ({
   supabase: {
     auth: {
       getSession: mockGetSession,
       signInWithPassword: mockSignInWithPassword,
-      signOut: mockSignOut,
     },
-    functions: {
-      invoke: mockFunctionsInvoke,
-    },
-    from: mockFrom,
   },
 }));
 
@@ -91,29 +49,37 @@ vi.mock('../services/cartService', () => ({
   },
 }));
 
+vi.mock('../services/authSessionService', () => ({
+  ensureCurrentUserContext: mockEnsureCurrentUserContext,
+  loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
+  routeAuthenticatedUser: mockRouteAuthenticatedUser,
+  storeAuthenticatedUser: mockStoreAuthenticatedUser,
+}));
+
 vi.mock('../components/FooterSlim', () => ({
   default: () => <div data-testid="footer" />,
 }));
 
-function renderLoginRoute() {
+function renderLoginRoute(initialEntry = '/login') {
   render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/marketplace" element={<div>Marketplace</div>} />
         <Route path="/seller/dashboard" element={<div>Seller Dashboard</div>} />
         <Route path="/admin/dashboard" element={<div>Admin Dashboard</div>} />
+        <Route path="/support" element={<div>Support Inbox</div>} />
       </Routes>
     </MemoryRouter>
   );
 }
 
-function fillAndSubmitLoginForm() {
+function fillAndSubmitLoginForm({ email = 'buyer@example.com', password = 'password123' } = {}) {
   fireEvent.change(screen.getByLabelText(/email address/i), {
-    target: { value: 'buyer@example.com' },
+    target: { value: email },
   });
   fireEvent.change(screen.getByLabelText(/password/i), {
-    target: { value: 'password123' },
+    target: { value: password },
   });
   fireEvent.click(screen.getByRole('button', { name: /login to mafdesh/i }));
 }
@@ -132,35 +98,43 @@ function createDeferred() {
 
 describe('Login', () => {
   beforeEach(() => {
-    mockUsersMaybeSingle.mockResolvedValue({
-      data: {
-        id: 'buyer-1',
-        role: 'buyer',
-      },
-      error: null,
-    });
-    mockUsersUpsert.mockResolvedValue({
-      error: null,
-    });
-    mockProfilesUpsert.mockResolvedValue({
-      error: null,
-    });
-    mockFunctionsInvoke.mockResolvedValue({
-      data: {
-        success: true,
-        user: {
-          id: 'buyer-1',
-          role: 'buyer',
-        },
-      },
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
       error: null,
     });
     mockSignInWithPassword.mockResolvedValue({
       data: {
-        user: { id: 'buyer-1' },
-        session: { user: { id: 'buyer-1' } },
+        user: { id: 'buyer-1', email: 'buyer@example.com' },
+        session: { user: { id: 'buyer-1', email: 'buyer@example.com' } },
       },
       error: null,
+    });
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'buyer-1',
+      role: 'buyer',
+    });
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'buyer-1' } },
+      user: { id: 'buyer-1', role: 'buyer' },
+    });
+    mockStoreAuthenticatedUser.mockImplementation(() => {});
+    mockRouteAuthenticatedUser.mockImplementation((navigate, profile, options = {}) => {
+      if (options.returnUrl) {
+        navigate(options.returnUrl, { replace: true });
+        return;
+      }
+
+      if (profile.role === 'seller') {
+        navigate('/seller/dashboard', { replace: true });
+        return;
+      }
+
+      if (profile.role === 'admin') {
+        navigate('/admin/dashboard', { replace: true });
+        return;
+      }
+
+      navigate('/marketplace', { replace: true });
     });
     mockMergeGuestCart.mockResolvedValue([]);
   });
@@ -181,6 +155,7 @@ describe('Login', () => {
 
     pendingSessionCheck.resolve({
       data: { session: null },
+      error: null,
     });
 
     await waitFor(() => {
@@ -194,9 +169,6 @@ describe('Login', () => {
   });
 
   it('retries transient auth lock conflicts instead of failing the login immediately', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-    });
     mockSignInWithPassword
       .mockRejectedValueOnce(new Error('Navigator LockManager lock "lock:sb" could not be acquired'))
       .mockResolvedValueOnce({
@@ -219,9 +191,6 @@ describe('Login', () => {
   });
 
   it('retries transient auth fetch failures instead of failing the login immediately', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-    });
     mockSignInWithPassword
       .mockRejectedValueOnce(new Error('AuthRetryableFetchError: Failed to fetch'))
       .mockResolvedValueOnce({
@@ -243,131 +212,37 @@ describe('Login', () => {
     expect(mockShowError).not.toHaveBeenCalled();
   });
 
-  it('auto-routes even when the user picked the wrong login type first', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-    });
-    mockUsersMaybeSingle.mockResolvedValue({
-      data: {
-        id: 'seller-1',
-        role: 'seller',
-      },
-      error: null,
-    });
-    mockSignInWithPassword.mockResolvedValue({
-      data: {
-        user: { id: 'seller-1', email: 'seller@example.com', user_metadata: { role: 'seller' } },
-        session: { user: { id: 'seller-1', email: 'seller@example.com', user_metadata: { role: 'seller' } } },
-      },
-      error: null,
-    });
-
-    renderLoginRoute();
-    fillAndSubmitLoginForm();
-
-    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
-    expect(mockShowError).not.toHaveBeenCalled();
-    expect(mockSignOut).not.toHaveBeenCalled();
-  });
-
-  it('rebuilds the public user record from auth metadata when it is missing', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-    });
-    mockUsersMaybeSingle
-      .mockResolvedValueOnce({
-        data: null,
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: {
-          id: 'buyer-1',
-          role: 'buyer',
-        },
-        error: null,
-      });
-    mockSignInWithPassword.mockResolvedValue({
-      data: {
-        user: {
-          id: 'buyer-1',
-          email: 'buyer@example.com',
-          user_metadata: {
-            role: 'buyer',
-            full_name: 'Buyer Demo',
-            username: 'buyerdemo',
-            location: 'Lagos',
-            phone_number: '08012345678',
-          },
-        },
-        session: {
-          user: {
-            id: 'buyer-1',
-            email: 'buyer@example.com',
-            user_metadata: {
-              role: 'buyer',
-              full_name: 'Buyer Demo',
-              username: 'buyerdemo',
-              location: 'Lagos',
-              phone_number: '08012345678',
-            },
-          },
-        },
-      },
-      error: null,
+  it('recovers the public user context through the shared bootstrap service during login', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'buyer-1',
+      role: 'buyer',
+      account_status: 'active',
     });
 
     renderLoginRoute();
     fillAndSubmitLoginForm();
 
     expect(await screen.findByText('Marketplace')).toBeInTheDocument();
-    expect(mockProfilesUpsert).toHaveBeenCalled();
-    expect(mockUsersUpsert).toHaveBeenCalled();
-    expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+      authUser: expect.objectContaining({ id: 'buyer-1' }),
+      desiredRole: 'buyer',
+    });
+    expect(mockStoreAuthenticatedUser).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'buyer' })
+    );
+    expect(mockMergeGuestCart).toHaveBeenCalledWith('buyer-1');
   });
 
-  it('reconciles a mismatched buyer placeholder into a seller account during login', async () => {
-    mockGetSession.mockResolvedValue({
-      data: { session: null },
-    });
-    mockUsersMaybeSingle.mockResolvedValue({
-      data: {
-        id: 'seller-1',
-        role: 'buyer',
-        phone_number: null,
-        business_name: null,
-      },
-      error: null,
-    });
-    mockFunctionsInvoke.mockResolvedValue({
-      data: {
-        success: true,
-        user: {
-          id: 'seller-1',
-          role: 'seller',
-        },
-      },
-      error: null,
+  it('auto-routes even when the user picked the wrong login type first', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'seller-1',
+      role: 'seller',
+      account_status: 'active',
     });
     mockSignInWithPassword.mockResolvedValue({
       data: {
-        user: {
-          id: 'seller-1',
-          email: 'seller@example.com',
-          user_metadata: {
-            role: 'seller',
-            business_name: 'Demo Store',
-          },
-        },
-        session: {
-          user: {
-            id: 'seller-1',
-            email: 'seller@example.com',
-            user_metadata: {
-              role: 'seller',
-              business_name: 'Demo Store',
-            },
-          },
-        },
+        user: { id: 'seller-1', email: 'seller@example.com' },
+        session: { user: { id: 'seller-1', email: 'seller@example.com' } },
       },
       error: null,
     });
@@ -376,7 +251,45 @@ describe('Login', () => {
     fillAndSubmitLoginForm();
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
-    expect(mockFunctionsInvoke).toHaveBeenCalled();
     expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('restores an existing authenticated session through the shared auth context loader', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: 'seller-1' },
+        },
+      },
+      error: null,
+    });
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: {
+        user: { id: 'seller-1' },
+      },
+      user: {
+        id: 'seller-1',
+        role: 'seller',
+        account_status: 'active',
+      },
+    });
+
+    renderLoginRoute();
+
+    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    expect(mockLoadAuthenticatedUserContext).toHaveBeenCalledTimes(1);
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it('honors protected-route return URLs through the shared login success path', async () => {
+    renderLoginRoute('/login?returnUrl=%2Fsupport');
+    fillAndSubmitLoginForm();
+
+    expect(await screen.findByText('Support Inbox')).toBeInTheDocument();
+    expect(mockRouteAuthenticatedUser).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ role: 'buyer' }),
+      { returnUrl: '/support' }
+    );
   });
 });

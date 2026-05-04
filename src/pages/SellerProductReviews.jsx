@@ -8,6 +8,7 @@ import { supabase } from "../supabaseClient";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import { showGlobalConfirm, showGlobalError } from "../hooks/modalService";
 import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
+import { signOutAndClearAuthState } from "../services/authSessionService";
 import { getStoredUser, setStoredUser } from "../utils/storage";
 
 function ReviewStars({ rating, size = 18 }) {
@@ -135,8 +136,7 @@ export default function SellerProductReviews() {
 
   const handleLogout = async () => {
     showGlobalConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = "/login";
     });
   };

@@ -18,6 +18,7 @@ import {
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from "../services/adminActionService";
+import { signOutAndClearAuthState } from "../services/authSessionService";
 
 function AdminPageSkeleton() {
   return (
@@ -102,8 +103,7 @@ export default function AdminUsers() {
 
   const handleLogout = async () => {
     showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = "/login";
     });
   };

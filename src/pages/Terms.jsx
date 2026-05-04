@@ -1,15 +1,27 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 
 export default function Terms() {
+  const location = useLocation();
   const navigate = useNavigate();
+  const fromSignup = location.state?.fromSignup === true;
+  const returnTo = location.state?.returnTo || "/signup";
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
       <Navbar />
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+        {fromSignup && (
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="mb-4 rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-50"
+          >
+            Back to sign up
+          </button>
+        )}
         <h1 className="text-3xl font-bold text-blue-900 mb-2">Terms & Conditions</h1>
         <p className="text-gray-600 mb-1">Last updated: March 2026</p>
         <p className="text-gray-700 mb-6">
@@ -21,7 +33,19 @@ export default function Terms() {
             <h2 className="text-xl font-semibold text-blue-900 mb-3">1. Acceptance of Terms</h2>
             <p className="text-gray-700">
               By accessing or using Mafdesh, you agree to comply with these Terms and Conditions, our{" "}
-              <button onClick={() => navigate("/policies")} className="text-orange-600 hover:underline">
+              <button
+                onClick={() =>
+                  navigate("/policies", {
+                    state: fromSignup
+                      ? {
+                          fromSignup: true,
+                          returnTo,
+                        }
+                      : undefined,
+                  })
+                }
+                className="text-orange-600 hover:underline"
+              >
                 Marketplace Policies
               </button>
               , and any additional rules posted on the platform. If you do not agree, you should not use Mafdesh.

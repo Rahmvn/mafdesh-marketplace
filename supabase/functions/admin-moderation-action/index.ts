@@ -818,7 +818,7 @@ serve(async (req) => {
               }
             : {
                 bank_details_pending: null,
-                bank_details_approved: false,
+                bank_details_approved: Boolean(targetUser.bank_details_approved),
               };
 
         const { error: updateError } = await supabaseAdmin
@@ -857,6 +857,29 @@ serve(async (req) => {
           });
           throw auditError;
         }
+
+        await createNotification(supabaseAdmin, {
+          userId: targetUser.id,
+          type:
+            actionType === ADMIN_ACTION_TYPES.APPROVE_BANK_DETAILS
+              ? "bank_approved"
+              : "bank_rejected",
+          title:
+            actionType === ADMIN_ACTION_TYPES.APPROVE_BANK_DETAILS
+              ? "Bank details approved"
+              : "Bank details rejected",
+          body:
+            actionType === ADMIN_ACTION_TYPES.APPROVE_BANK_DETAILS
+              ? "Your submitted bank details were approved and are now active for payouts."
+              : targetUser.bank_details_approved
+                ? "Your submitted bank-details change was rejected. Your current payout details remain active."
+                : "Your submitted bank details were rejected. Please review them and submit again.",
+          link: "/profile",
+          metadata: {
+            seller_id: targetUser.id,
+            action_type: actionType,
+          },
+        });
 
         return jsonResponse({ success: true, newState });
       }

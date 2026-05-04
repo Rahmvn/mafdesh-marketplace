@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { beginPasswordReset } from "../services/authSessionService";
+import { getAuthFeedback } from "../utils/authResilience";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 
@@ -23,12 +24,11 @@ export default function ForgotPassword() {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
+      const { error } = await beginPasswordReset(email);
 
       if (error) {
-        showError('Reset Failed', `Error: ${error.message}`);
+        const feedback = getAuthFeedback('reset your password', error);
+        showError(feedback.title, feedback.message);
         setIsLoading(false);
         return;
       }
@@ -37,7 +37,8 @@ export default function ForgotPassword() {
       setIsLoading(false);
     } catch (err) {
       console.error('Password reset error:', err);
-      showError('Reset Failed', 'An error occurred. Please try again.');
+      const feedback = getAuthFeedback('reset your password', err);
+      showError(feedback.title, feedback.message);
       setIsLoading(false);
     }
   };

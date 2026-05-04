@@ -21,6 +21,7 @@ import {
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from '../services/adminActionService';
+import { signOutAndClearAuthState } from '../services/authSessionService';
 import {
   getAdminProductEditRequests,
   PRODUCT_CORE_FIELDS,
@@ -219,8 +220,7 @@ export default function AdminProducts() {
 
   const handleLogout = async () => {
     showConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await supabase.auth.signOut();
-      localStorage.clear();
+      await signOutAndClearAuthState();
       window.location.href = '/login';
     });
   };

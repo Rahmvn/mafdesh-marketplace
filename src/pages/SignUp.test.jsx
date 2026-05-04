@@ -3,28 +3,24 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SignUp from './SignUp';
+import Terms from './Terms';
+import Policies from './policies';
 
 const {
   mockSignUp,
   mockProfilesMaybeSingle,
-  mockProfilesUpsert,
-  mockUsersMaybeSingle,
-  mockUsersInsert,
-  mockUsersUpdateEq,
   mockShowError,
   mockShowWarning,
-  mockReconcileUserRole,
+  mockEnsureCurrentUserContext,
+  mockGetAuthCallbackUrl,
   mockFrom,
 } = vi.hoisted(() => {
   const mockSignUp = vi.fn();
   const mockProfilesMaybeSingle = vi.fn();
-  const mockProfilesUpsert = vi.fn();
-  const mockUsersMaybeSingle = vi.fn();
-  const mockUsersInsert = vi.fn();
-  const mockUsersUpdateEq = vi.fn();
   const mockShowError = vi.fn();
   const mockShowWarning = vi.fn();
-  const mockReconcileUserRole = vi.fn();
+  const mockEnsureCurrentUserContext = vi.fn();
+  const mockGetAuthCallbackUrl = vi.fn();
   const mockFrom = vi.fn((table) => {
     if (table === 'profiles') {
       return {
@@ -32,21 +28,6 @@ const {
           eq: () => ({
             maybeSingle: mockProfilesMaybeSingle,
           }),
-        }),
-        upsert: mockProfilesUpsert,
-      };
-    }
-
-    if (table === 'users') {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: mockUsersMaybeSingle,
-          }),
-        }),
-        insert: mockUsersInsert,
-        update: () => ({
-          eq: mockUsersUpdateEq,
         }),
       };
     }
@@ -57,13 +38,10 @@ const {
   return {
     mockSignUp,
     mockProfilesMaybeSingle,
-    mockProfilesUpsert,
-    mockUsersMaybeSingle,
-    mockUsersInsert,
-    mockUsersUpdateEq,
     mockShowError,
     mockShowWarning,
-    mockReconcileUserRole,
+    mockEnsureCurrentUserContext,
+    mockGetAuthCallbackUrl,
     mockFrom,
   };
 });
@@ -85,12 +63,17 @@ vi.mock('../hooks/useModal', () => ({
   }),
 }));
 
-vi.mock('../services/accountBootstrapService', () => ({
-  reconcileUserRole: mockReconcileUserRole,
+vi.mock('../services/authSessionService', () => ({
+  ensureCurrentUserContext: mockEnsureCurrentUserContext,
+  getAuthCallbackUrl: mockGetAuthCallbackUrl,
 }));
 
 vi.mock('../components/FooterSlim', () => ({
   default: () => <div data-testid="footer" />,
+}));
+
+vi.mock('../components/Navbar', () => ({
+  default: () => <div data-testid="navbar" />,
 }));
 
 function LoginStatePage() {
@@ -104,12 +87,18 @@ function renderSignUpRoute() {
       <Routes>
         <Route path="/signup" element={<SignUp />} />
         <Route path="/login" element={<LoginStatePage />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/policies" element={<Policies />} />
       </Routes>
     </MemoryRouter>
   );
 }
 
-function fillAndSubmitSignUpForm(container) {
+function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {}) {
+  if (asSeller) {
+    fireEvent.click(screen.getByRole('button', { name: /seller/i }));
+  }
+
   fireEvent.change(screen.getByPlaceholderText('John Doe'), {
     target: { value: 'Jane Doe' },
   });
@@ -126,6 +115,12 @@ function fillAndSubmitSignUpForm(container) {
     target: { value: '08012345678' },
   });
 
+  if (asSeller) {
+    fireEvent.change(screen.getByPlaceholderText('Your store name'), {
+      target: { value: 'Jane Store' },
+    });
+  }
+
   const passwordInputs = container.querySelectorAll('input[type="password"]');
   fireEvent.change(passwordInputs[0], {
     target: { value: 'password123' },
@@ -134,30 +129,28 @@ function fillAndSubmitSignUpForm(container) {
     target: { value: 'password123' },
   });
 
-  fireEvent.click(screen.getByRole('checkbox'));
+  if (agreeToTerms) {
+    fireEvent.click(screen.getByRole('checkbox'));
+  }
+}
+
+function fillAndSubmitSignUpForm(container, options) {
+  fillSignUpForm(container, options);
   fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 }
 
 describe('SignUp', () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     mockProfilesMaybeSingle.mockResolvedValue({
       data: null,
       error: null,
     });
-    mockProfilesUpsert.mockResolvedValue({
-      error: null,
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'user-1',
+      role: 'buyer',
     });
-    mockUsersMaybeSingle.mockResolvedValue({
-      data: null,
-      error: null,
-    });
-    mockUsersInsert.mockResolvedValue({
-      error: null,
-    });
-    mockUsersUpdateEq.mockResolvedValue({
-      error: null,
-    });
-    mockReconcileUserRole.mockResolvedValue(null);
+    mockGetAuthCallbackUrl.mockReturnValue('http://localhost:5173/auth/callback?flow=signup');
     mockSignUp.mockResolvedValue({
       data: {
         user: { id: 'user-1' },
@@ -167,7 +160,140 @@ describe('SignUp', () => {
   });
 
   afterEach(() => {
+    window.sessionStorage.clear();
     vi.clearAllMocks();
+  });
+
+  it('restores the signup draft after viewing terms and returning to signup', async () => {
+    const { container } = renderSignUpRoute();
+
+    fillSignUpForm(container, { asSeller: true });
+    fireEvent.click(screen.getByRole('button', { name: /terms & conditions/i }));
+
+    expect(await screen.findByText('Terms & Conditions')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    });
+
+    expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
+    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
+    expect(screen.getByRole('combobox')).toHaveValue('Lagos');
+    expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
+    expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
+    expect(screen.getByRole('checkbox')).toBeChecked();
+  });
+
+  it('restores the signup draft after viewing policies and returning to signup', async () => {
+    const { container } = renderSignUpRoute();
+
+    fillSignUpForm(container);
+    fireEvent.click(screen.getByRole('button', { name: /privacy policy/i }));
+
+    expect(await screen.findByText('Marketplace Policies')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    });
+
+    expect(screen.getByRole('checkbox')).toBeChecked();
+  });
+
+  it('redirects to login with the normal success message after a successful signup', async () => {
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    expect(
+      await screen.findByText('Account created successfully! Please check your email to verify before logging in.')
+    ).toBeInTheDocument();
+    expect(mockEnsureCurrentUserContext).not.toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: { id: 'user-1' },
+        session: {
+          user: { id: 'user-1', email: 'jane@example.com' },
+        },
+      },
+      error: null,
+    });
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    expect(
+      await screen.findByText('Account created successfully! Please check your email to verify before logging in.')
+    ).toBeInTheDocument();
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+      authUser: expect.objectContaining({ id: 'user-1' }),
+      desiredRole: 'buyer',
+    });
+  });
+
+  it('redirects to login with a recovery message when bootstrap fails after auth signup succeeds', async () => {
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: { id: 'user-1' },
+        session: {
+          user: { id: 'user-1', email: 'jane@example.com' },
+        },
+      },
+      error: null,
+    });
+    mockEnsureCurrentUserContext.mockRejectedValue(new Error('Profile sync timed out'));
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    expect(
+      await screen.findByText(/Your account was created successfully\. Please check your email to verify it, then log in\./i)
+    ).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('uses the same recovery path for other backend bootstrap failures', async () => {
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: { id: 'user-1' },
+        session: {
+          user: { id: 'user-1', email: 'jane@example.com' },
+        },
+      },
+      error: null,
+    });
+    mockEnsureCurrentUserContext.mockRejectedValue(new Error('Users table write failed'));
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    expect(
+      await screen.findByText(/Your account was created successfully\. Please check your email to verify it, then log in\./i)
+    ).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('shows an error and stays on signup when auth signup truly fails', async () => {
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: null,
+      },
+      error: new Error('Account already exists'),
+    });
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalled();
+    });
+
+    expect(screen.getByText('Create your account')).toBeInTheDocument();
+    expect(screen.queryByText(/Account created successfully!/i)).not.toBeInTheDocument();
   });
 
   it('retries transient auth lock conflicts during sign up and still navigates to login', async () => {

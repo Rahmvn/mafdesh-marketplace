@@ -1,43 +1,25 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import ProtectedRoute from './ProtectedRoute';
 
-const { mockGetSession, mockSignOut, mockUsersSingle, mockFrom } = vi.hoisted(() => {
-  const mockGetSession = vi.fn();
-  const mockSignOut = vi.fn();
-  const mockUsersSingle = vi.fn();
-  const mockFrom = vi.fn((table) => {
-    if (table === 'users') {
-      return {
-        select: () => ({
-          eq: () => ({
-            single: mockUsersSingle,
-          }),
-        }),
-      };
-    }
+const {
+  mockLoadAuthenticatedUserContext,
+  mockSignOutAndClearAuthState,
+  mockSubscribeToAuthStateChanges,
+  mockShowGlobalLoginRequired,
+} = vi.hoisted(() => ({
+  mockLoadAuthenticatedUserContext: vi.fn(),
+  mockSignOutAndClearAuthState: vi.fn(),
+  mockSubscribeToAuthStateChanges: vi.fn(),
+  mockShowGlobalLoginRequired: vi.fn(),
+}));
 
-    throw new Error(`Unexpected table: ${table}`);
-  });
-
-  return {
-    mockGetSession,
-    mockSignOut,
-    mockUsersSingle,
-    mockFrom,
-  };
-});
-
-vi.mock('../supabaseClient', () => ({
-  supabase: {
-    auth: {
-      getSession: mockGetSession,
-      signOut: mockSignOut,
-    },
-    from: mockFrom,
-  },
+vi.mock('../services/authSessionService', () => ({
+  loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
+  signOutAndClearAuthState: mockSignOutAndClearAuthState,
+  subscribeToAuthStateChanges: mockSubscribeToAuthStateChanges,
 }));
 
 vi.mock('./MarketplaceLoading', () => ({
@@ -45,7 +27,7 @@ vi.mock('./MarketplaceLoading', () => ({
 }));
 
 vi.mock('../hooks/modalService', () => ({
-  showGlobalLoginRequired: vi.fn(),
+  showGlobalLoginRequired: mockShowGlobalLoginRequired,
 }));
 
 function renderRoute(initialEntry = '/marketplace') {
@@ -54,11 +36,11 @@ function renderRoute(initialEntry = '/marketplace') {
       <Routes>
         <Route
           path="/marketplace"
-          element={
+          element={(
             <ProtectedRoute allowedRoles={['buyer']}>
               <div>Buyer dashboard</div>
             </ProtectedRoute>
-          }
+          )}
         />
         <Route path="/seller/dashboard" element={<div>Seller dashboard</div>} />
         <Route path="/admin/dashboard" element={<div>Admin dashboard</div>} />
@@ -70,14 +52,8 @@ function renderRoute(initialEntry = '/marketplace') {
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: 'user-1' },
-        },
-      },
-      error: null,
-    });
+    mockSubscribeToAuthStateChanges.mockReturnValue(vi.fn());
+    mockSignOutAndClearAuthState.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -86,14 +62,13 @@ describe('ProtectedRoute', () => {
   });
 
   it('renders buyer-only content for buyers', async () => {
-    mockUsersSingle.mockResolvedValue({
-      data: {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'user-1' } },
+      user: {
         id: 'user-1',
         role: 'buyer',
-        status: 'active',
         account_status: 'active',
       },
-      error: null,
     });
 
     renderRoute();
@@ -103,19 +78,50 @@ describe('ProtectedRoute', () => {
   });
 
   it('redirects sellers away from buyer-only routes', async () => {
-    mockUsersSingle.mockResolvedValue({
-      data: {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'user-1' } },
+      user: {
         id: 'user-1',
         role: 'seller',
-        status: 'active',
         account_status: 'active',
       },
-      error: null,
     });
 
     renderRoute();
 
     expect(await screen.findByText('Seller dashboard')).toBeInTheDocument();
     expect(screen.queryByText('Buyer dashboard')).not.toBeInTheDocument();
+  });
+
+  it('opens the login-required prompt when the user is unauthenticated', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: null,
+      user: null,
+    });
+
+    renderRoute('/marketplace?view=orders');
+
+    await waitFor(() => {
+      expect(mockShowGlobalLoginRequired).toHaveBeenCalled();
+    });
+
+    expect(mockShowGlobalLoginRequired.mock.calls[0][0]).toMatch(/please login to continue/i);
+  });
+
+  it('signs out inactive accounts before treating them as logged out', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'user-1' } },
+      user: {
+        id: 'user-1',
+        role: 'buyer',
+        account_status: 'suspended',
+      },
+    });
+
+    renderRoute();
+
+    await waitFor(() => {
+      expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
+    });
   });
 });

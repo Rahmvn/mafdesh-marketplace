@@ -1,43 +1,23 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import AdminRoute from './AdminRoute';
 
-const { mockGetSession, mockSignOut, mockUsersSingle, mockFrom } = vi.hoisted(() => {
-  const mockGetSession = vi.fn();
-  const mockSignOut = vi.fn();
-  const mockUsersSingle = vi.fn();
-  const mockFrom = vi.fn((table) => {
-    if (table === 'users') {
-      return {
-        select: () => ({
-          eq: () => ({
-            single: mockUsersSingle,
-          }),
-        }),
-      };
-    }
+const {
+  mockLoadAuthenticatedUserContext,
+  mockSignOutAndClearAuthState,
+  mockSubscribeToAuthStateChanges,
+} = vi.hoisted(() => ({
+  mockLoadAuthenticatedUserContext: vi.fn(),
+  mockSignOutAndClearAuthState: vi.fn(),
+  mockSubscribeToAuthStateChanges: vi.fn(),
+}));
 
-    throw new Error(`Unexpected table: ${table}`);
-  });
-
-  return {
-    mockGetSession,
-    mockSignOut,
-    mockUsersSingle,
-    mockFrom,
-  };
-});
-
-vi.mock('../supabaseClient', () => ({
-  supabase: {
-    auth: {
-      getSession: mockGetSession,
-      signOut: mockSignOut,
-    },
-    from: mockFrom,
-  },
+vi.mock('../services/authSessionService', () => ({
+  loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
+  signOutAndClearAuthState: mockSignOutAndClearAuthState,
+  subscribeToAuthStateChanges: mockSubscribeToAuthStateChanges,
 }));
 
 vi.mock('./MarketplaceLoading', () => ({
@@ -50,11 +30,11 @@ function renderRoute(initialEntry = '/admin') {
       <Routes>
         <Route
           path="/admin"
-          element={
+          element={(
             <AdminRoute>
               <div>Admin workspace</div>
             </AdminRoute>
-          }
+          )}
         />
         <Route path="/login" element={<div>Login page</div>} />
         <Route path="/marketplace" element={<div>Buyer marketplace</div>} />
@@ -66,14 +46,8 @@ function renderRoute(initialEntry = '/admin') {
 
 describe('AdminRoute', () => {
   beforeEach(() => {
-    mockGetSession.mockResolvedValue({
-      data: {
-        session: {
-          user: { id: 'user-1' },
-        },
-      },
-      error: null,
-    });
+    mockSubscribeToAuthStateChanges.mockReturnValue(vi.fn());
+    mockSignOutAndClearAuthState.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -82,14 +56,13 @@ describe('AdminRoute', () => {
   });
 
   it('renders admin content only after confirming the live admin role', async () => {
-    mockUsersSingle.mockResolvedValue({
-      data: {
-        id: 'user-1',
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'admin-1' } },
+      user: {
+        id: 'admin-1',
         role: 'admin',
-        status: 'active',
         account_status: 'active',
       },
-      error: null,
     });
 
     renderRoute();
@@ -99,19 +72,48 @@ describe('AdminRoute', () => {
   });
 
   it('redirects non-admin users even if they have a valid session', async () => {
-    mockUsersSingle.mockResolvedValue({
-      data: {
-        id: 'user-1',
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'seller-1' } },
+      user: {
+        id: 'seller-1',
         role: 'seller',
-        status: 'active',
         account_status: 'active',
       },
-      error: null,
     });
 
     renderRoute();
 
     expect(await screen.findByText('Seller dashboard')).toBeInTheDocument();
     expect(screen.queryByText('Admin workspace')).not.toBeInTheDocument();
+  });
+
+  it('redirects missing sessions to login', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: null,
+      user: null,
+    });
+
+    renderRoute();
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+  });
+
+  it('signs out inactive accounts before removing admin access', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'admin-1' } },
+      user: {
+        id: 'admin-1',
+        role: 'admin',
+        account_status: 'inactive',
+      },
+    });
+
+    renderRoute();
+
+    await waitFor(() => {
+      expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
   });
 });

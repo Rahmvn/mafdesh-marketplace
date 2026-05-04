@@ -24,11 +24,21 @@ import useModal from '../hooks/useModal';
 import { RetryablePageError } from '../components/PageFeedback';
 import { listSavedAddresses } from '../services/savedAddressService';
 import {
+  signOutAndClearAuthState,
+  updateAuthenticatedPassword,
+  verifyCurrentPassword,
+} from '../services/authSessionService';
+import {
   formatSavedAddressLandmark,
   formatSavedAddressLocation,
   formatSavedAddressStreet,
   pickDefaultSavedAddress,
 } from '../utils/savedAddresses';
+import {
+  buildBankDetailsPendingUpdate,
+  sanitizeBankDetailsRequest,
+  validateBankDetailsRequest,
+} from '../utils/bankDetailsRequests';
 
 const NIGERIAN_BANKS = [
   'Access Bank',
@@ -357,9 +367,14 @@ export default function Profile() {
   }, [loadUserProfile]);
 
   const handlePendingDetailsChange = (field, value) => {
+    const nextValue =
+      field === 'account_number' || field === 'bvn'
+        ? String(value || '').replace(/\D/g, '')
+        : value;
+
     setPendingDetails((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setBankMessage(null);
   };
@@ -443,10 +458,10 @@ export default function Profile() {
         return;
       }
 
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email: session.user.email,
-        password: currentPassword,
-      });
+      const { error: verifyError } = await verifyCurrentPassword(
+        session.user.email,
+        currentPassword
+      );
 
       if (verifyError) {
         setPasswordMessage({
@@ -456,9 +471,7 @@ export default function Profile() {
         return;
       }
 
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      const { error: updateError } = await updateAuthenticatedPassword(newPassword);
 
       if (updateError) {
         setPasswordMessage({
@@ -474,8 +487,7 @@ export default function Profile() {
       });
 
       window.setTimeout(async () => {
-        await supabase.auth.signOut();
-        localStorage.clear();
+        await signOutAndClearAuthState();
         navigate('/login');
       }, 1200);
     } catch (error) {
@@ -496,8 +508,7 @@ export default function Profile() {
   };
 
   const confirmLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.clear();
+    await signOutAndClearAuthState();
     navigate('/login');
   };
 
@@ -508,46 +519,40 @@ export default function Profile() {
 
     setBankMessage(null);
 
-    if (!pendingDetails.bank_name || !pendingDetails.account_number || !pendingDetails.account_name) {
+    const validation = validateBankDetailsRequest(pendingDetails);
+
+    if (!validation.ok) {
       setBankMessage({
         type: 'error',
-        text: 'Bank name, account number and account name are required.',
+        text: validation.message,
       });
       return;
     }
 
+    const sanitizedPendingDetails = validation.sanitized;
     setSaving(true);
-
-    const pendingData = {
-      bank_name: pendingDetails.bank_name,
-      account_number: pendingDetails.account_number,
-      account_name: pendingDetails.account_name,
-      business_address: pendingDetails.business_address,
-      bvn: pendingDetails.bvn,
-      tax_id: pendingDetails.tax_id,
-    };
 
     const { error } = await supabase
       .from('users')
-      .update({
-        bank_details_pending: pendingData,
-        bank_details_approved: false,
-      })
+      .update(buildBankDetailsPendingUpdate(sanitizedPendingDetails))
       .eq('id', profile.id);
 
     if (error) {
       setBankMessage({
         type: 'error',
-        text: 'Failed to submit request',
+        text: error.message || 'Failed to submit request.',
       });
       console.error(error);
     } else {
       await loadUserProfile();
       setBankMessage({
         type: 'success',
-        text: 'Request submitted. Admin will review.',
+        text: hasActiveDetails
+          ? 'Change request submitted. Your current payout details stay active until admin approves the new ones.'
+          : 'Request submitted. Admin will review your payout details.',
       });
       setShowChangeForm(false);
+      setPendingDetails(sanitizeBankDetailsRequest(sanitizedPendingDetails));
     }
 
     setSaving(false);
