@@ -10,9 +10,37 @@ import { clearStoredUser, setStoredUser } from "../utils/storage";
 import { normalizeSelfServiceRole } from "./accountBootstrapService";
 
 export const AUTH_CALLBACK_PATH = "/auth/callback";
+const INTENTIONAL_LOGOUT_KEY = "mafdesh_intentional_logout";
 
 function getSafeReturnUrl(returnUrl = "") {
   return String(returnUrl || "").startsWith("/") ? String(returnUrl) : "";
+}
+
+function isRoleCompatibleReturnUrl(role, returnUrl) {
+  const safeReturnUrl = getSafeReturnUrl(returnUrl);
+
+  if (!safeReturnUrl) {
+    return false;
+  }
+
+  if (role === "admin") {
+    return (
+      safeReturnUrl.startsWith("/admin") ||
+      safeReturnUrl.startsWith("/profile") ||
+      safeReturnUrl.startsWith("/support") ||
+      safeReturnUrl.startsWith("/notifications")
+    );
+  }
+
+  if (role === "buyer") {
+    return !safeReturnUrl.startsWith("/admin") && !safeReturnUrl.startsWith("/seller");
+  }
+
+  if (role === "seller") {
+    return !safeReturnUrl.startsWith("/admin");
+  }
+
+  return false;
 }
 
 function readHashParams() {
@@ -21,6 +49,34 @@ function readHashParams() {
   }
 
   return new URLSearchParams(window.location.hash.replace(/^#/, ""));
+}
+
+function readIntentionalLogoutFlag() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.sessionStorage.getItem(INTENTIONAL_LOGOUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeIntentionalLogoutFlag(value) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (value) {
+      window.sessionStorage.setItem(INTENTIONAL_LOGOUT_KEY, "1");
+    } else {
+      window.sessionStorage.removeItem(INTENTIONAL_LOGOUT_KEY);
+    }
+  } catch {
+    // Ignore storage access issues and fall back to normal auth routing.
+  }
 }
 
 async function readPublicUserRecord(userId) {
@@ -86,13 +142,24 @@ export function storeAuthenticatedUser(publicUser) {
     return;
   }
 
+  writeIntentionalLogoutFlag(false);
   setStoredUser({
     id: publicUser.id,
     role: publicUser.role,
   });
 }
 
+export function consumeIntentionalLogoutRedirect() {
+  const shouldRedirect = readIntentionalLogoutFlag();
+  if (shouldRedirect) {
+    writeIntentionalLogoutFlag(false);
+  }
+  return shouldRedirect;
+}
+
 export async function signOutAndClearAuthState() {
+  writeIntentionalLogoutFlag(true);
+
   try {
     await runAuthOperationWithRetry(() => supabase.auth.signOut());
   } finally {
@@ -188,7 +255,7 @@ export async function loadAuthenticatedUserContext({ desiredRole = "" } = {}) {
 export function routeAuthenticatedUser(navigate, publicUser, { returnUrl = "" } = {}) {
   const safeReturnUrl = getSafeReturnUrl(returnUrl);
 
-  if (safeReturnUrl) {
+  if (safeReturnUrl && isRoleCompatibleReturnUrl(publicUser.role, safeReturnUrl)) {
     navigate(safeReturnUrl, { replace: true });
     return;
   }

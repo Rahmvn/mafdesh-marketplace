@@ -54,4 +54,30 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     expect(localStorage.getItem('marketplace_draft')).toBe(JSON.stringify({ keep: true }));
     expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
+
+  it('routes admins to the admin dashboard instead of buyer return URLs', async () => {
+    const navigate = vi.fn();
+    const { routeAuthenticatedUser } = await import('./authSessionService');
+
+    routeAuthenticatedUser(
+      navigate,
+      { id: 'admin-1', role: 'admin' },
+      { returnUrl: '/marketplace' }
+    );
+
+    expect(navigate).toHaveBeenCalledWith('/admin/dashboard', { replace: true });
+  });
+
+  it('still honors admin-compatible return URLs for admins', async () => {
+    const navigate = vi.fn();
+    const { routeAuthenticatedUser } = await import('./authSessionService');
+
+    routeAuthenticatedUser(
+      navigate,
+      { id: 'admin-1', role: 'admin' },
+      { returnUrl: '/admin/orders' }
+    );
+
+    expect(navigate).toHaveBeenCalledWith('/admin/orders', { replace: true });
+  });
 });

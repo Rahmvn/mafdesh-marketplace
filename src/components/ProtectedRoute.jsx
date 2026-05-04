@@ -4,6 +4,7 @@ import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 import { clearStoredUser } from '../utils/storage';
 import {
+  consumeIntentionalLogoutRedirect,
   loadAuthenticatedUserContext,
   signOutAndClearAuthState,
   subscribeToAuthStateChanges,
@@ -113,6 +114,10 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
   }
 
   if (status === 'unauthenticated') {
+    if (consumeIntentionalLogoutRedirect()) {
+      return <Navigate to="/login" replace />;
+    }
+
     const returnUrl = `${location.pathname}${location.search}${location.hash}`;
     return <LoginRequiredFallback returnUrl={returnUrl} loginPrompt={loginPrompt} />;
   }

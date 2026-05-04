@@ -19,6 +19,27 @@ import {
 } from '../utils/authResilience';
 import { clearStoredUser } from '../utils/storage';
 
+const LOGIN_ROLE_UI = {
+  buyer: {
+    buttonActive: 'bg-blue-900 text-white shadow-lg',
+    buttonIdle: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+    submit: 'bg-gradient-to-r from-blue-900 to-blue-700',
+    helper: 'Buyer accounts open in the marketplace after login.',
+  },
+  seller: {
+    buttonActive: 'bg-orange-500 text-white shadow-lg',
+    buttonIdle: 'bg-orange-50 text-orange-600 hover:bg-orange-100',
+    submit: 'bg-gradient-to-r from-orange-500 to-orange-600',
+    helper: 'Seller accounts open in the seller workspace after login.',
+  },
+  admin: {
+    buttonActive: 'bg-slate-900 text-white shadow-lg',
+    buttonIdle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+    submit: 'bg-gradient-to-r from-slate-900 to-slate-700',
+    helper: 'Admin accounts open in the admin dashboard after login.',
+  },
+};
+
 export default function Login() {
   const [userType, setUserType] = useState("buyer");
   const [email, setEmail] = useState("");
@@ -34,6 +55,7 @@ export default function Login() {
   const isMountedRef = useRef(true);
   const submitInFlightRef = useRef(false);
   const initialSessionCheckRef = useRef(Promise.resolve());
+  const selectedRoleUi = LOGIN_ROLE_UI[userType] || LOGIN_ROLE_UI.buyer;
 
   const mergeGuestCartIfBuyer = useCallback(async (role, userId = null) => {
     if (role !== 'buyer') {
@@ -132,7 +154,6 @@ export default function Login() {
       }
       const profile = await ensureCurrentUserContext({
         authUser: user,
-        desiredRole: userType,
       });
       const role = profile.role;
       if (!role) {
@@ -198,34 +219,41 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setUserType("buyer")}
-                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${userType === "buyer"
-                    ? "bg-blue-900 text-white shadow-lg"
-                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                    }`}
+                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
+                    userType === "buyer"
+                      ? LOGIN_ROLE_UI.buyer.buttonActive
+                      : LOGIN_ROLE_UI.buyer.buttonIdle
+                  }`}
                 >
                   Buyer
                 </button>
                 <button
                   type="button"
                   onClick={() => setUserType("seller")}
-                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${userType === "seller"
-                    ? "bg-orange-500 text-white shadow-lg"
-                    : "bg-orange-50 text-orange-600 hover:bg-orange-100"
-                    }`}
+                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
+                    userType === "seller"
+                      ? LOGIN_ROLE_UI.seller.buttonActive
+                      : LOGIN_ROLE_UI.seller.buttonIdle
+                  }`}
                 >
                   Seller
                 </button>
                 <button
                   type="button"
                   onClick={() => setUserType("admin")}
-                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${userType === "admin"
-                    ? "bg-blue-700 text-white shadow-lg"
-                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                    }`}
+                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
+                    userType === "admin"
+                      ? LOGIN_ROLE_UI.admin.buttonActive
+                      : LOGIN_ROLE_UI.admin.buttonIdle
+                  }`}
                 >
                   Admin
                 </button>
               </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                {selectedRoleUi.helper} We always sign you into the role already saved on this
+                account.
+              </p>
             </div>
 
             {/* Form */}
@@ -277,8 +305,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className={`w-full py-3.5 rounded-xl text-white font-bold text-base mt-2 transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${userType === "buyer" ? "bg-gradient-to-r from-blue-900 to-blue-700" : "bg-gradient-to-r from-orange-500 to-orange-600"
-                  }`}
+                className={`w-full py-3.5 rounded-xl text-white font-bold text-base mt-2 transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${selectedRoleUi.submit}`}
               >
                 {isLoading ? 'Logging in...' : 'Login to Mafdesh'}
               </button>

@@ -9,6 +9,7 @@ const corsHeaders = {
 };
 
 const SELF_SERVICE_ROLES = new Set(["buyer", "seller"]);
+const ALL_MARKETPLACE_ROLES = new Set(["buyer", "seller", "admin"]);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,6 +32,11 @@ function normalizeRole(value: unknown, fallback = "") {
     typeof fallback === "string" ? fallback.trim().toLowerCase() : "";
 
   return SELF_SERVICE_ROLES.has(normalizedFallback) ? normalizedFallback : "buyer";
+}
+
+function normalizeMarketplaceRole(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ALL_MARKETPLACE_ROLES.has(normalized) ? normalized : "";
 }
 
 function normalizeText(value: unknown) {
@@ -105,19 +111,30 @@ serve(async (req) => {
     }
 
     const metadata = authUser.user_metadata || authUser.raw_user_meta_data || {};
-    const desiredRole = normalizeRole(
-      body?.role || metadata?.role || existingUser?.role || "buyer",
-      existingUser?.role || "buyer"
+    const appMetadata = authUser.app_metadata || authUser.raw_app_meta_data || {};
+    const trustedRole = normalizeMarketplaceRole(
+      existingUser?.role || appMetadata?.role || ""
     );
+    const desiredRole =
+      trustedRole === "admin"
+        ? "admin"
+        : normalizeRole(
+            body?.role || metadata?.role || existingUser?.role || "buyer",
+            existingUser?.role || "buyer"
+          );
 
-    if (existingUser?.role === "admin") {
+    if (trustedRole === "admin" && existingUser?.role === "admin") {
       return jsonResponse({
         success: true,
         user: existingUser,
       });
     }
 
-    if (existingUser?.role && existingUser.role !== desiredRole) {
+    if (
+      existingUser?.role &&
+      existingUser.role !== desiredRole &&
+      trustedRole !== "admin"
+    ) {
       const [buyerOrdersResult, sellerOrdersResult, productsResult] = await Promise.all([
         supabaseAdmin
           .from("orders")

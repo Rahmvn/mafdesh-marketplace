@@ -84,6 +84,10 @@ function fillAndSubmitLoginForm({ email = 'buyer@example.com', password = 'passw
   fireEvent.click(screen.getByRole('button', { name: /login to mafdesh/i }));
 }
 
+function selectLoginType(role) {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(role, 'i') }));
+}
+
 function createDeferred() {
   let resolve;
   let reject;
@@ -225,7 +229,6 @@ describe('Login', () => {
     expect(await screen.findByText('Marketplace')).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'buyer-1' }),
-      desiredRole: 'buyer',
     });
     expect(mockStoreAuthenticatedUser).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'buyer' })
@@ -248,10 +251,71 @@ describe('Login', () => {
     });
 
     renderLoginRoute();
+    selectLoginType('buyer');
     fillAndSubmitLoginForm();
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
     expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+      authUser: expect.objectContaining({ id: 'seller-1' }),
+    });
+  });
+
+  it('routes admin sign-ins to the admin dashboard', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'admin-1',
+      role: 'admin',
+      account_status: 'active',
+    });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'admin-1', email: 'admin@example.com' },
+        session: { user: { id: 'admin-1', email: 'admin@example.com' } },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    selectLoginType('admin');
+    fillAndSubmitLoginForm({
+      email: 'admin@example.com',
+      password: 'password123',
+    });
+
+    expect(await screen.findByText('Admin Dashboard')).toBeInTheDocument();
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+      authUser: expect.objectContaining({ id: 'admin-1' }),
+    });
+  });
+
+  it('does not let the selected login tab rewrite a seller account into buyer routing', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'seller-1',
+      role: 'seller',
+      account_status: 'active',
+    });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'seller-1', email: 'seller@example.com' },
+        session: { user: { id: 'seller-1', email: 'seller@example.com' } },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    selectLoginType('buyer');
+    expect(
+      screen.getByText(/we always sign you into the role already saved on this account/i)
+    ).toBeInTheDocument();
+    fillAndSubmitLoginForm({
+      email: 'seller@example.com',
+      password: 'password123',
+    });
+
+    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+      authUser: expect.objectContaining({ id: 'seller-1' }),
+    });
   });
 
   it('restores an existing authenticated session through the shared auth context loader', async () => {

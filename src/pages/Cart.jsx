@@ -89,7 +89,7 @@ export default function Cart() {
   const [loading, setLoading] = useState(() => readCachedCartItems().length === 0);
   const [removedItems, setRemovedItems] = useState([]);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [syncingIds, setSyncingIds] = useState(new Set());
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [recommendationProducts, setRecommendationProducts] = useState([]);
@@ -375,6 +375,12 @@ export default function Cart() {
     navigate(`/product/${productId}`);
   };
 
+  const checkoutButtonLabel = checkoutLoading
+    ? "Checking stock..."
+    : isAuthenticated === false
+      ? "Log In to Checkout"
+      : "Proceed to Checkout";
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-blue-50">
@@ -552,14 +558,10 @@ export default function Cart() {
                   disabled={checkoutLoading || cartItems.length === 0}
                   className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
                 >
-                  {checkoutLoading
-                    ? "Checking stock..."
-                    : isAuthenticated
-                      ? "Proceed to Checkout"
-                      : "Log In to Checkout"}
+                  {checkoutButtonLabel}
                 </button>
 
-                {!isAuthenticated && (
+                {isAuthenticated === false && (
                   <p className="mt-3 text-center text-xs text-gray-500">
                     You can browse and manage your cart as a guest, but payment requires a buyer account.
                   </p>

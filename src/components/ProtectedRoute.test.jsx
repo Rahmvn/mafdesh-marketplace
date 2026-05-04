@@ -5,11 +5,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import ProtectedRoute from './ProtectedRoute';
 
 const {
+  mockConsumeIntentionalLogoutRedirect,
   mockLoadAuthenticatedUserContext,
   mockSignOutAndClearAuthState,
   mockSubscribeToAuthStateChanges,
   mockShowGlobalLoginRequired,
 } = vi.hoisted(() => ({
+  mockConsumeIntentionalLogoutRedirect: vi.fn(),
   mockLoadAuthenticatedUserContext: vi.fn(),
   mockSignOutAndClearAuthState: vi.fn(),
   mockSubscribeToAuthStateChanges: vi.fn(),
@@ -17,6 +19,7 @@ const {
 }));
 
 vi.mock('../services/authSessionService', () => ({
+  consumeIntentionalLogoutRedirect: mockConsumeIntentionalLogoutRedirect,
   loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
   signOutAndClearAuthState: mockSignOutAndClearAuthState,
   subscribeToAuthStateChanges: mockSubscribeToAuthStateChanges,
@@ -52,6 +55,7 @@ function renderRoute(initialEntry = '/marketplace') {
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {
+    mockConsumeIntentionalLogoutRedirect.mockReturnValue(false);
     mockSubscribeToAuthStateChanges.mockReturnValue(vi.fn());
     mockSignOutAndClearAuthState.mockResolvedValue(undefined);
   });
@@ -106,6 +110,19 @@ describe('ProtectedRoute', () => {
     });
 
     expect(mockShowGlobalLoginRequired.mock.calls[0][0]).toMatch(/please login to continue/i);
+  });
+
+  it('goes straight to login after an intentional logout without opening the modal', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: null,
+      user: null,
+    });
+    mockConsumeIntentionalLogoutRedirect.mockReturnValue(true);
+
+    renderRoute('/marketplace?view=orders');
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(mockShowGlobalLoginRequired).not.toHaveBeenCalled();
   });
 
   it('signs out inactive accounts before treating them as logged out', async () => {
