@@ -11,6 +11,7 @@ import { normalizeSelfServiceRole } from "./accountBootstrapService";
 
 export const AUTH_CALLBACK_PATH = "/auth/callback";
 const INTENTIONAL_LOGOUT_KEY = "mafdesh_intentional_logout";
+let intentionalLogoutInMemory = false;
 
 function getSafeReturnUrl(returnUrl = "") {
   return String(returnUrl || "").startsWith("/") ? String(returnUrl) : "";
@@ -52,6 +53,10 @@ function readHashParams() {
 }
 
 function readIntentionalLogoutFlag() {
+  if (intentionalLogoutInMemory) {
+    return true;
+  }
+
   if (typeof window === "undefined") {
     return false;
   }
@@ -64,6 +69,8 @@ function readIntentionalLogoutFlag() {
 }
 
 function writeIntentionalLogoutFlag(value) {
+  intentionalLogoutInMemory = Boolean(value);
+
   if (typeof window === "undefined") {
     return;
   }
@@ -77,6 +84,58 @@ function writeIntentionalLogoutFlag(value) {
   } catch {
     // Ignore storage access issues and fall back to normal auth routing.
   }
+}
+
+function getAuthMetadata(authUser = null) {
+  if (!authUser || typeof authUser !== "object") {
+    return {};
+  }
+
+  return authUser.user_metadata || authUser.raw_user_meta_data || {};
+}
+
+function getAuthAppMetadata(authUser = null) {
+  if (!authUser || typeof authUser !== "object") {
+    return {};
+  }
+
+  return authUser.app_metadata || authUser.raw_app_meta_data || {};
+}
+
+function getTrustedAuthRole(authUser = null) {
+  const appMetadata = getAuthAppMetadata(authUser);
+  const role = String(appMetadata?.role || "").trim().toLowerCase();
+  return role === "admin" ? "admin" : "";
+}
+
+function applyTrustedAuthRole(publicUser = null, authUser = null) {
+  if (!publicUser?.id) {
+    return publicUser;
+  }
+
+  const trustedRole = getTrustedAuthRole(authUser);
+  if (!trustedRole || publicUser.role === trustedRole) {
+    return publicUser;
+  }
+
+  return {
+    ...publicUser,
+    role: trustedRole,
+  };
+}
+
+export function getAuthSelfServiceRoleHint(authUser = null) {
+  const metadata = getAuthMetadata(authUser);
+  const hintedRole = String(metadata?.role || "").trim().toLowerCase();
+  return hintedRole === "seller" || hintedRole === "buyer" ? hintedRole : "";
+}
+
+export function hasSellerAuthMetadata(authUser = null) {
+  const metadata = getAuthMetadata(authUser);
+  return (
+    getAuthSelfServiceRoleHint(authUser) === "seller" ||
+    Boolean(String(metadata?.business_name || "").trim())
+  );
 }
 
 async function readPublicUserRecord(userId) {
@@ -219,12 +278,12 @@ export async function ensureCurrentUserContext({
       throw new Error(data?.error || "We could not finish loading your account.");
     }
 
-    return data.user;
+    return applyTrustedAuthRole(data.user, currentAuthUser);
   } catch (invokeError) {
     const fallbackUser = await readPublicUserRecord(currentAuthUser.id).catch(() => null);
 
     if (fallbackUser?.role) {
-      return fallbackUser;
+      return applyTrustedAuthRole(fallbackUser, currentAuthUser);
     }
 
     throw invokeError;

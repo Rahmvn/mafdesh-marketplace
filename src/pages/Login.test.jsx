@@ -7,6 +7,7 @@ import Login from './Login';
 const {
   mockGetSession,
   mockSignInWithPassword,
+  mockHasSellerAuthMetadata,
   mockMergeGuestCart,
   mockShowError,
   mockShowWarning,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockSignInWithPassword: vi.fn(),
+  mockHasSellerAuthMetadata: vi.fn(),
   mockMergeGuestCart: vi.fn(),
   mockShowError: vi.fn(),
   mockShowWarning: vi.fn(),
@@ -51,6 +53,7 @@ vi.mock('../services/cartService', () => ({
 
 vi.mock('../services/authSessionService', () => ({
   ensureCurrentUserContext: mockEnsureCurrentUserContext,
+  hasSellerAuthMetadata: mockHasSellerAuthMetadata,
   loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
   routeAuthenticatedUser: mockRouteAuthenticatedUser,
   storeAuthenticatedUser: mockStoreAuthenticatedUser,
@@ -102,6 +105,17 @@ function createDeferred() {
 
 describe('Login', () => {
   beforeEach(() => {
+    mockGetSession.mockReset();
+    mockSignInWithPassword.mockReset();
+    mockHasSellerAuthMetadata.mockReset();
+    mockMergeGuestCart.mockReset();
+    mockShowError.mockReset();
+    mockShowWarning.mockReset();
+    mockEnsureCurrentUserContext.mockReset();
+    mockLoadAuthenticatedUserContext.mockReset();
+    mockRouteAuthenticatedUser.mockReset();
+    mockStoreAuthenticatedUser.mockReset();
+
     mockGetSession.mockResolvedValue({
       data: { session: null },
       error: null,
@@ -117,6 +131,7 @@ describe('Login', () => {
       id: 'buyer-1',
       role: 'buyer',
     });
+    mockHasSellerAuthMetadata.mockReturnValue(false);
     mockLoadAuthenticatedUserContext.mockResolvedValue({
       session: { user: { id: 'buyer-1' } },
       user: { id: 'buyer-1', role: 'buyer' },
@@ -289,11 +304,18 @@ describe('Login', () => {
   });
 
   it('does not let the selected login tab rewrite a seller account into buyer routing', async () => {
-    mockEnsureCurrentUserContext.mockResolvedValue({
-      id: 'seller-1',
-      role: 'seller',
-      account_status: 'active',
-    });
+    mockHasSellerAuthMetadata.mockReturnValue(true);
+    mockEnsureCurrentUserContext
+      .mockResolvedValueOnce({
+        id: 'seller-1',
+        role: 'buyer',
+        account_status: 'active',
+      })
+      .mockResolvedValueOnce({
+        id: 'seller-1',
+        role: 'seller',
+        account_status: 'active',
+      });
     mockSignInWithPassword.mockResolvedValue({
       data: {
         user: { id: 'seller-1', email: 'seller@example.com' },
@@ -304,17 +326,18 @@ describe('Login', () => {
 
     renderLoginRoute();
     selectLoginType('buyer');
-    expect(
-      screen.getByText(/we always sign you into the role already saved on this account/i)
-    ).toBeInTheDocument();
     fillAndSubmitLoginForm({
       email: 'seller@example.com',
       password: 'password123',
     });
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
-    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
+    expect(mockEnsureCurrentUserContext).toHaveBeenNthCalledWith(1, {
       authUser: expect.objectContaining({ id: 'seller-1' }),
+    });
+    expect(mockEnsureCurrentUserContext).toHaveBeenNthCalledWith(2, {
+      authUser: expect.objectContaining({ id: 'seller-1' }),
+      desiredRole: 'seller',
     });
   });
 
@@ -346,6 +369,13 @@ describe('Login', () => {
   });
 
   it('honors protected-route return URLs through the shared login success path', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'buyer-1',
+      role: 'buyer',
+      account_status: 'active',
+    });
+    mockHasSellerAuthMetadata.mockReturnValue(false);
+
     renderLoginRoute('/login?returnUrl=%2Fsupport');
     fillAndSubmitLoginForm();
 

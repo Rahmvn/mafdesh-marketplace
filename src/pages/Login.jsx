@@ -8,6 +8,7 @@ import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import {
   ensureCurrentUserContext,
+  hasSellerAuthMetadata,
   loadAuthenticatedUserContext,
   routeAuthenticatedUser,
   storeAuthenticatedUser,
@@ -24,19 +25,16 @@ const LOGIN_ROLE_UI = {
     buttonActive: 'bg-blue-900 text-white shadow-lg',
     buttonIdle: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
     submit: 'bg-gradient-to-r from-blue-900 to-blue-700',
-    helper: 'Buyer accounts open in the marketplace after login.',
   },
   seller: {
     buttonActive: 'bg-orange-500 text-white shadow-lg',
     buttonIdle: 'bg-orange-50 text-orange-600 hover:bg-orange-100',
     submit: 'bg-gradient-to-r from-orange-500 to-orange-600',
-    helper: 'Seller accounts open in the seller workspace after login.',
   },
   admin: {
     buttonActive: 'bg-slate-900 text-white shadow-lg',
     buttonIdle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
     submit: 'bg-gradient-to-r from-slate-900 to-slate-700',
-    helper: 'Admin accounts open in the admin dashboard after login.',
   },
 };
 
@@ -152,9 +150,28 @@ export default function Login() {
       if (!user) {
         throw new Error("Login failed");
       }
-      const profile = await ensureCurrentUserContext({
+      let profile = await ensureCurrentUserContext({
         authUser: user,
       });
+
+      if (
+        profile?.role === 'buyer' &&
+        hasSellerAuthMetadata(user)
+      ) {
+        try {
+          const recoveredProfile = await ensureCurrentUserContext({
+            authUser: user,
+            desiredRole: 'seller',
+          });
+
+          if (recoveredProfile?.role === 'seller') {
+            profile = recoveredProfile;
+          }
+        } catch (repairError) {
+          console.error('Seller login role repair failed:', repairError);
+        }
+      }
+
       const role = profile.role;
       if (!role) {
         throw new Error("User role not found.");
@@ -250,10 +267,6 @@ export default function Login() {
                   Admin
                 </button>
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                {selectedRoleUi.helper} We always sign you into the role already saved on this
-                account.
-              </p>
             </div>
 
             {/* Form */}

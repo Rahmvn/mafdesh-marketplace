@@ -2,8 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockSignOut,
+  mockFunctionsInvoke,
+  mockUsersMaybeSingle,
+  mockFrom,
 } = vi.hoisted(() => ({
   mockSignOut: vi.fn(),
+  mockFunctionsInvoke: vi.fn(),
+  mockUsersMaybeSingle: vi.fn(),
+  mockFrom: vi.fn((table) => {
+    if (table === 'users') {
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: mockUsersMaybeSingle,
+          })),
+        })),
+      };
+    }
+
+    throw new Error(`Unexpected table: ${table}`);
+  }),
 }));
 
 vi.mock('../supabaseClient', () => ({
@@ -18,6 +36,10 @@ vi.mock('../supabaseClient', () => ({
         },
       })),
     },
+    functions: {
+      invoke: mockFunctionsInvoke,
+    },
+    from: mockFrom,
   },
 }));
 
@@ -33,6 +55,8 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     mockSignOut.mockResolvedValue({
       error: null,
     });
+    mockFunctionsInvoke.mockReset();
+    mockUsersMaybeSingle.mockReset();
     localStorage.clear();
   });
 
@@ -79,5 +103,29 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     );
 
     expect(navigate).toHaveBeenCalledWith('/admin/orders', { replace: true });
+  });
+
+  it('promotes admin role from trusted auth metadata when the bootstrap response is stale', async () => {
+    mockFunctionsInvoke.mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 'admin-1',
+          role: 'buyer',
+          account_status: 'active',
+        },
+      },
+      error: null,
+    });
+
+    const { ensureCurrentUserContext } = await import('./authSessionService');
+    const result = await ensureCurrentUserContext({
+      authUser: {
+        id: 'admin-1',
+        app_metadata: { role: 'admin' },
+      },
+    });
+
+    expect(result.role).toBe('admin');
   });
 });
