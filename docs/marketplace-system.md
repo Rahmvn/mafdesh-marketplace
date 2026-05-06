@@ -152,19 +152,24 @@ The database also enforces standard state/LGA pairs for new or edited pickup loc
 
 ## Timers and Rules
 
-- `ship_deadline`: seller gets 48 hours after payment confirmation to ship or prepare the order.
-- `delivery_deadline`: delivery orders get 7 days after the seller marks them shipped to be marked delivered.
-- `auto_cancel_at`: pickup orders get a 48-hour pickup window after the seller marks them ready.
-- `dispute_deadline`: delivery orders get a 72-hour buyer review/dispute window after the seller marks them delivered.
+- `ship_deadline`: seller gets 2 business days after payment confirmation to ship or prepare the order.
+- `delivery_deadline`: delivery orders get 14 days after the seller marks them shipped to be marked delivered.
+- `auto_cancel_at`: pickup orders get a 2 business day pickup window after the seller marks them ready.
+- `dispute_deadline`: delivery orders get a 5-day buyer review/dispute window after the seller marks them delivered.
 - Automatic backend processing currently handles:
   - refunding `PAID_ESCROW` orders when the seller misses the fulfillment deadline
   - refunding `READY_FOR_PICKUP` orders when the buyer does not collect in time
   - refunding `SHIPPED` orders when delivery is not completed before the delivery deadline
   - auto-completing `DELIVERED` orders when the dispute window expires without action
+- Operational note:
+  - `process-order-deadlines` scheduled execution is the primary automation path and should be deployed with scheduled execution enabled
+  - `CRON_SECRET` should be configured for authenticated cron-triggered runs where applicable
+  - buyer, seller, and admin order screens now provide a secondary in-app catch-up path for visible overdue orders
+  - if a timer shows expired but the status is still stale for long, cron lag or cron misconfiguration is the first thing to check
 
 ## Known Implementation Notes
 
 - This document follows the implemented app flow first, especially the buyer, seller, admin, and Supabase function behavior.
-- Some older policy or constitution copy mentions `72 hours` for seller shipping or pickup handling, but the active order flow in code uses `48 hours` for seller fulfillment and pickup expiry.
+- Some older policy or constitution copy mentions `72 hours` for seller shipping or pickup handling, but the active order flow in code uses `2 business days` for seller fulfillment and pickup expiry.
 - The dispute discussion only appears after an order becomes `DISPUTED`. There is no general buyer-seller chat flow outside disputes.
 - Operational fields that matter to this workflow include `ship_deadline`, `delivery_deadline`, `auto_cancel_at`, `dispute_deadline`, `dispute_reason`, `dispute_status`, `resolution_type`, and `resolution_amount`.

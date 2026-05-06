@@ -57,6 +57,10 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     });
     mockFunctionsInvoke.mockReset();
     mockUsersMaybeSingle.mockReset();
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null,
+    });
     localStorage.clear();
   });
 
@@ -105,7 +109,15 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     expect(navigate).toHaveBeenCalledWith('/admin/orders', { replace: true });
   });
 
-  it('promotes admin role from trusted auth metadata when the bootstrap response is stale', async () => {
+  it('uses the role stored in the public users table instead of auth metadata overrides', async () => {
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: {
+        id: 'admin-1',
+        role: 'buyer',
+        account_status: 'active',
+      },
+      error: null,
+    });
     mockFunctionsInvoke.mockResolvedValue({
       data: {
         success: true,
@@ -126,6 +138,37 @@ describe('authSessionService.signOutAndClearAuthState', () => {
       },
     });
 
-    expect(result.role).toBe('admin');
+    expect(result.role).toBe('buyer');
+  });
+
+  it('prefers the public users table when it disagrees with the bootstrap response', async () => {
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: {
+        id: 'seller-1',
+        role: 'seller',
+        account_status: 'active',
+      },
+      error: null,
+    });
+    mockFunctionsInvoke.mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 'seller-1',
+          role: 'buyer',
+          account_status: 'active',
+        },
+      },
+      error: null,
+    });
+
+    const { ensureCurrentUserContext } = await import('./authSessionService');
+    const result = await ensureCurrentUserContext({
+      authUser: {
+        id: 'seller-1',
+      },
+    });
+
+    expect(result.role).toBe('seller');
   });
 });

@@ -8,7 +8,6 @@ import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import {
   ensureCurrentUserContext,
-  hasSellerAuthMetadata,
   loadAuthenticatedUserContext,
   routeAuthenticatedUser,
   storeAuthenticatedUser,
@@ -63,7 +62,7 @@ export default function Login() {
     try {
       await cartService.mergeGuestCart(userId);
     } catch (error) {
-      console.error('Guest cart merge failed:', error);
+      console.warn('Guest cart merge failed after login:', error);
     }
   }, []);
 
@@ -79,11 +78,24 @@ export default function Login() {
     }
   }, []);
 
-  const storeAndRouteUser = useCallback(async (profile, userId) => {
+  const storeAndRouteUser = useCallback(async (profile, userId, { mergeGuestCart = false } = {}) => {
     storeAuthenticatedUser(profile);
-    await mergeGuestCartIfBuyer(profile.role, userId);
+    if (mergeGuestCart) {
+      await mergeGuestCartIfBuyer(profile.role, userId);
+    }
     routeAuthenticatedUser(navigate, profile, { returnUrl });
   }, [mergeGuestCartIfBuyer, navigate, returnUrl]);
+
+  const warnRoleMismatch = useCallback((selectedRole, actualRole) => {
+    if (!selectedRole || !actualRole || selectedRole === actualRole) {
+      return;
+    }
+
+    showWarning(
+      'Role Updated',
+      `This account is registered as ${actualRole}. You have been signed in with your actual account role.`
+    );
+  }, [showWarning]);
 
   useEffect(() => {
     const checkExistingSession = async () => {
@@ -113,7 +125,10 @@ export default function Login() {
       }
     };
 
-    initialSessionCheckRef.current = checkExistingSession();
+    initialSessionCheckRef.current = checkExistingSession().catch((error) => {
+      console.error('Startup auth probe failed:', error);
+      return null;
+    });
     handleSignupSuccess();
   }, [signupMessage, storeAndRouteUser]);
 
@@ -133,9 +148,11 @@ export default function Login() {
     setLoadingSafely(true);
 
     try {
-      await initialSessionCheckRef.current;
+      await Promise.resolve(initialSessionCheckRef.current).catch((error) => {
+        console.error('Initial session check failed before login:', error);
+        return null;
+      });
 
-      // Wait for the page's startup auth probe to finish before attempting a new login.
       const { data, error } = await runAuthOperationWithRetry(() =>
         supabase.auth.signInWithPassword({
           email,
@@ -150,38 +167,23 @@ export default function Login() {
       if (!user) {
         throw new Error("Login failed");
       }
-      let profile = await ensureCurrentUserContext({
+
+      const profile = await ensureCurrentUserContext({
         authUser: user,
       });
-
-      if (
-        profile?.role === 'buyer' &&
-        hasSellerAuthMetadata(user)
-      ) {
-        try {
-          const recoveredProfile = await ensureCurrentUserContext({
-            authUser: user,
-            desiredRole: 'seller',
-          });
-
-          if (recoveredProfile?.role === 'seller') {
-            profile = recoveredProfile;
-          }
-        } catch (repairError) {
-          console.error('Seller login role repair failed:', repairError);
-        }
-      }
 
       const role = profile.role;
       if (!role) {
         throw new Error("User role not found.");
       }
 
+      warnRoleMismatch(userType, role);
+
       if (role !== userType) {
         setUserType(role);
       }
 
-      await storeAndRouteUser(profile, user.id);
+      await storeAndRouteUser(profile, user.id, { mergeGuestCart: true });
     } catch (error) {
       console.error('Login error:', error);
       const feedback = getAuthFeedback('log in', error);

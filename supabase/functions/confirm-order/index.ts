@@ -45,20 +45,26 @@ function isMockModeEnabled() {
   return isTruthyFlag(mockFlag) || !paystackSecret
 }
 
-function addBusinessDays(date: Date, days: number): Date {
-  const result = new Date(date)
-  let added = 0
+async function getBusinessDayDeadline(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  start: string,
+  days: number
+) {
+  const { data, error } = await supabaseAdmin.rpc('add_business_days', {
+    p_start: start,
+    p_days: days,
+  })
 
-  while (added < days) {
-    result.setDate(result.getDate() + 1)
-    const dayOfWeek = result.getDay()
-
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      added += 1
-    }
+  if (error) {
+    throw error
   }
 
-  return result
+  const deadline = String(data || '').trim()
+  if (!deadline) {
+    throw new Error('Business-day deadline calculation failed.')
+  }
+
+  return deadline
 }
 
 async function finalizePaidOrder(
@@ -67,7 +73,7 @@ async function finalizePaidOrder(
   paymentReference?: string | null
 ) {
   const paidAt = new Date().toISOString()
-  const shipDeadline = addBusinessDays(new Date(), 2).toISOString()
+  const shipDeadline = await getBusinessDayDeadline(supabaseAdmin, paidAt, 2)
   const normalizedReference = String(paymentReference || '').trim()
 
   const { error } = await supabaseAdmin

@@ -4,8 +4,14 @@ import { Search, Clock, User, Eye } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
-import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
+import {
+  formatBusinessDeadline,
+  formatRemaining,
+  getBusinessUrgencyClass,
+  getUrgencyClass,
+} from "../utils/timeUtils";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
+import { useOrderDeadlineAutoProcessing } from "../services/orderDeadlineService";
 
 const ADMIN_STATUS_OPTIONS = [
   { value: "ALL", label: "All" },
@@ -152,14 +158,23 @@ export default function AdminOrders() {
 
       const orderIds = merged.map((order) => order.id).filter(Boolean);
       let activeHoldByOrderId = {};
+      let pendingRefundOrderIds = new Set();
 
       if (orderIds.length > 0) {
-        const { data: holdRows, error: holdError } = await supabase
-          .from("order_admin_holds")
-          .select("id, order_id, source_type, trigger_action, reason, status, created_at")
-          .in("order_id", orderIds)
-          .eq("status", "active")
-          .order("created_at", { ascending: false });
+        const [{ data: holdRows, error: holdError }, { data: pendingRefundRows, error: pendingRefundError }] =
+          await Promise.all([
+            supabase
+              .from("order_admin_holds")
+              .select("id, order_id, source_type, trigger_action, reason, status, created_at")
+              .in("order_id", orderIds)
+              .eq("status", "active")
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("refund_requests")
+              .select("order_id")
+              .in("order_id", orderIds)
+              .eq("status", "pending"),
+          ]);
 
         if (holdError) {
           console.error("Admin hold load error:", holdError);
@@ -171,12 +186,22 @@ export default function AdminOrders() {
             return map;
           }, {});
         }
+
+        if (pendingRefundError) {
+          console.error("Pending refund load error:", pendingRefundError);
+        } else {
+          pendingRefundOrderIds = new Set(
+            (pendingRefundRows || []).map((row) => row.order_id).filter(Boolean)
+          );
+        }
       }
 
       setOrders(
         merged.map((order) => ({
           ...order,
           admin_hold: activeHoldByOrderId[order.id] || null,
+          has_active_hold: Boolean(activeHoldByOrderId[order.id]),
+          has_pending_refund: pendingRefundOrderIds.has(order.id),
         }))
       );
       setLoading(false);
@@ -259,6 +284,14 @@ export default function AdminOrders() {
     return accumulator;
   }, {});
 
+  useOrderDeadlineAutoProcessing({
+    orders: filteredOrders,
+    now,
+    enabled: !loading,
+    onProcessed: () => loadOrders(false),
+    debugLabel: "admin orders auto-processing",
+  });
+
   if (loading) {
     return <AdminPageSkeleton />;
   }
@@ -334,11 +367,11 @@ export default function AdminOrders() {
                 deadlineText = formatRemaining(order.dispute_deadline, now);
                 deadlineClass = getUrgencyClass(order.dispute_deadline, now);
               } else if (order.auto_cancel_at && order.status === "READY_FOR_PICKUP") {
-                deadlineText = formatRemaining(order.auto_cancel_at, now);
-                deadlineClass = getUrgencyClass(order.auto_cancel_at, now);
+                deadlineText = formatBusinessDeadline(order.auto_cancel_at, now);
+                deadlineClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
               } else if (order.ship_deadline && order.status === "PAID_ESCROW") {
-                deadlineText = formatRemaining(order.ship_deadline, now);
-                deadlineClass = getUrgencyClass(order.ship_deadline, now);
+                deadlineText = formatBusinessDeadline(order.ship_deadline, now);
+                deadlineClass = getBusinessUrgencyClass(order.ship_deadline, now);
               }
 
               return (
@@ -458,11 +491,11 @@ export default function AdminOrders() {
                     order.auto_cancel_at &&
                     order.status === "READY_FOR_PICKUP"
                   ) {
-                    deadlineText = formatRemaining(order.auto_cancel_at, now);
-                    deadlineClass = getUrgencyClass(order.auto_cancel_at, now);
+                    deadlineText = formatBusinessDeadline(order.auto_cancel_at, now);
+                    deadlineClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
                   } else if (order.ship_deadline && order.status === "PAID_ESCROW") {
-                    deadlineText = formatRemaining(order.ship_deadline, now);
-                    deadlineClass = getUrgencyClass(order.ship_deadline, now);
+                    deadlineText = formatBusinessDeadline(order.ship_deadline, now);
+                    deadlineClass = getBusinessUrgencyClass(order.ship_deadline, now);
                   }
 
                   return (

@@ -111,10 +111,7 @@ serve(async (req) => {
     }
 
     const metadata = authUser.user_metadata || authUser.raw_user_meta_data || {};
-    const appMetadata = authUser.app_metadata || authUser.raw_app_meta_data || {};
-    const trustedRole = normalizeMarketplaceRole(
-      existingUser?.role || appMetadata?.role || ""
-    );
+    const trustedRole = normalizeMarketplaceRole(existingUser?.role || "");
     const desiredRole =
       trustedRole === "admin"
         ? "admin"

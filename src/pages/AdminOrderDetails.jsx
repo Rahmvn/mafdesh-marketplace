@@ -24,6 +24,13 @@ import {
   resolveOrderAdminHold,
 } from "../services/orderAdminHoldService";
 import { getSafeProductImage, snapshotToProduct } from "../utils/productSnapshots";
+import {
+  formatBusinessDeadline,
+  formatRemaining,
+  getBusinessUrgencyClass,
+  getUrgencyClass,
+} from "../utils/timeUtils";
+import { useOrderDeadlineAutoProcessing } from "../services/orderDeadlineService";
 
 function AdminPageSkeleton() {
   return (
@@ -269,53 +276,6 @@ export default function AdminOrderDetails() {
     };
   }, [id, loadOrder]);
 
-  const formatRemaining = (deadline) => {
-    if (!deadline) {
-      return null;
-    }
-
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) {
-      return "Expired";
-    }
-
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m ${seconds}s`;
-    }
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${seconds}s`;
-    }
-    if (minutes > 0) {
-      return `${minutes}m ${seconds}s`;
-    }
-    return `${seconds}s`;
-  };
-
-  const getUrgencyClass = (deadline) => {
-    if (!deadline) {
-      return "";
-    }
-
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) {
-      return "text-red-600 font-bold";
-    }
-
-    const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) {
-      return "text-red-600 font-bold animate-pulse";
-    }
-    if (hours < 24) {
-      return "text-orange-600 font-semibold";
-    }
-    return "text-gray-600";
-  };
-
   const validateResolution = () => {
     if (!resolutionType || !constitutionSection) {
       showWarning("Resolution Required", "Please select a resolution type and constitution section.");
@@ -380,6 +340,23 @@ export default function AdminOrderDetails() {
     }
   };
 
+  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+
+  useOrderDeadlineAutoProcessing({
+    orders: order
+      ? [
+          {
+            ...order,
+            has_active_hold: Boolean(activeAdminHold),
+          },
+        ]
+      : [],
+    now,
+    enabled: !loading && Boolean(order),
+    onProcessed: loadOrder,
+    debugLabel: "admin order auto-processing",
+  });
+
   if (loading) {
     return <AdminPageSkeleton />;
   }
@@ -394,7 +371,6 @@ export default function AdminOrderDetails() {
 
   const deliverySnapshot = order.delivery_zone_snapshot || null;
   const pickupSnapshot = order.pickup_location_snapshot || null;
-  const activeAdminHold = getActiveOrderAdminHold(adminHolds);
   const sellerAccountActive =
     String(seller?.account_status || seller?.status || "active").toLowerCase() === "active";
 
@@ -754,18 +730,18 @@ export default function AdminOrderDetails() {
         <section className="bg-white p-6 rounded-lg border mt-6">
           <h2 className="font-semibold mb-4">Timers</h2>
           {order.ship_deadline && (
-            <p className={`text-sm ${getUrgencyClass(order.ship_deadline)}`}>
-              Ship by: {formatRemaining(order.ship_deadline)}
+            <p className={`text-sm ${getBusinessUrgencyClass(order.ship_deadline, now)}`}>
+              Ship by: {formatBusinessDeadline(order.ship_deadline, now)}
             </p>
           )}
           {order.auto_complete_at && (
-            <p className={`text-sm ${getUrgencyClass(order.auto_complete_at)}`}>
-              Auto-complete: {formatRemaining(order.auto_complete_at)}
+            <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>
+              Auto-complete: {formatRemaining(order.auto_complete_at, now)}
             </p>
           )}
           {order.auto_cancel_at && (
-            <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at)}`}>
-              Auto-cancel: {formatRemaining(order.auto_cancel_at)}
+            <p className={`text-sm ${getBusinessUrgencyClass(order.auto_cancel_at, now)}`}>
+              Auto-cancel: {formatBusinessDeadline(order.auto_cancel_at, now)}
             </p>
           )}
         </section>

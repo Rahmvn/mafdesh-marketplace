@@ -11,6 +11,18 @@ const corsHeaders = {
 }
 
 type SupabaseClient = ReturnType<typeof createClient>
+type SingleOrderProcessReason =
+  | 'processed'
+  | 'not_due'
+  | 'blocked_by_hold'
+  | 'blocked_by_pending_refund'
+  | 'not_found'
+
+type SingleOrderProcessResult = {
+  processed: boolean
+  reason: SingleOrderProcessReason
+  results: string[]
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -20,6 +32,17 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
       'Content-Type': 'application/json',
     },
   })
+}
+
+function createSingleOrderProcessResult(
+  reason: SingleOrderProcessReason,
+  results: string[] = []
+): SingleOrderProcessResult {
+  return {
+    processed: reason === 'processed',
+    reason,
+    results,
+  }
 }
 
 async function logSystemOrderAction(
@@ -442,7 +465,7 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
   }
 
   if (!order) {
-    return results
+    return createSingleOrderProcessResult('not_found')
   }
 
   const { data: activeHold, error: activeHoldError } = await supabase
@@ -472,10 +495,16 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
   const isHeld = Boolean(activeHold)
   const hasPendingRefund = Boolean(pendingRefundRequest)
 
+  if (isHeld) {
+    return createSingleOrderProcessResult('blocked_by_hold')
+  }
+
+  if (hasPendingRefund) {
+    return createSingleOrderProcessResult('blocked_by_pending_refund')
+  }
+
   if (
     order.status === 'PAID_ESCROW' &&
-    !isHeld &&
-    !hasPendingRefund &&
     order.ship_deadline &&
     new Date(order.ship_deadline).getTime() <= nowDate.getTime()
   ) {
@@ -502,13 +531,11 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
       )
     }
 
-    return results
+    return createSingleOrderProcessResult(refundedOrders?.length ? 'processed' : 'not_due', results)
   }
 
   if (
     order.status === 'DELIVERED' &&
-    !isHeld &&
-    !hasPendingRefund &&
     order.dispute_deadline &&
     new Date(order.dispute_deadline).getTime() <= nowDate.getTime()
   ) {
@@ -535,13 +562,14 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
       )
     }
 
-    return results
+    return createSingleOrderProcessResult(
+      completedOrders?.length ? 'processed' : 'not_due',
+      results
+    )
   }
 
   if (
     order.status === 'READY_FOR_PICKUP' &&
-    !isHeld &&
-    !hasPendingRefund &&
     !order.picked_up_at &&
     order.auto_cancel_at &&
     new Date(order.auto_cancel_at).getTime() <= nowDate.getTime()
@@ -570,13 +598,12 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
       )
     }
 
-    return results
+    return createSingleOrderProcessResult(refundedOrders?.length ? 'processed' : 'not_due', results)
   }
 
   if (
     order.status === 'SHIPPED' &&
     order.delivery_type === 'delivery' &&
-    !isHeld &&
     order.delivery_deadline &&
     new Date(order.delivery_deadline).getTime() <= nowDate.getTime()
   ) {
@@ -608,7 +635,7 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
     }
 
     if (reviewDeadlineAt && reviewDeadlineAt > nowDate.getTime()) {
-      return results
+      return createSingleOrderProcessResult('not_due')
     }
 
     if (!reviewDeadlineAt) {
@@ -661,7 +688,7 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
       )
 
       results.push('Flagged 1 delivery order for admin review after the delivery deadline passed')
-      return results
+      return createSingleOrderProcessResult('processed', results)
     }
 
     const { data: refundedOrders, error: refundError } = await supabase
@@ -687,9 +714,11 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
         refundFields
       )
     }
+
+    return createSingleOrderProcessResult(refundedOrders?.length ? 'processed' : 'not_due', results)
   }
 
-  return results
+  return createSingleOrderProcessResult('not_due')
 }
 
 async function runDeadlineProcessor() {
@@ -699,10 +728,15 @@ async function runDeadlineProcessor() {
 
 Deno.cron('process-order-deadlines', CRON_SCHEDULE, async () => {
   try {
+    console.log(
+      `Starting scheduled order deadline processor at ${new Date().toISOString()} on ${CRON_SCHEDULE}`
+    )
     const results = await runDeadlineProcessor()
 
     if (results.length > 0) {
       console.log(`Processed order deadlines: ${results.join('; ')}`)
+    } else {
+      console.log('Scheduled order deadline processor completed with no status transitions')
     }
   } catch (err) {
     console.error('Scheduled deadline processor failed:', err)
@@ -724,6 +758,7 @@ Deno.serve(async (req) => {
     const serviceSupabase = createSupabaseClient()
 
     if (expectedSecret && authHeader === `Bearer ${expectedSecret}`) {
+      console.log('Running order deadline processor from authenticated cron trigger')
       const results = await processOrderDeadlines(serviceSupabase)
 
       return jsonResponse({ success: true, processed: results.length > 0, results }, 200)
@@ -771,18 +806,46 @@ Deno.serve(async (req) => {
     }
 
     const isParticipant = order.buyer_id === user.id || order.seller_id === user.id
+    const { data: actor, error: actorError } = await serviceSupabase
+      .from('users')
+      .select('id, role')
+      .eq('id', user.id)
+      .maybeSingle()
 
-    if (!isParticipant) {
+    if (actorError) {
+      console.error('Actor role lookup failed:', actorError)
+      return jsonResponse({ error: 'Failed to authorize request.' }, 500)
+    }
+
+    const isAdmin = actor?.role === 'admin'
+
+    if (!isParticipant && !isAdmin) {
       return jsonResponse({ error: 'Forbidden' }, 403)
     }
 
-    const results = await processSingleOrderDeadline(serviceSupabase, orderId)
+    console.log('Running single-order deadline processor', {
+      orderId,
+      actorId: user.id,
+      isAdmin,
+      isParticipant,
+    })
+
+    const singleOrderResult = await processSingleOrderDeadline(serviceSupabase, orderId)
+
+    console.log('Single-order deadline processor completed', {
+      orderId,
+      actorId: user.id,
+      processed: singleOrderResult.processed,
+      reason: singleOrderResult.reason,
+      results: singleOrderResult.results,
+    })
 
     return jsonResponse(
       {
         success: true,
-        processed: results.length > 0,
-        results,
+        processed: singleOrderResult.processed,
+        reason: singleOrderResult.reason,
+        results: singleOrderResult.results,
       },
       200
     )

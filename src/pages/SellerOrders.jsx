@@ -14,6 +14,12 @@ import { getSessionWithRetry } from '../utils/authResilience';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getSellerOrderPayout } from '../utils/sellerPayouts';
 import { getDeliveryDeadlineState } from '../services/sellerOrderTransitionService';
+import {
+  formatBusinessDeadline,
+  formatRemaining,
+  getBusinessUrgencyClass,
+  getUrgencyClass,
+} from '../utils/timeUtils';
 import { showGlobalConfirm } from '../hooks/modalService';
 import {
   formatSellerCurrency,
@@ -24,6 +30,10 @@ import {
   useSellerTheme,
 } from '../components/seller/SellerShell';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
+import {
+  fetchOrderDeadlineBlockers,
+  useOrderDeadlineAutoProcessing,
+} from '../services/orderDeadlineService';
 
 function getStatusStyle(status, darkMode) {
   switch (status) {
@@ -108,8 +118,25 @@ export default function SellerOrders() {
       console.error('Order items error:', itemsError);
     }
 
+    let blockerData = {
+      activeHoldOrderIds: new Set(),
+      pendingRefundOrderIds: new Set(),
+    };
+
+    try {
+      blockerData = await fetchOrderDeadlineBlockers((ordersData || []).map((order) => order.id));
+    } catch (blockerError) {
+      console.error('Order deadline blocker error:', blockerError);
+    }
+
     setOrderItemsMap(itemsMap);
-    setOrders(ordersData || []);
+    setOrders(
+      (ordersData || []).map((order) => ({
+        ...order,
+        has_active_hold: blockerData.activeHoldOrderIds.has(order.id),
+        has_pending_refund: blockerData.pendingRefundOrderIds.has(order.id),
+      }))
+    );
     setLoading(false);
   }, []);
 
@@ -138,34 +165,12 @@ export default function SellerOrders() {
   }, [loadOrders, navigate]);
 
   useEffect(() => {
-    init();
+    const timeoutId = window.setTimeout(() => {
+      init();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [init]);
-
-  const formatRemaining = (deadline) => {
-    if (!deadline) return null;
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return 'Expired';
-
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(
-      (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-    );
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
-
-  const getUrgencyClass = (deadline) => {
-    if (!deadline) return '';
-    const diff = new Date(deadline) - now;
-    if (diff <= 0) return 'text-red-500 font-bold';
-    const hours = diff / (1000 * 60 * 60);
-    if (hours < 6) return 'text-red-500 font-bold';
-    if (hours < 24) return 'text-orange-500 font-semibold';
-    return theme.mutedText;
-  };
 
   const baseFilteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -208,6 +213,20 @@ export default function SellerOrders() {
     }, {});
   }, [baseFilteredOrders]);
 
+  useOrderDeadlineAutoProcessing({
+    orders: filteredOrders,
+    now,
+    enabled: !loading && Boolean(currentUser?.id),
+    onProcessed: () => {
+      if (!currentUser?.id) {
+        return Promise.resolve();
+      }
+
+      return loadOrders(currentUser.id, false);
+    },
+    debugLabel: 'seller orders auto-processing',
+  });
+
   const renderOrderCard = (order) => {
     const items = orderItemsMap[order.id] || [];
     const { displayName, image, itemCount, itemNames } = getOrderDisplayDetails(items);
@@ -215,30 +234,26 @@ export default function SellerOrders() {
     const deliveryDeadlineState = getDeliveryDeadlineState(order, now);
 
     let deadlineText = null;
+    let deadlineClass = '';
     if (order.status === 'PAID_ESCROW' && order.ship_deadline) {
-      deadlineText = `Time to ship: ${formatRemaining(order.ship_deadline)}`;
+      deadlineText = formatBusinessDeadline(order.ship_deadline, now);
+      deadlineClass = getBusinessUrgencyClass(order.ship_deadline, now);
     } else if (order.status === 'SHIPPED' && order.delivery_type === 'delivery') {
       deadlineText = deliveryDeadlineState.reason === 'expired'
         ? deliveryDeadlineState.message
         : (
             order.delivery_deadline
-              ? `Time to mark delivered: ${formatRemaining(order.delivery_deadline)}`
+              ? `Time to mark delivered: ${formatRemaining(order.delivery_deadline, now)}`
               : deliveryDeadlineState.message || 'Delivery deadline missing'
           );
+      deadlineClass = getUrgencyClass(order.delivery_deadline, now);
     } else if (order.status === 'READY_FOR_PICKUP' && order.auto_cancel_at) {
-      deadlineText = `Pickup deadline: ${formatRemaining(order.auto_cancel_at)}`;
+      deadlineText = formatBusinessDeadline(order.auto_cancel_at, now);
+      deadlineClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
     } else if (order.status === 'DELIVERED' && order.dispute_deadline) {
-      deadlineText = `Dispute window: ${formatRemaining(order.dispute_deadline)}`;
+      deadlineText = `Dispute window: ${formatRemaining(order.dispute_deadline, now)}`;
+      deadlineClass = getUrgencyClass(order.dispute_deadline, now);
     }
-
-    const deadlineSource =
-      order.status === 'PAID_ESCROW'
-        ? order.ship_deadline
-        : order.status === 'SHIPPED' && order.delivery_type === 'delivery'
-          ? order.delivery_deadline
-        : order.status === 'READY_FOR_PICKUP'
-          ? order.auto_cancel_at
-          : order.dispute_deadline;
 
     return (
       <article
@@ -319,8 +334,8 @@ export default function SellerOrders() {
 
         {deadlineText && (
           <div className="mt-4 flex items-center gap-2 text-sm">
-            <Clock className={`h-4 w-4 ${getUrgencyClass(deadlineSource)}`} />
-            <span className={getUrgencyClass(deadlineSource)}>{deadlineText}</span>
+            <Clock className={`h-4 w-4 ${deadlineClass}`} />
+            <span className={deadlineClass}>{deadlineText}</span>
           </div>
         )}
       </article>

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { signOutAndClearAuthState } from "./authSessionService";
 import {
@@ -57,6 +58,10 @@ function isExpired(deadline, now) {
   return !Number.isNaN(deadlineDate.getTime()) && deadlineDate <= now;
 }
 
+function normalizeOrderIds(orderIds = []) {
+  return [...new Set((orderIds || []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 export function getOrderDeadlineProcessingKey(
   order,
   {
@@ -106,6 +111,84 @@ export function getOrderDeadlineProcessingKey(
   return null;
 }
 
+export function getOrderDeadlineCatchUpTargets(
+  orders,
+  {
+    now = new Date(),
+    getHasActiveHold = (order) =>
+      Boolean(order?.has_active_hold || order?.hasActiveHold || order?.admin_hold),
+    getHasPendingRefund = (order) =>
+      Boolean(order?.has_pending_refund || order?.hasPendingRefund),
+  } = {}
+) {
+  const seenKeys = new Set();
+  const targets = [];
+
+  for (const order of orders || []) {
+    if (!order?.id) {
+      continue;
+    }
+
+    const key = getOrderDeadlineProcessingKey(order, {
+      now,
+      hasActiveHold: getHasActiveHold(order),
+      hasPendingRefund: getHasPendingRefund(order),
+    });
+
+    if (!key || seenKeys.has(key)) {
+      continue;
+    }
+
+    seenKeys.add(key);
+    targets.push({
+      orderId: order.id,
+      key,
+    });
+  }
+
+  return targets;
+}
+
+export async function fetchOrderDeadlineBlockers(orderIds) {
+  const normalizedOrderIds = normalizeOrderIds(orderIds);
+
+  if (normalizedOrderIds.length === 0) {
+    return {
+      activeHoldOrderIds: new Set(),
+      pendingRefundOrderIds: new Set(),
+    };
+  }
+
+  const [{ data: activeHoldRows, error: activeHoldError }, { data: pendingRefundRows, error: pendingRefundError }] =
+    await Promise.all([
+      supabase
+        .from("order_admin_holds")
+        .select("order_id")
+        .in("order_id", normalizedOrderIds)
+        .eq("status", "active"),
+      supabase
+        .from("refund_requests")
+        .select("order_id")
+        .in("order_id", normalizedOrderIds)
+        .eq("status", "pending"),
+    ]);
+
+  if (activeHoldError) {
+    throw activeHoldError;
+  }
+
+  if (pendingRefundError) {
+    throw pendingRefundError;
+  }
+
+  return {
+    activeHoldOrderIds: new Set((activeHoldRows || []).map((row) => row.order_id).filter(Boolean)),
+    pendingRefundOrderIds: new Set(
+      (pendingRefundRows || []).map((row) => row.order_id).filter(Boolean)
+    ),
+  };
+}
+
 export async function processOrderDeadline(orderId) {
   if (!orderId) {
     throw new Error("Missing order ID.");
@@ -151,4 +234,88 @@ export async function processOrderDeadline(orderId) {
   }
 
   return data;
+}
+
+export function useOrderDeadlineAutoProcessing({
+  orders,
+  now,
+  enabled = true,
+  onProcessed,
+  processOrder = processOrderDeadline,
+  getHasActiveHold,
+  getHasPendingRefund,
+  debugLabel = "order deadline auto-processing",
+}) {
+  const attemptedKeysRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    const pendingTargets = getOrderDeadlineCatchUpTargets(orders, {
+      now,
+      getHasActiveHold,
+      getHasPendingRefund,
+    }).filter((target) => !attemptedKeysRef.current.has(target.key));
+
+    if (pendingTargets.length === 0) {
+      return;
+    }
+
+    pendingTargets.forEach((target) => attemptedKeysRef.current.add(target.key));
+
+    let cancelled = false;
+
+    const runCatchUp = async () => {
+      let processedAny = false;
+
+      for (const target of pendingTargets) {
+        try {
+          const result = await processOrder(target.orderId);
+
+          if (result?.processed) {
+            processedAny = true;
+          } else {
+            console.info(`${debugLabel}: skipped`, {
+              orderId: target.orderId,
+              key: target.key,
+              reason: result?.reason || "not_due",
+            });
+          }
+        } catch (error) {
+          console.error(`${debugLabel}: failed`, {
+            orderId: target.orderId,
+            key: target.key,
+            error,
+          });
+        }
+
+        if (cancelled) {
+          return;
+        }
+      }
+
+      if (!cancelled && processedAny && typeof onProcessed === "function") {
+        await onProcessed();
+      }
+    };
+
+    runCatchUp();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    debugLabel,
+    enabled,
+    getHasActiveHold,
+    getHasPendingRefund,
+    now,
+    onProcessed,
+    orders,
+    processOrder,
+  ]);
+
+  return attemptedKeysRef;
 }

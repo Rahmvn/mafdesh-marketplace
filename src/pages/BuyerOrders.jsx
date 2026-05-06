@@ -5,11 +5,19 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { Search, Clock, Package } from 'lucide-react';
-import { formatRemaining, getUrgencyClass } from '../utils/timeUtils';
-import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
+import {
+  formatBusinessDeadline,
+  formatRemaining,
+  getBusinessUrgencyClass,
+  getUrgencyClass,
+} from '../utils/timeUtils';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
 import { getBuyerOrderTotal } from '../utils/orderAmounts';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
+import {
+  fetchOrderDeadlineBlockers,
+  useOrderDeadlineAutoProcessing,
+} from '../services/orderDeadlineService';
 
 const BUYER_STATUS_OPTIONS = [
   { value: 'ALL', label: 'All' },
@@ -128,9 +136,26 @@ export default function BuyerOrders() {
       }, {});
     }
 
+    let blockerData = {
+      activeHoldOrderIds: new Set(),
+      pendingRefundOrderIds: new Set(),
+    };
+
+    try {
+      blockerData = await fetchOrderDeadlineBlockers((ordersData || []).map((order) => order.id));
+    } catch (blockerError) {
+      console.error('Order deadline blocker error:', blockerError);
+    }
+
+    const nextOrders = (ordersData || []).map((order) => ({
+      ...order,
+      has_active_hold: blockerData.activeHoldOrderIds.has(order.id),
+      has_pending_refund: blockerData.pendingRefundOrderIds.has(order.id),
+    }));
+
     setOrderItemsMap(itemsMap);
     setSellerNames(nextSellerNames);
-    setOrders(ordersData || []);
+    setOrders(nextOrders);
     setLoading(false);
   }
 
@@ -229,6 +254,14 @@ export default function BuyerOrders() {
     return accumulator;
   }, {});
 
+  useOrderDeadlineAutoProcessing({
+    orders: filteredOrders,
+    now,
+    enabled: !loading,
+    onProcessed: () => loadOrders(false),
+    debugLabel: 'buyer orders auto-processing',
+  });
+
   if (loading) {
     return <BuyerOrdersSkeleton />;
   }
@@ -242,8 +275,8 @@ export default function BuyerOrders() {
     let timerText = null;
     let timerClass = '';
     if (order.status === 'READY_FOR_PICKUP' && order.auto_cancel_at) {
-      timerText = formatRemaining(order.auto_cancel_at, now);
-      timerClass = getUrgencyClass(order.auto_cancel_at, now);
+      timerText = formatBusinessDeadline(order.auto_cancel_at, now);
+      timerClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
     } else if (order.status === 'DELIVERED' && order.dispute_deadline) {
       timerText = formatRemaining(order.dispute_deadline, now);
       timerClass = getUrgencyClass(order.dispute_deadline, now);
@@ -307,7 +340,7 @@ export default function BuyerOrders() {
             {timerText && (
               <div className="mt-3 flex items-center gap-2 text-sm">
                 <Clock size={16} className={timerClass} />
-                <span className={timerClass}>Time remaining: {timerText}</span>
+                <span className={timerClass}>{timerText}</span>
               </div>
             )}
 

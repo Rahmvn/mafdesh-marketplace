@@ -202,9 +202,30 @@ export function getAuthFeedback(actionLabel, error) {
     };
   }
 
+  const message = String(error?.message || '').trim();
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes('invalid login credentials')) {
+    return {
+      title: 'Login Failed',
+      message: 'The email or password is incorrect. Check your details and try again.',
+    };
+  }
+
+  if (
+    normalizedMessage.includes('email not confirmed') ||
+    normalizedMessage.includes('email_not_confirmed') ||
+    normalizedMessage.includes('confirm your email')
+  ) {
+    return {
+      title: 'Email Not Confirmed',
+      message: 'Your email address is not confirmed yet. Open the verification email we sent and then try logging in again.',
+    };
+  }
+
   return {
     title: `${capitalizeAction(actionLabel)} Failed`,
-    message: error?.message || `We could not ${actionLabel}. Please try again.`,
+    message: message || `We could not ${actionLabel}. Please try again.`,
   };
 }
 

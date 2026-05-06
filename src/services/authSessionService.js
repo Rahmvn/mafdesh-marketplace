@@ -94,36 +94,6 @@ function getAuthMetadata(authUser = null) {
   return authUser.user_metadata || authUser.raw_user_meta_data || {};
 }
 
-function getAuthAppMetadata(authUser = null) {
-  if (!authUser || typeof authUser !== "object") {
-    return {};
-  }
-
-  return authUser.app_metadata || authUser.raw_app_meta_data || {};
-}
-
-function getTrustedAuthRole(authUser = null) {
-  const appMetadata = getAuthAppMetadata(authUser);
-  const role = String(appMetadata?.role || "").trim().toLowerCase();
-  return role === "admin" ? "admin" : "";
-}
-
-function applyTrustedAuthRole(publicUser = null, authUser = null) {
-  if (!publicUser?.id) {
-    return publicUser;
-  }
-
-  const trustedRole = getTrustedAuthRole(authUser);
-  if (!trustedRole || publicUser.role === trustedRole) {
-    return publicUser;
-  }
-
-  return {
-    ...publicUser,
-    role: trustedRole,
-  };
-}
-
 export function getAuthSelfServiceRoleHint(authUser = null) {
   const metadata = getAuthMetadata(authUser);
   const hintedRole = String(metadata?.role || "").trim().toLowerCase();
@@ -152,6 +122,17 @@ async function readPublicUserRecord(userId) {
   }
 
   return data || null;
+}
+
+function sanitizeStoredUser(publicUser = null) {
+  if (!publicUser?.id || !publicUser?.role) {
+    return null;
+  }
+
+  return {
+    id: publicUser.id,
+    role: publicUser.role,
+  };
 }
 
 export function getAuthCallbackUrl(flow = "") {
@@ -197,15 +178,14 @@ export function subscribeToAuthStateChanges(listener) {
 }
 
 export function storeAuthenticatedUser(publicUser) {
-  if (!publicUser?.id || !publicUser?.role) {
+  const safeStoredUser = sanitizeStoredUser(publicUser);
+
+  if (!safeStoredUser) {
     return;
   }
 
   writeIntentionalLogoutFlag(false);
-  setStoredUser({
-    id: publicUser.id,
-    role: publicUser.role,
-  });
+  setStoredUser(safeStoredUser);
 }
 
 export function consumeIntentionalLogoutRedirect() {
@@ -262,6 +242,8 @@ export async function ensureCurrentUserContext({
   }
 
   const normalizedRole = normalizeSelfServiceRole(desiredRole);
+  let invokedUser = null;
+  let invokeError = null;
 
   try {
     const { data, error } = await supabase.functions.invoke("ensure-auth-user-context", {
@@ -278,16 +260,34 @@ export async function ensureCurrentUserContext({
       throw new Error(data?.error || "We could not finish loading your account.");
     }
 
-    return applyTrustedAuthRole(data.user, currentAuthUser);
-  } catch (invokeError) {
-    const fallbackUser = await readPublicUserRecord(currentAuthUser.id).catch(() => null);
+    invokedUser = data.user;
+  } catch (error) {
+    invokeError = error;
+  }
 
-    if (fallbackUser?.role) {
-      return applyTrustedAuthRole(fallbackUser, currentAuthUser);
+  let publicUser = null;
+
+  try {
+    publicUser = await readPublicUserRecord(currentAuthUser.id);
+  } catch (readError) {
+    if (!invokedUser?.role) {
+      throw readError;
     }
+  }
 
+  if (publicUser?.role) {
+    return publicUser;
+  }
+
+  if (invokedUser?.role) {
+    return invokedUser;
+  }
+
+  if (invokeError) {
     throw invokeError;
   }
+
+  throw new Error("We could not finish loading your account.");
 }
 
 export async function loadAuthenticatedUserContext({ desiredRole = "" } = {}) {

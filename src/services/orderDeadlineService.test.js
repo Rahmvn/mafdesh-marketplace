@@ -1,3 +1,4 @@
+import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -32,12 +33,19 @@ vi.mock("../utils/authResilience", () => ({
 }));
 
 import {
+  getOrderDeadlineCatchUpTargets,
   getOrderDeadlineProcessingKey,
   processOrderDeadline,
+  useOrderDeadlineAutoProcessing,
 } from "./orderDeadlineService";
 
 describe("orderDeadlineService", () => {
+  let consoleInfoSpy;
+  let consoleErrorSpy;
+
   beforeEach(() => {
+    consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockGetSessionWithRetry.mockResolvedValue({
       data: { session: { access_token: "token-123" } },
       error: null,
@@ -51,13 +59,15 @@ describe("orderDeadlineService", () => {
       error: null,
     });
     mockInvoke.mockResolvedValue({
-      data: { success: true, processed: true, results: ["Updated order"] },
+      data: { success: true, processed: true, reason: "processed", results: ["Updated order"] },
       error: null,
       response: { status: 200 },
     });
   });
 
   afterEach(() => {
+    consoleInfoSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -117,6 +127,37 @@ describe("orderDeadlineService", () => {
     expect(result).toBeNull();
   });
 
+  it("collects unique overdue catch-up targets and skips blocked orders", () => {
+    const result = getOrderDeadlineCatchUpTargets(
+      [
+        {
+          id: "order-1",
+          status: "PAID_ESCROW",
+          ship_deadline: "2026-05-03T10:00:00Z",
+        },
+        {
+          id: "order-2",
+          status: "READY_FOR_PICKUP",
+          auto_cancel_at: "2026-05-03T10:00:00Z",
+          has_active_hold: true,
+        },
+        {
+          id: "order-1",
+          status: "PAID_ESCROW",
+          ship_deadline: "2026-05-03T10:00:00Z",
+        },
+      ],
+      { now: new Date("2026-05-03T10:00:01Z") }
+    );
+
+    expect(result).toEqual([
+      {
+        orderId: "order-1",
+        key: "ship:order-1:2026-05-03T10:00:00Z",
+      },
+    ]);
+  });
+
   it("invokes the deadline processor with the authenticated access token", async () => {
     const result = await processOrderDeadline("order-9");
 
@@ -129,7 +170,81 @@ describe("orderDeadlineService", () => {
     expect(result).toEqual({
       success: true,
       processed: true,
+      reason: "processed",
       results: ["Updated order"],
+    });
+  });
+
+  it("processes a visible overdue order only once per deadline key and reloads after success", async () => {
+    const processOrder = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        processed: true,
+        reason: "processed",
+        results: ["Refunded 1 order"],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        processed: false,
+        reason: "blocked_by_hold",
+        results: [],
+      });
+    const onProcessed = vi.fn().mockResolvedValue(undefined);
+    const firstOrder = {
+      id: "order-7",
+      status: "PAID_ESCROW",
+      ship_deadline: "2026-05-03T10:00:00Z",
+    };
+
+    const { rerender } = renderHook(
+      ({ orders, now }) =>
+        useOrderDeadlineAutoProcessing({
+          orders,
+          now,
+          onProcessed,
+          processOrder,
+          debugLabel: "test auto-processing",
+        }),
+      {
+        initialProps: {
+          orders: [firstOrder],
+          now: new Date("2026-05-03T10:00:01Z"),
+        },
+      }
+    );
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(onProcessed).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      orders: [firstOrder],
+      now: new Date("2026-05-03T10:30:00Z"),
+    });
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      orders: [
+        {
+          ...firstOrder,
+          ship_deadline: "2026-05-04T10:00:00Z",
+        },
+      ],
+      now: new Date("2026-05-04T10:00:01Z"),
+    });
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(onProcessed).toHaveBeenCalledTimes(1);
     });
   });
 });

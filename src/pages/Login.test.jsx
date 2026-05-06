@@ -7,7 +7,6 @@ import Login from './Login';
 const {
   mockGetSession,
   mockSignInWithPassword,
-  mockHasSellerAuthMetadata,
   mockMergeGuestCart,
   mockShowError,
   mockShowWarning,
@@ -18,7 +17,6 @@ const {
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockSignInWithPassword: vi.fn(),
-  mockHasSellerAuthMetadata: vi.fn(),
   mockMergeGuestCart: vi.fn(),
   mockShowError: vi.fn(),
   mockShowWarning: vi.fn(),
@@ -53,7 +51,6 @@ vi.mock('../services/cartService', () => ({
 
 vi.mock('../services/authSessionService', () => ({
   ensureCurrentUserContext: mockEnsureCurrentUserContext,
-  hasSellerAuthMetadata: mockHasSellerAuthMetadata,
   loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
   routeAuthenticatedUser: mockRouteAuthenticatedUser,
   storeAuthenticatedUser: mockStoreAuthenticatedUser,
@@ -107,7 +104,6 @@ describe('Login', () => {
   beforeEach(() => {
     mockGetSession.mockReset();
     mockSignInWithPassword.mockReset();
-    mockHasSellerAuthMetadata.mockReset();
     mockMergeGuestCart.mockReset();
     mockShowError.mockReset();
     mockShowWarning.mockReset();
@@ -131,7 +127,6 @@ describe('Login', () => {
       id: 'buyer-1',
       role: 'buyer',
     });
-    mockHasSellerAuthMetadata.mockReturnValue(false);
     mockLoadAuthenticatedUserContext.mockResolvedValue({
       session: { user: { id: 'buyer-1' } },
       user: { id: 'buyer-1', role: 'buyer' },
@@ -271,6 +266,10 @@ describe('Login', () => {
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
     expect(mockShowError).not.toHaveBeenCalled();
+    expect(mockShowWarning).toHaveBeenCalledWith(
+      'Role Updated',
+      'This account is registered as seller. You have been signed in with your actual account role.'
+    );
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
     });
@@ -304,18 +303,11 @@ describe('Login', () => {
   });
 
   it('does not let the selected login tab rewrite a seller account into buyer routing', async () => {
-    mockHasSellerAuthMetadata.mockReturnValue(true);
-    mockEnsureCurrentUserContext
-      .mockResolvedValueOnce({
-        id: 'seller-1',
-        role: 'buyer',
-        account_status: 'active',
-      })
-      .mockResolvedValueOnce({
-        id: 'seller-1',
-        role: 'seller',
-        account_status: 'active',
-      });
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'seller-1',
+      role: 'seller',
+      account_status: 'active',
+    });
     mockSignInWithPassword.mockResolvedValue({
       data: {
         user: { id: 'seller-1', email: 'seller@example.com' },
@@ -332,13 +324,14 @@ describe('Login', () => {
     });
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
-    expect(mockEnsureCurrentUserContext).toHaveBeenNthCalledWith(1, {
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledTimes(1);
+    expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
     });
-    expect(mockEnsureCurrentUserContext).toHaveBeenNthCalledWith(2, {
-      authUser: expect.objectContaining({ id: 'seller-1' }),
-      desiredRole: 'seller',
-    });
+    expect(mockShowWarning).toHaveBeenCalledWith(
+      'Role Updated',
+      'This account is registered as seller. You have been signed in with your actual account role.'
+    );
   });
 
   it('restores an existing authenticated session through the shared auth context loader', async () => {
@@ -366,6 +359,7 @@ describe('Login', () => {
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
     expect(mockLoadAuthenticatedUserContext).toHaveBeenCalledTimes(1);
     expect(mockSignInWithPassword).not.toHaveBeenCalled();
+    expect(mockMergeGuestCart).not.toHaveBeenCalled();
   });
 
   it('honors protected-route return URLs through the shared login success path', async () => {
@@ -374,8 +368,6 @@ describe('Login', () => {
       role: 'buyer',
       account_status: 'active',
     });
-    mockHasSellerAuthMetadata.mockReturnValue(false);
-
     renderLoginRoute('/login?returnUrl=%2Fsupport');
     fillAndSubmitLoginForm();
 
@@ -385,5 +377,30 @@ describe('Login', () => {
       expect.objectContaining({ role: 'buyer' }),
       { returnUrl: '/support' }
     );
+  });
+
+  it('does not merge the guest cart for non-buyer logins', async () => {
+    mockEnsureCurrentUserContext.mockResolvedValue({
+      id: 'seller-1',
+      role: 'seller',
+      account_status: 'active',
+    });
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'seller-1', email: 'seller@example.com' },
+        session: { user: { id: 'seller-1', email: 'seller@example.com' } },
+      },
+      error: null,
+    });
+
+    renderLoginRoute();
+    selectLoginType('seller');
+    fillAndSubmitLoginForm({
+      email: 'seller@example.com',
+      password: 'password123',
+    });
+
+    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    expect(mockMergeGuestCart).not.toHaveBeenCalled();
   });
 });

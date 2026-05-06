@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
@@ -9,7 +9,13 @@ import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { Package, Truck, CheckCircle, Clock, MapPin, Phone, AlertCircle, XCircle } from "lucide-react";
-import { formatRemaining, getUrgencyClass } from "../utils/timeUtils";
+import {
+  formatBusinessDeadline,
+  formatLagosDeadline,
+  formatRemaining,
+  getBusinessUrgencyClass,
+  getUrgencyClass,
+} from "../utils/timeUtils";
 import { getSellerOrderPayout } from "../utils/sellerPayouts";
 import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
 import {
@@ -36,8 +42,7 @@ import {
   markSellerOrderShipped,
 } from "../services/sellerOrderTransitionService";
 import {
-  getOrderDeadlineProcessingKey,
-  processOrderDeadline,
+  useOrderDeadlineAutoProcessing,
 } from "../services/orderDeadlineService";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { getStoredUser, setStoredUser } from "../utils/storage";
@@ -88,7 +93,6 @@ export default function SellerOrderDetails() {
   const [now, setNow] = useState(new Date());
   const [refundRequests, setRefundRequests] = useState([]);
   const [adminHolds, setAdminHolds] = useState([]);
-  const attemptedAutoProcessingRef = useRef(new Set());
   const themeState = useSellerTheme(currentUser?.is_verified ?? null);
   const theme = getSellerThemeClasses(themeState.darkMode);
 
@@ -350,43 +354,20 @@ export default function SellerOrderDetails() {
   const isRefundProcessing = Boolean(pendingRefundRequest);
   const isAdminHoldProcessing = Boolean(activeAdminHold);
 
-  useEffect(() => {
-    if (!order) {
-      return;
-    }
-
-    const autoProcessKey = getOrderDeadlineProcessingKey(order, {
-      now,
-      hasActiveHold: isAdminHoldProcessing,
-      hasPendingRefund: isRefundProcessing,
-    });
-
-    if (!autoProcessKey || attemptedAutoProcessingRef.current.has(autoProcessKey)) {
-      return;
-    }
-
-    attemptedAutoProcessingRef.current.add(autoProcessKey);
-
-    let cancelled = false;
-
-    const runAutoProcessing = async () => {
-      try {
-        const result = await processOrderDeadline(order.id);
-
-        if (!cancelled && result?.processed) {
-          await loadOrder();
-        }
-      } catch (error) {
-        console.error("Seller order auto-processing failed:", error);
-      }
-    };
-
-    runAutoProcessing();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdminHoldProcessing, isRefundProcessing, loadOrder, now, order]);
+  useOrderDeadlineAutoProcessing({
+    orders: order
+      ? [
+          {
+            ...order,
+            has_active_hold: isAdminHoldProcessing,
+            has_pending_refund: isRefundProcessing,
+          },
+        ]
+      : [],
+    now,
+    onProcessed: loadOrder,
+    debugLabel: "seller order auto-processing",
+  });
 
   const handleMarkShipped = async () => {
     if (order.status !== "PAID_ESCROW") return;
@@ -495,6 +476,11 @@ export default function SellerOrderDetails() {
     effectiveShipDeadline && new Date(effectiveShipDeadline) <= now;
   const deliveryDeadlineState = getDeliveryDeadlineState(order, now);
   const deliveryDeadlineExpired = deliveryDeadlineState.reason === "expired";
+  const effectiveShipTimerLabel = formatBusinessDeadline(effectiveShipDeadline, now);
+  const effectiveShipUrgencyClass = getBusinessUrgencyClass(effectiveShipDeadline, now);
+  const effectiveShipDueLabel = formatLagosDeadline(effectiveShipDeadline);
+  const pickupTimerLabel = formatBusinessDeadline(order.auto_cancel_at, now);
+  const pickupUrgencyClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
 
   const { baseEarnings, netEarnings, refundInfo } = getSellerOrderPayout(order, items);
 
@@ -562,7 +548,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Deadline Passed
           </h3>
           <p className="text-sm text-red-700">
-            You did not {isDelivery ? "ship" : "mark ready"} within the 48-hour window. The order will be automatically cancelled and the buyer refunded.
+            You did not {isDelivery ? "ship" : "mark ready"} within 2 business days. The order will be automatically cancelled and the buyer refunded.
           </p>
         </div>
       );
@@ -573,7 +559,7 @@ export default function SellerOrderDetails() {
             <Clock size={18} /> Your next steps
           </h3>
           <p className="text-sm text-blue-700">
-            You have <strong className={getUrgencyClass(effectiveShipDeadline, now)}>{formatRemaining(effectiveShipDeadline, now)}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
+            You have <strong className={effectiveShipUrgencyClass}>{effectiveShipTimerLabel}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
             If you don't act by then, the order will be automatically cancelled and the buyer will be refunded.
           </p>
         </div>
@@ -598,7 +584,7 @@ export default function SellerOrderDetails() {
             <Package size={18} /> Awaiting pickup
           </h3>
           <p className="text-sm text-purple-700">
-            The buyer has <strong className={getUrgencyClass(order.auto_cancel_at, now)}>{formatRemaining(order.auto_cancel_at, now)}</strong> to pick up the items.
+            The buyer has <strong className={pickupUrgencyClass}>{pickupTimerLabel}</strong> to pick up the items.
             If they don't pick up in time, the order will be cancelled and the buyer refunded.
           </p>
         </div>
@@ -903,9 +889,9 @@ export default function SellerOrderDetails() {
         {!isFinalState && (order.ship_deadline || order.delivery_deadline || order.auto_cancel_at || order.auto_complete_at || order.dispute_deadline) && (
         <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
           <h2 className="font-semibold mb-3">Timers</h2>
-            {order.status === "PAID_ESCROW" && effectiveShipDeadline && <p className={`text-sm ${getUrgencyClass(effectiveShipDeadline, now)}`}>Ship by: {formatRemaining(effectiveShipDeadline, now)}</p>}
+            {order.status === "PAID_ESCROW" && effectiveShipDeadline && <p className={`text-sm ${effectiveShipUrgencyClass}`}>Ship by: {effectiveShipTimerLabel}</p>}
             {order.status === "SHIPPED" && isDelivery && order.delivery_deadline && <p className={`text-sm ${getUrgencyClass(order.delivery_deadline, now)}`}>Mark delivered by: {formatRemaining(order.delivery_deadline, now)}</p>}
-            {order.auto_cancel_at && <p className={`text-sm ${getUrgencyClass(order.auto_cancel_at, now)}`}>Auto-cancel: {formatRemaining(order.auto_cancel_at, now)}</p>}
+            {order.auto_cancel_at && <p className={`text-sm ${pickupUrgencyClass}`}>Auto-cancel: {pickupTimerLabel}</p>}
             {order.auto_complete_at && <p className={`text-sm ${getUrgencyClass(order.auto_complete_at, now)}`}>Auto-complete: {formatRemaining(order.auto_complete_at, now)}</p>}
             {order.dispute_deadline && <p className={`text-sm ${getUrgencyClass(order.dispute_deadline, now)}`}>Dispute window: {formatRemaining(order.dispute_deadline, now)}</p>}
           </div>
@@ -922,8 +908,8 @@ export default function SellerOrderDetails() {
                 timerText = formatRemaining(order.delivery_deadline, now);
                 urgencyClass = getUrgencyClass(order.delivery_deadline, now);
               } else if (step.label === "Ready for Pickup" && order.auto_cancel_at && !isFinalState) {
-                timerText = formatRemaining(order.auto_cancel_at, now);
-                urgencyClass = getUrgencyClass(order.auto_cancel_at, now);
+                timerText = pickupTimerLabel;
+                urgencyClass = pickupUrgencyClass;
               } else if (step.label === "Delivered" && order.dispute_deadline && !isFinalState && order.status === "DELIVERED") {
                 timerText = formatRemaining(order.dispute_deadline, now);
                 urgencyClass = getUrgencyClass(order.dispute_deadline, now);
@@ -968,8 +954,8 @@ export default function SellerOrderDetails() {
                       Time left to {isDelivery ? "ship" : "mark ready for pickup"}:
                     </p>
                     {effectiveShipDeadline ? (
-                      <p className={`text-2xl font-bold ${getUrgencyClass(effectiveShipDeadline, now)}`}>
-                        {formatRemaining(effectiveShipDeadline, now)}
+                      <p className={`text-2xl font-bold ${effectiveShipUrgencyClass}`}>
+                        {effectiveShipTimerLabel}
                       </p>
                     ) : (
                       <p className="text-red-600 text-sm">Deadline not set. Please contact support.</p>
@@ -984,8 +970,8 @@ export default function SellerOrderDetails() {
                 </button>
               )}
                   {effectiveShipDeadline && !isFinalState && (
-                <p className={`text-sm mt-2 text-center ${getUrgencyClass(effectiveShipDeadline, now)}`}>
-                  Must {isDelivery ? "ship" : "mark ready"} by {new Date(effectiveShipDeadline).toLocaleString()}
+                <p className={`text-sm mt-2 text-center ${effectiveShipUrgencyClass}`}>
+                  Must {isDelivery ? "ship" : "mark ready"} by {effectiveShipDueLabel}
                 </p>
               )}
                 </>
