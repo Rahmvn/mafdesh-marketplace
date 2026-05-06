@@ -168,22 +168,50 @@ export default function VerificationSubscription() {
       return;
     }
 
-    const loadUser = async () => {
-      const { data: sellerData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userData.id)
-        .single();
+    let isMounted = true;
 
-      if (sellerData) {
-        setCurrentUser(sellerData);
-        setStoredUser(sellerData);
-      } else {
-        setCurrentUser(userData);
+    const loadUser = async () => {
+      try {
+        const { data: sellerData, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userData.id)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (sellerData) {
+          setCurrentUser(sellerData);
+          setStoredUser(sellerData);
+        } else {
+          console.info('[verification-subscription] user record missing, falling back to stored seller context', {
+            userId: userData.id,
+          });
+          setCurrentUser(userData);
+        }
+      } catch (error) {
+        console.warn('[verification-subscription] failed to load seller context', {
+          userId: userData.id,
+          error,
+        });
+
+        if (isMounted) {
+          setCurrentUser(userData);
+        }
       }
     };
 
     loadUser();
+
+    return () => {
+      isMounted = false;
+    };
   }, [navigate, showError]);
 
   const handleInputChange = (field, value) => {

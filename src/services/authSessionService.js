@@ -262,6 +262,11 @@ export async function ensureCurrentUserContext({
 
     invokedUser = data.user;
   } catch (error) {
+    console.warn("[auth-context] bootstrap invoke failed", {
+      userId: currentAuthUser.id,
+      desiredRole: normalizedRole || null,
+      error,
+    });
     invokeError = error;
   }
 
@@ -270,6 +275,10 @@ export async function ensureCurrentUserContext({
   try {
     publicUser = await readPublicUserRecord(currentAuthUser.id);
   } catch (readError) {
+    console.warn("[auth-context] public user read failed", {
+      userId: currentAuthUser.id,
+      error: readError,
+    });
     if (!invokedUser?.role) {
       throw readError;
     }

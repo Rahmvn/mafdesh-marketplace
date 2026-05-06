@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import {
   SellerShell,
   useSellerTheme,
@@ -25,7 +26,7 @@ vi.mock('../Navbar', () => ({
   ),
 }));
 
-vi.mock('../Footer', () => ({
+vi.mock('../FooterSlim', () => ({
   default: () => <div data-testid="footer" />,
 }));
 
@@ -33,20 +34,23 @@ function TestHarness({ isVerified }) {
   const themeState = useSellerTheme(isVerified);
 
   return (
-    <SellerShell
-      currentUser={{
-        id: 'seller-1',
-        email: 'seller@example.com',
-        business_name: 'Northwind Store',
-        is_verified: isVerified,
-      }}
-      onLogout={vi.fn()}
-      themeState={themeState}
-      title="Seller Workspace"
-      subtitle="Shared shell test"
-    >
-      <div>Seller content</div>
-    </SellerShell>
+    <MemoryRouter>
+      <SellerShell
+        currentUser={{
+          id: 'seller-1',
+          email: 'seller@example.com',
+          business_name: 'Northwind Store',
+          is_verified: isVerified,
+        }}
+        onLogout={vi.fn()}
+        themeState={themeState}
+        title="Seller Workspace"
+        subtitle="Shared shell test"
+        showHeader
+      >
+        <div>Seller content</div>
+      </SellerShell>
+    </MemoryRouter>
   );
 }
 

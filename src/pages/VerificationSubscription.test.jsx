@@ -13,7 +13,16 @@ vi.mock('../components/FooterSlim', () => ({
 
 vi.mock('../supabaseClient', () => ({
   supabase: {
-    from: vi.fn(),
+    from: vi.fn(() => ({
+      select: () => ({
+        eq: () => ({
+          single: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+        }),
+      }),
+    })),
   },
 }));
 

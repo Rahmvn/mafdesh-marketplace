@@ -7,7 +7,6 @@ import Payment from './Payment';
 const {
   mockGetSession,
   mockOrderSingle,
-  mockDeleteEq,
   mockConfirmOrder,
   mockShowGlobalWarning,
   mockShowGlobalError,
@@ -15,7 +14,6 @@ const {
 } = vi.hoisted(() => {
   const mockGetSession = vi.fn();
   const mockOrderSingle = vi.fn();
-  const mockDeleteEq = vi.fn();
   const mockConfirmOrder = vi.fn();
   const mockShowGlobalWarning = vi.fn();
   const mockShowGlobalError = vi.fn();
@@ -24,11 +22,8 @@ const {
       return {
         select: () => ({
           eq: () => ({
-            single: mockOrderSingle,
+            maybeSingle: mockOrderSingle,
           }),
-        }),
-        delete: () => ({
-          eq: mockDeleteEq,
         }),
       };
     }
@@ -39,7 +34,6 @@ const {
   return {
     mockGetSession,
     mockOrderSingle,
-    mockDeleteEq,
     mockConfirmOrder,
     mockShowGlobalWarning,
     mockShowGlobalError,
@@ -133,7 +127,6 @@ describe('Payment', () => {
       );
     });
 
-    expect(mockDeleteEq).not.toHaveBeenCalled();
     expect(mockShowGlobalError).not.toHaveBeenCalled();
   });
 });

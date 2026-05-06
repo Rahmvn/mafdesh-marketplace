@@ -103,7 +103,7 @@ describe('Support', () => {
   it('shows priority support for verified sellers', () => {
     localStorage.setItem(
       'mafdesh_user',
-      JSON.stringify({ role: 'seller', is_verified: true })
+      JSON.stringify({ id: 'seller-123', role: 'seller', is_verified: true })
     );
 
     render(
@@ -119,7 +119,7 @@ describe('Support', () => {
   it('does not show priority support for buyers', () => {
     localStorage.setItem(
       'mafdesh_user',
-      JSON.stringify({ role: 'buyer', is_verified: false })
+      JSON.stringify({ id: 'buyer-123', role: 'buyer', is_verified: false })
     );
 
     render(
@@ -134,7 +134,7 @@ describe('Support', () => {
   it('submits the support ticket without attachments when the storage bucket is missing', async () => {
     localStorage.setItem(
       'mafdesh_user',
-      JSON.stringify({ role: 'buyer', is_verified: false })
+      JSON.stringify({ id: 'buyer-123', role: 'buyer', is_verified: false })
     );
     mockUpload.mockResolvedValue({
       error: { message: 'Bucket not found', name: 'StorageApiError' },

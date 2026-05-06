@@ -1,24 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSingleCheckoutOrder } from './singleCheckoutService';
 
-const { mockRpc } = vi.hoisted(() => ({
-  mockRpc: vi.fn(),
+const { mockGetSessionWithRetry, mockFetchWithTimeout } = vi.hoisted(() => ({
+  mockGetSessionWithRetry: vi.fn(),
+  mockFetchWithTimeout: vi.fn(),
 }));
 
-vi.mock('../supabaseClient', () => ({
-  supabase: {
-    rpc: mockRpc,
-  },
+vi.mock('../utils/authResilience', () => ({
+  getSessionWithRetry: mockGetSessionWithRetry,
+}));
+
+vi.mock('../utils/fetchWithTimeout', () => ({
+  fetchWithTimeout: mockFetchWithTimeout,
 }));
 
 describe('createSingleCheckoutOrder', () => {
   beforeEach(() => {
-    mockRpc.mockResolvedValue({
+    mockGetSessionWithRetry.mockResolvedValue({
       data: {
-        id: 'order-1',
-        status: 'PENDING',
+        session: {
+          access_token: 'token-1',
+        },
       },
-      error: null,
+    });
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        order: {
+          id: 'order-1',
+          status: 'PENDING',
+        },
+      }),
     });
   });
 
@@ -37,7 +49,29 @@ describe('createSingleCheckoutOrder', () => {
 
     const result = await createSingleCheckoutOrder(payload);
 
-    expect(mockRpc).toHaveBeenCalledWith('create_single_checkout_order', payload);
+    expect(mockFetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringMatching(/\/functions\/v1\/create-checkout-order$/),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token-1',
+          'Content-Type': 'application/json',
+        }),
+        body: expect.any(String),
+      })
+    );
+
+    const requestBody = JSON.parse(mockFetchWithTimeout.mock.calls[0][1].body);
+    expect(requestBody).toEqual(
+      expect.objectContaining({
+        productId: 'product-1',
+        deliveryType: 'delivery',
+        deliveryFee: 2500,
+        deliveryState: 'Lagos',
+        deliveryAddress: '1 Broad Street, Lagos Island, Lagos',
+      })
+    );
+    expect(requestBody.checkout_reference).toMatch(/^MAFDESH_/);
     expect(result).toEqual({
       id: 'order-1',
       status: 'PENDING',
@@ -45,10 +79,11 @@ describe('createSingleCheckoutOrder', () => {
   });
 
   it('throws RPC errors directly so checkout can show the real failure', async () => {
-    const error = new Error('Only approved live products can be ordered.');
-    mockRpc.mockResolvedValue({
-      data: null,
-      error,
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: false,
+      json: vi.fn().mockResolvedValue({
+        error: 'Only approved live products can be ordered.',
+      }),
     });
 
     await expect(
@@ -59,14 +94,14 @@ describe('createSingleCheckoutOrder', () => {
   });
 
   it('unwraps array responses from the checkout RPC', async () => {
-    mockRpc.mockResolvedValue({
-      data: [
-        {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        order: {
           id: 'order-2',
           status: 'PENDING',
         },
-      ],
-      error: null,
+      }),
     });
 
     await expect(

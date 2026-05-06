@@ -157,9 +157,7 @@ describe('SellerDashboard', () => {
     );
 
     expect(
-      await screen.findByText(
-        /check what needs attention, jump into orders, and keep your listings in shape/i
-      )
+      await screen.findByText(/orders, products, and payouts at a glance/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/active listings/i)).toBeInTheDocument();
     expect(screen.queryByText(/open premium insights/i)).not.toBeInTheDocument();
