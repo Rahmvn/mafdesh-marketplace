@@ -262,11 +262,6 @@ export async function ensureCurrentUserContext({
 
     invokedUser = data.user;
   } catch (error) {
-    console.warn("[auth-context] bootstrap invoke failed", {
-      userId: currentAuthUser.id,
-      desiredRole: normalizedRole || null,
-      error,
-    });
     invokeError = error;
   }
 
@@ -293,6 +288,11 @@ export async function ensureCurrentUserContext({
   }
 
   if (invokeError) {
+    console.warn("[auth-context] bootstrap invoke failed", {
+      userId: currentAuthUser.id,
+      desiredRole: normalizedRole || null,
+      error: invokeError,
+    });
     throw invokeError;
   }
 
