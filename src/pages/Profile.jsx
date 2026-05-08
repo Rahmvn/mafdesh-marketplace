@@ -46,8 +46,11 @@ import {
 
 const NIGERIAN_BANKS = [
   'Access Bank',
+  'ALAT by Wema',
+  'Carbon',
   'Citibank',
   'Ecobank',
+  'FairMoney Microfinance Bank',
   'Fidelity Bank',
   'First Bank of Nigeria',
   'First City Monument Bank (FCMB)',
@@ -56,16 +59,29 @@ const NIGERIAN_BANKS = [
   'Heritage Bank',
   'Jaiz Bank',
   'Keystone Bank',
+  'Kuda Microfinance Bank',
+  'Lotus Bank',
+  'Moniepoint Microfinance Bank',
+  'OPay Digital Services Limited (OPay)',
+  'Optimus Bank',
+  'PalmPay',
+  'Parallex Bank',
   'Polaris Bank',
+  'PremiumTrust Bank',
   'Providus Bank',
+  'Rubies Microfinance Bank',
+  'Signature Bank',
+  'Sparkle Microfinance Bank',
   'Stanbic IBTC Bank',
   'Standard Chartered Bank',
   'Sterling Bank',
   'SunTrust Bank',
+  'TAJBank',
   'Titan Trust Bank',
   'Union Bank of Nigeria',
   'United Bank for Africa (UBA)',
   'Unity Bank',
+  'VFD Microfinance Bank',
   'Wema Bank',
   'Zenith Bank',
 ];
@@ -194,11 +210,26 @@ function BankDetailsForm({
   title,
   submitLabel = '',
 }) {
+  const bankDatalistId = React.useId();
+  const [bankQuery, setBankQuery] = useState(values.bank_name || '');
+
+  useEffect(() => {
+    setBankQuery(values.bank_name || '');
+  }, [values.bank_name]);
+
   const resolvedSubmitLabel =
     submitLabel ||
     (title?.toLowerCase().includes('change')
       ? 'Submit Request'
       : 'Save Bank Details');
+  const normalizedBankQuery = String(bankQuery || '').trim().toLowerCase();
+  const filteredBanks = NIGERIAN_BANKS.filter((bank) => {
+    if (!normalizedBankQuery) {
+      return true;
+    }
+
+    return bank.toLowerCase().includes(normalizedBankQuery);
+  }).slice(0, 20);
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
@@ -206,18 +237,27 @@ function BankDetailsForm({
 
       <div>
         <label className="block text-sm font-medium text-gray-700">Bank Name *</label>
-        <select
-          value={values.bank_name}
-          onChange={(event) => onChange('bank_name', event.target.value)}
+        <input
+          type="text"
+          list={bankDatalistId}
+          value={bankQuery}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setBankQuery(nextValue);
+            onChange('bank_name', nextValue);
+          }}
           className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
-        >
-          <option value="">Select Bank</option>
-          {NIGERIAN_BANKS.map((bank) => (
+          placeholder="Search or select your bank"
+          autoComplete="off"
+        />
+        <datalist id={bankDatalistId}>
+          {filteredBanks.map((bank) => (
             <option key={bank} value={bank}>
               {bank}
             </option>
           ))}
-        </select>
+        </datalist>
+        <p className="mt-1 text-xs text-gray-500">Start typing to search Nigerian banks.</p>
       </div>
 
       <div>
