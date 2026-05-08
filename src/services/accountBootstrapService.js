@@ -14,6 +14,7 @@ export async function reconcileUserRole({
   role,
   phoneNumber = null,
   businessName = null,
+  dateOfBirth = null,
   universityId = null,
   universityName = null,
   universityState = null,
@@ -30,10 +31,11 @@ export async function reconcileUserRole({
       role: normalizedRole,
       phone_number: phoneNumber || null,
       business_name: normalizedRole === "seller" ? businessName || null : null,
-      university_id: normalizedRole === "seller" ? universityId || null : null,
-      university_name: normalizedRole === "seller" ? universityName || null : null,
-      university_state: normalizedRole === "seller" ? universityState || null : null,
-      university_zone: normalizedRole === "seller" ? universityZone || null : null,
+      date_of_birth: dateOfBirth || null,
+      university_id: universityId || null,
+      university_name: universityName || null,
+      university_state: universityState || null,
+      university_zone: universityZone || null,
     },
   });
 

@@ -34,6 +34,16 @@ function normalizeOptionalUuid(value: unknown) {
   return normalized || "";
 }
 
+function normalizeOptionalDate(value: unknown) {
+  const normalized = normalizeText(value);
+
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return "";
+  }
+
+  return normalized;
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -96,6 +106,7 @@ serve(async (req) => {
 
     const phoneNumber = normalizeText(body?.phone_number || authUser.user_metadata?.phone_number);
     const businessName = normalizeText(body?.business_name || authUser.user_metadata?.business_name);
+    const dateOfBirth = normalizeOptionalDate(body?.date_of_birth || authUser.user_metadata?.date_of_birth);
     const universityId = normalizeOptionalUuid(body?.university_id || authUser.user_metadata?.university_id);
     const universityName = normalizeText(body?.university_name || authUser.user_metadata?.university_name);
     const universityState = normalizeText(body?.university_state || authUser.user_metadata?.university_state);
@@ -108,7 +119,7 @@ serve(async (req) => {
 
     const { data: existingUser, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, role, email, phone_number, business_name, university_id, university_name, university_state, university_zone")
+      .select("id, role, email, phone_number, date_of_birth, business_name, university_id, university_name, university_state, university_zone")
       .eq("id", authUser.id)
       .maybeSingle();
 
@@ -156,16 +167,13 @@ serve(async (req) => {
       email: authUser.email || existingUser?.email || null,
       role: desiredRole,
       phone_number: phoneNumber || existingUser?.phone_number || null,
+      date_of_birth: dateOfBirth || existingUser?.date_of_birth || null,
       business_name:
         desiredRole === "seller" ? businessName || existingUser?.business_name || null : null,
-      university_id:
-        desiredRole === "seller" ? universityId || existingUser?.university_id || null : null,
-      university_name:
-        desiredRole === "seller" ? universityName || existingUser?.university_name || null : null,
-      university_state:
-        desiredRole === "seller" ? universityState || existingUser?.university_state || null : null,
-      university_zone:
-        desiredRole === "seller" ? universityZone || existingUser?.university_zone || null : null,
+      university_id: universityId || existingUser?.university_id || null,
+      university_name: universityName || existingUser?.university_name || null,
+      university_state: universityState || existingUser?.university_state || null,
+      university_zone: universityZone || existingUser?.university_zone || null,
     };
 
     const { error: upsertUserError } = await supabaseAdmin

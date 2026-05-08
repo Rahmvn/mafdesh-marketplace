@@ -139,6 +139,9 @@ function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {
   fireEvent.change(screen.getByPlaceholderText('08012345678'), {
     target: { value: '08012345678' },
   });
+  fireEvent.change(screen.getByLabelText(/date of birth/i), {
+    target: { value: '1999-04-10' },
+  });
 
   if (asSeller) {
     fireEvent.change(screen.getByPlaceholderText('Your store name'), {
@@ -214,6 +217,7 @@ describe('SignUp', () => {
 
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
     expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue('1999-04-10');
     expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
     expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
@@ -247,6 +251,32 @@ describe('SignUp', () => {
     ).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).not.toHaveBeenCalled();
     expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it('passes date of birth and optional buyer university data into auth signup metadata', async () => {
+    const { container } = renderSignUpRoute();
+
+    fillSignUpForm(container);
+    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+      target: { value: 'Mafdesh University' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(mockSignUp).toHaveBeenCalled();
+    });
+
+    expect(mockSignUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'buyer',
+            date_of_birth: '1999-04-10',
+            university_name: 'Mafdesh University',
+          }),
+        }),
+      })
+    );
   });
 
   it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {

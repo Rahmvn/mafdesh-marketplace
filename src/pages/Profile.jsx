@@ -88,6 +88,22 @@ function getSellerVerificationLabel(status, isVerified) {
   return 'Not submitted';
 }
 
+function formatProfileDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleDateString('en-NG', {
+    dateStyle: 'long',
+  });
+}
+
 function InlineMessage({ message }) {
   if (!message?.text) {
     return null;
@@ -949,6 +965,18 @@ export default function Profile() {
                 </div>
               ) : null}
 
+              {profile?.date_of_birth ? (
+                <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                  <Calendar className="mt-0.5 text-blue-600" size={20} />
+                  <div className="flex-1">
+                    <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+                      Date of Birth
+                    </div>
+                    <div className="font-medium text-blue-900">{formatProfileDate(profile?.date_of_birth)}</div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
                 <Shield className="mt-0.5 text-blue-600" size={20} />
                 <div className="flex-1">
@@ -971,15 +999,15 @@ export default function Profile() {
                 </div>
               ) : null}
 
-              {isSeller && profile?.university_name ? (
-                <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
-                  <Calendar className="mt-0.5 text-orange-600" size={20} />
+              {profile?.university_name ? (
+                <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
+                  <Calendar className={`mt-0.5 ${isSeller ? 'text-orange-600' : 'text-blue-600'}`} size={20} />
                   <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
-                      University Identity
+                    <div className={`mb-1 text-xs font-semibold uppercase ${isSeller ? 'text-orange-600' : 'text-blue-600'}`}>
+                      {isSeller ? 'University Identity' : 'University'}
                     </div>
-                    <div className="font-medium text-orange-900">{profile.university_name}</div>
-                    <div className="mt-1 text-sm text-orange-700">
+                    <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile.university_name}</div>
+                    <div className={`mt-1 text-sm ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}>
                       {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
                     </div>
                   </div>

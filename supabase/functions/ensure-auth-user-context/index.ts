@@ -41,6 +41,16 @@ function normalizeOptionalUuid(value: unknown) {
   return normalized || "";
 }
 
+function normalizeOptionalDate(value: unknown) {
+  const normalized = normalizeText(value);
+
+  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return "";
+  }
+
+  return normalized;
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -162,6 +172,7 @@ serve(async (req) => {
 
     const phoneNumber = normalizeText(body?.phone_number || metadata?.phone_number);
     const businessName = normalizeText(body?.business_name || metadata?.business_name);
+    const dateOfBirth = normalizeOptionalDate(body?.date_of_birth || metadata?.date_of_birth);
     const universityId = normalizeOptionalUuid(body?.university_id || metadata?.university_id);
     const universityName = normalizeText(body?.university_name || metadata?.university_name);
     const universityState = normalizeText(body?.university_state || metadata?.university_state);
@@ -191,26 +202,15 @@ serve(async (req) => {
           email: authUser.email || existingUser?.email || null,
           role: desiredRole,
           phone_number: phoneNumber || existingUser?.phone_number || null,
+          date_of_birth: dateOfBirth || existingUser?.date_of_birth || null,
           business_name:
             desiredRole === "seller"
               ? businessName || existingUser?.business_name || null
               : null,
-          university_id:
-            desiredRole === "seller"
-              ? universityId || existingUser?.university_id || null
-              : null,
-          university_name:
-            desiredRole === "seller"
-              ? universityName || existingUser?.university_name || null
-              : null,
-          university_state:
-            desiredRole === "seller"
-              ? universityState || existingUser?.university_state || null
-              : null,
-          university_zone:
-            desiredRole === "seller"
-              ? universityZone || existingUser?.university_zone || null
-              : null,
+          university_id: universityId || existingUser?.university_id || null,
+          university_name: universityName || existingUser?.university_name || null,
+          university_state: universityState || existingUser?.university_state || null,
+          university_zone: universityZone || existingUser?.university_zone || null,
         },
         { onConflict: "id" }
       );

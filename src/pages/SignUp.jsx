@@ -25,6 +25,7 @@ const EMPTY_SIGNUP_FORM = {
   email: "",
   username: "",
   phone_number: "",
+  date_of_birth: "",
   password: "",
   confirmPassword: "",
   business_name: "",
@@ -144,7 +145,7 @@ export default function SignUp() {
   }, [agreedToTerms, formData, hasHydratedDraft, userType]);
 
   useEffect(() => {
-    if (userType !== 'seller') {
+    if (userType !== 'seller' && userType !== 'buyer') {
       setUniversitySuggestions([]);
       setIsLoadingUniversities(false);
       return;
@@ -166,7 +167,7 @@ export default function SignUp() {
       try {
         const results = await searchUniversities({
           query,
-          state: formData.university_state,
+          state: userType === 'seller' ? formData.university_state : '',
           limit: 6,
         });
 
@@ -315,6 +316,12 @@ export default function SignUp() {
     updateUniversityDraft({
       university_id: '',
       university_name: value,
+      ...(userType === 'buyer'
+        ? {
+            university_state: '',
+            university_zone: '',
+          }
+        : {}),
     });
   };
 
@@ -353,12 +360,13 @@ export default function SignUp() {
               full_name: nextFormData.full_name,
               username: nextFormData.username,
               phone_number: nextFormData.phone_number,
+              date_of_birth: nextFormData.date_of_birth || null,
               business_name: userType === 'seller' ? nextFormData.business_name : null,
               location: nextFormData.location,
-              university_id: userType === 'seller' ? nextFormData.university_id || null : null,
-              university_name: userType === 'seller' ? nextFormData.university_name || null : null,
-              university_state: userType === 'seller' ? nextFormData.university_state || null : null,
-              university_zone: userType === 'seller' ? nextFormData.university_zone || null : null,
+              university_id: nextFormData.university_id || null,
+              university_name: nextFormData.university_name || null,
+              university_state: nextFormData.university_state || null,
+              university_zone: nextFormData.university_zone || null,
             },
           },
         })
@@ -549,6 +557,7 @@ export default function SignUp() {
                   email: formData.email?.trim().toLowerCase() || '',
                   username: formData.username?.trim().toLowerCase() || '',
                   phone: formData.phone_number?.trim() || '',
+                  dateOfBirth: formData.date_of_birth || '',
                   businessName: formData.business_name?.trim() || '',
                   location: formData.location?.trim() || '',
                   universityName: formData.university_name?.trim() || '',
@@ -562,6 +571,7 @@ export default function SignUp() {
                   email: trimmed.email,
                   username: trimmed.username,
                   phone_number: trimmed.phone,
+                  date_of_birth: trimmed.dateOfBirth,
                   business_name: trimmed.businessName,
                   location: trimmed.location,
                   university_name: trimmed.universityName,
@@ -569,8 +579,8 @@ export default function SignUp() {
                   university_zone: trimmed.universityZone,
                 };
 
-                if (!trimmed.fullName || !trimmed.email || !trimmed.username || !formData.password || !trimmed.location) {
-                  showWarning('Missing Details', 'Please fill in all required fields including location.');
+                if (!trimmed.fullName || !trimmed.email || !trimmed.username || !trimmed.dateOfBirth || !formData.password || !trimmed.location) {
+                  showWarning('Missing Details', 'Please fill in all required fields including date of birth and location.');
                   return;
                 }
 
@@ -655,6 +665,49 @@ export default function SignUp() {
                   maxLength={100}
                   onChange={(e) =>
                     setFormData({ ...formData, full_name: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "13px 16px",
+                    borderRadius: "11px",
+                    border: "1.5px solid #e5e7eb",
+                    fontSize: "15px",
+                    fontFamily: "inherit",
+                    transition: "all 0.25s ease",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "#1e40af";
+                    e.target.style.boxShadow =
+                      "0 0 0 4px rgba(30, 64, 175, 0.12)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = "#e5e7eb";
+                    e.target.style.boxShadow = "none";
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    color: "#374151",
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    display: "block",
+                    marginBottom: "10px",
+                    letterSpacing: "0.3px",
+                  }}
+                >
+                  DATE OF BIRTH
+                </label>
+                <input
+                  type="date"
+                  value={formData.date_of_birth}
+                  aria-label="Date of birth"
+                  onChange={(e) =>
+                    setFormData({ ...formData, date_of_birth: e.target.value })
                   }
                   style={{
                     width: "100%",
@@ -1008,9 +1061,10 @@ export default function SignUp() {
                 </div>
               </div>
 
-              {userType === "seller" && (
+              {(userType === "seller" || userType === "buyer") && (
                 <div className="space-y-4 border-t border-gray-100 pt-4">
-                  <div>
+                  {userType === "seller" ? (
+                    <div>
                     <label
                       style={{
                         color: "#374151",
@@ -1055,7 +1109,8 @@ export default function SignUp() {
                         e.target.style.boxShadow = "none";
                       }}
                     />
-                  </div>
+                    </div>
+                  ) : null}
 
                   <div>
                     <label
@@ -1068,7 +1123,7 @@ export default function SignUp() {
                         letterSpacing: "0.3px",
                       }}
                     >
-                      UNIVERSITY
+                      {userType === "seller" ? "UNIVERSITY" : "UNIVERSITY (OPTIONAL)"}
                     </label>
                     <input
                       type="text"
@@ -1088,9 +1143,11 @@ export default function SignUp() {
                         color: "#111827",
                       }}
                       onFocus={(e) => {
-                        e.target.style.borderColor = "#ea580c";
+                        e.target.style.borderColor = userType === "seller" ? "#ea580c" : "#1e40af";
                         e.target.style.boxShadow =
-                          "0 0 0 4px rgba(234, 88, 12, 0.12)";
+                          userType === "seller"
+                            ? "0 0 0 4px rgba(234, 88, 12, 0.12)"
+                            : "0 0 0 4px rgba(30, 64, 175, 0.12)";
                       }}
                       onBlur={(e) => {
                         e.target.style.borderColor = "#e5e7eb";
@@ -1098,15 +1155,17 @@ export default function SignUp() {
                       }}
                     />
                     <p style={{ color: "#6b7280", fontSize: "11px", marginTop: "6px", fontWeight: "500" }}>
-                      Choose a suggested school when it appears. If your campus is missing, keep typing and continue with it as a custom university.
+                      {userType === "seller"
+                        ? 'Choose a suggested school when it appears. If your campus is missing, keep typing and continue with it as a custom university.'
+                        : 'You can pick a suggested school or keep typing if your university is not listed.'}
                     </p>
                     {isLoadingUniversities ? (
-                      <p style={{ color: "#ea580c", fontSize: "12px", marginTop: "6px", fontWeight: "600" }}>
+                      <p style={{ color: userType === "seller" ? "#ea580c" : "#1e40af", fontSize: "12px", marginTop: "6px", fontWeight: "600" }}>
                         Loading university suggestions...
                       </p>
                     ) : null}
                     {!isLoadingUniversities && universitySuggestions.length > 0 ? (
-                      <div className="mt-2 rounded-xl border border-orange-100 bg-orange-50/50 p-2">
+                      <div className={`mt-2 rounded-xl p-2 ${userType === "seller" ? 'border border-orange-100 bg-orange-50/50' : 'border border-blue-100 bg-blue-50/50'}`}>
                         <div className="flex flex-col gap-2">
                           {universitySuggestions.map((university) => (
                             <button
@@ -1127,7 +1186,8 @@ export default function SignUp() {
                     ) : null}
                   </div>
 
-                  <div>
+                  {userType === "seller" ? (
+                    <div>
                     <label
                       style={{
                         color: "#374151",
@@ -1157,12 +1217,20 @@ export default function SignUp() {
                         <option key={state} value={state} className="text-orange-900">{state}</option>
                       ))}
                     </select>
-                  </div>
+                    </div>
+                  ) : null}
 
-                  <div className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-sm text-orange-900">
-                    <span className="font-semibold">University zone:</span>{' '}
-                    {formData.university_zone || 'Select the university state to auto-fill the zone'}
-                  </div>
+                  {userType === "seller" ? (
+                    <div className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-sm text-orange-900">
+                      <span className="font-semibold">University zone:</span>{' '}
+                      {formData.university_zone || 'Select the university state to auto-fill the zone'}
+                    </div>
+                  ) : formData.university_name ? (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3 text-sm text-blue-900">
+                      <span className="font-semibold">Campus details:</span>{' '}
+                      {[formData.university_state, formData.university_zone].filter(Boolean).join(' • ') || 'You can leave it as a custom university name if no exact match appears.'}
+                    </div>
+                  ) : null}
                 </div>
               )}
 
