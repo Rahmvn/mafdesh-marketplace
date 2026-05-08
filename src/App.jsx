@@ -55,6 +55,7 @@ const AdminBankApprovals = lazy(() => import('./pages/AdminBankApprovals'));
 const OrderSuccessMultiple = lazy(() => import('./pages/OrderSuccessMultiple'));
 const AdminSupport = lazy(() => import('./pages/AdminSupport'));
 const AdminAuditLog = lazy(() => import('./pages/AdminAuditLog'));
+const AdminVerifications = lazy(() => import('./pages/AdminVerifications'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const BuyerPayments = lazy(() => import('./pages/BuyerPayments'));
 const AddressBook = lazy(() => import('./pages/buyer/AddressBook'));
@@ -336,6 +337,14 @@ export default function App() {
               <ProtectedRoute allowedRoles={['admin']}>
                 <AdminAuditLog />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/verifications"
+            element={
+              <AdminRoute>
+                <AdminVerifications />
+              </AdminRoute>
             }
           />
 

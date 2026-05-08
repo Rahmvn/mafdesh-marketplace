@@ -1,79 +1,245 @@
 import { supabase } from '../supabaseClient';
 
-export const verificationService = {
-  async createVerificationPayment(sellerId, planType, amount, paymentReference) {
-    const expiresAt = new Date();
-    if (planType === 'monthly') {
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-    } else {
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-    }
-
-    const { data, error } = await supabase
-      .from('verification_payments')
-      .insert([{
-        seller_id: sellerId,
-        plan_type: planType,
-        amount,
-        payment_reference: paymentReference,
-        payment_status: 'pending',
-        expires_at: expiresAt.toISOString()
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  async updatePaymentStatus(paymentReference, status) {
-    const { data, error } = await supabase
-      .from('verification_payments')
-      .update({ payment_status: status })
-      .eq('payment_reference', paymentReference)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    if (status === 'successful') {
-      const { error: userError } = await supabase
-        .from('users')
-        .update({ 
-          is_verified: true,
-          verification_expiry: data.expires_at
-        })
-        .eq('id', data.seller_id);
-
-      if (userError) throw userError;
-    }
-
-    return data;
-  },
-
-  async checkVerificationStatus(sellerId) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('is_verified, verification_expiry')
-      .eq('id', sellerId)
-      .single();
-
-    if (error) throw error;
-
-    if (data.is_verified && data.verification_expiry) {
-      const now = new Date();
-      const expiry = new Date(data.verification_expiry);
-      
-      if (expiry < now) {
-        await supabase
-          .from('users')
-          .update({ is_verified: false })
-          .eq('id', sellerId);
-        
-        return { is_verified: false, expired: true };
-      }
-    }
-
-    return { is_verified: data.is_verified, expired: false };
-  }
+export const EARLY_VERIFICATION_FEE = 1500;
+export const SELLER_VERIFICATION_PROOFS_BUCKET = 'seller-verification-proofs';
+export const SELLER_VERIFICATION_STATUSES = {
+  NOT_SUBMITTED: 'not_submitted',
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
 };
+export const SELLER_VERIFICATION_PAYMENT_STATUSES = {
+  PENDING: 'pending',
+  MANUAL_PENDING: 'manual_pending',
+};
+
+function sanitizeFileName(name) {
+  return String(name || 'proof')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'proof';
+}
+
+function buildProofPath(sellerId, fileName) {
+  const safeName = sanitizeFileName(fileName);
+  return `${sellerId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`;
+}
+
+function normalizeSellerVerificationStatus(userRecord, submission) {
+  const userStatus = String(userRecord?.verification_status || '').trim().toLowerCase();
+  const submissionStatus = String(submission?.verification_status || '').trim().toLowerCase();
+
+  if (userRecord?.is_verified_seller || userStatus === SELLER_VERIFICATION_STATUSES.APPROVED) {
+    return SELLER_VERIFICATION_STATUSES.APPROVED;
+  }
+
+  if (submissionStatus === SELLER_VERIFICATION_STATUSES.PENDING) {
+    return SELLER_VERIFICATION_STATUSES.PENDING;
+  }
+
+  if (userStatus === SELLER_VERIFICATION_STATUSES.REJECTED) {
+    return SELLER_VERIFICATION_STATUSES.REJECTED;
+  }
+
+  if (submissionStatus === SELLER_VERIFICATION_STATUSES.REJECTED) {
+    return SELLER_VERIFICATION_STATUSES.REJECTED;
+  }
+
+  if (userStatus === SELLER_VERIFICATION_STATUSES.PENDING) {
+    return SELLER_VERIFICATION_STATUSES.PENDING;
+  }
+
+  return SELLER_VERIFICATION_STATUSES.NOT_SUBMITTED;
+}
+
+export async function fetchSellerVerificationSnapshot(sellerId) {
+  const [userResult, submissionResult] = await Promise.all([
+    supabase
+      .from('users')
+      .select(`
+        id,
+        role,
+        email,
+        full_name,
+        business_name,
+        is_verified,
+        is_verified_seller,
+        university_name,
+        university_state,
+        university_zone,
+        university_role,
+        verification_status,
+        verification_submitted_at,
+        verification_approved_at
+      `)
+      .eq('id', sellerId)
+      .single(),
+    supabase
+      .from('seller_verifications')
+      .select(`
+        id,
+        seller_id,
+        university_name,
+        university_state,
+        university_zone,
+        university_role,
+        matric_or_staff_id,
+        proof_url,
+        payment_amount,
+        payment_status,
+        verification_status,
+        admin_notes,
+        reviewed_by,
+        reviewed_at,
+        created_at,
+        updated_at
+      `)
+      .eq('seller_id', sellerId)
+      .order('created_at', { ascending: false })
+      .limit(1),
+  ]);
+
+  if (userResult.error) {
+    throw userResult.error;
+  }
+
+  if (userResult.data?.role !== 'seller') {
+    throw new Error('Only seller accounts can access verification.');
+  }
+
+  if (submissionResult.error) {
+    throw submissionResult.error;
+  }
+
+  const latestSubmission = submissionResult.data?.[0] || null;
+
+  return {
+    user: userResult.data,
+    latestSubmission,
+    status: normalizeSellerVerificationStatus(userResult.data, latestSubmission),
+  };
+}
+
+export async function uploadSellerVerificationProof(sellerId, proofFile) {
+  if (!proofFile) {
+    return null;
+  }
+
+  const storagePath = buildProofPath(sellerId, proofFile.name);
+  const { error } = await supabase.storage
+    .from(SELLER_VERIFICATION_PROOFS_BUCKET)
+    .upload(storagePath, proofFile, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  return storagePath;
+}
+
+export async function submitSellerVerificationApplication({
+  sellerId,
+  universityName,
+  universityState,
+  universityZone,
+  universityRole,
+  matricOrStaffId,
+  proofFile,
+}) {
+  const proofPath = await uploadSellerVerificationProof(sellerId, proofFile);
+
+  try {
+    const submissionPayload = {
+      seller_id: sellerId,
+      university_name: universityName,
+      university_state: universityState || null,
+      university_zone: universityZone || null,
+      university_role: universityRole,
+      matric_or_staff_id: matricOrStaffId || null,
+      proof_url: proofPath,
+      payment_amount: EARLY_VERIFICATION_FEE,
+      payment_status: SELLER_VERIFICATION_PAYMENT_STATUSES.MANUAL_PENDING,
+      verification_status: SELLER_VERIFICATION_STATUSES.PENDING,
+    };
+
+    const { data: submission, error: submissionError } = await supabase
+      .from('seller_verifications')
+      .insert(submissionPayload)
+      .select(`
+        id,
+        seller_id,
+        university_name,
+        university_state,
+        university_zone,
+        university_role,
+        matric_or_staff_id,
+        proof_url,
+        payment_amount,
+        payment_status,
+        verification_status,
+        admin_notes,
+        reviewed_by,
+        reviewed_at,
+        created_at,
+        updated_at
+      `)
+      .single();
+
+    if (submissionError) {
+      throw submissionError;
+    }
+
+    const submittedAt = new Date().toISOString();
+    const userUpdatePayload = {
+      university_name: universityName,
+      university_state: universityState || null,
+      university_zone: universityZone || null,
+      university_role: universityRole,
+      verification_status: SELLER_VERIFICATION_STATUSES.PENDING,
+      verification_submitted_at: submittedAt,
+    };
+
+    const { data: user, error: userUpdateError } = await supabase
+      .from('users')
+      .update(userUpdatePayload)
+      .eq('id', sellerId)
+      .select(`
+        id,
+        role,
+        email,
+        full_name,
+        business_name,
+        is_verified,
+        is_verified_seller,
+        university_name,
+        university_state,
+        university_zone,
+        university_role,
+        verification_status,
+        verification_submitted_at,
+        verification_approved_at
+      `)
+      .single();
+
+    return {
+      submission,
+      user: user || null,
+      status: SELLER_VERIFICATION_STATUSES.PENDING,
+      userSyncError: userUpdateError || null,
+    };
+  } catch (error) {
+    if (proofPath) {
+      await supabase.storage
+        .from(SELLER_VERIFICATION_PROOFS_BUCKET)
+        .remove([proofPath])
+        .catch(() => undefined);
+    }
+
+    throw error;
+  }
+}

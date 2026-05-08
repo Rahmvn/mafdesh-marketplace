@@ -18,7 +18,7 @@ const AGREEMENT_SECTIONS = [
 {
   title: '1. Marketplace Values and Seller Responsibility',
   paragraphs: [
-    'Mafdesh is an ethics-driven marketplace that promotes lawful, honest, and halal-conscious trade. Sellers are expected to uphold transparency, fairness, and responsible conduct when listing products or interacting with buyers.',
+    'Mafdesh is an ethics-driven marketplace that promotes lawful and honest trade. Sellers are expected to uphold transparency, fairness, and responsible conduct when listing products or interacting with buyers.',
     'As a seller, you are responsible for ensuring that every product or service you list complies with Nigerian law, does not violate platform rules, and aligns with ethical trade standards. Mafdesh reserves the right to reject, remove, restrict, or suspend listings or accounts that violate these principles.',
     'By using Mafdesh as a seller, you agree to maintain honesty in pricing, product quality, communication, and fulfilment. Repeated violations of trust, misleading behaviour, or prohibited listings may result in enforcement action without prior notice.',
   ],
@@ -51,7 +51,7 @@ const AGREEMENT_SECTIONS = [
       'Explicit, adult, or sexually suggestive content',
       'Counterfeit, stolen, or illegally obtained goods',
       'Any item prohibited under Nigerian federal law',
-      'Interest-bearing or riba-based financial products',
+      'Interest-bearing financial products',
     ],
     footer:
       'Listing any prohibited item will result in immediate removal and permanent account suspension.',

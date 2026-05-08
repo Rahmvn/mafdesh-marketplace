@@ -21,6 +21,7 @@ import {
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
 import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
+import { scoreRecommendationProducts } from "../utils/recommendationScoring";
 
 function formatPrice(value) {
   return `₦${Number(value || 0).toLocaleString()}`;
@@ -105,6 +106,24 @@ export default function Cart() {
           .map((item) => String(item?.product_id || item?.products?.id || ""))
           .filter(Boolean)
       ),
+    [cartItems]
+  );
+  const cartReferenceProducts = useMemo(
+    () =>
+      cartItems
+        .map((item) => {
+          const product = item?.products;
+
+          if (!product?.seller_id) {
+            return null;
+          }
+
+          return {
+            ...product,
+            id: product.id || item?.product_id || null,
+          };
+        })
+        .filter(Boolean),
     [cartItems]
   );
 
@@ -199,16 +218,22 @@ export default function Cart() {
           candidates = await runQuery(false);
         }
 
-        const hydratedCandidates = await enrichProductsWithPublicSellerData(candidates);
-        const verifiedCandidates = hydratedCandidates.filter(
+        const [hydratedCandidates, enrichedCartReferenceProducts] = await Promise.all([
+          enrichProductsWithPublicSellerData(candidates),
+          enrichProductsWithPublicSellerData(cartReferenceProducts),
+        ]);
+        const activeCandidates = hydratedCandidates.filter(
           (candidate) =>
             !cartProductIds.has(String(candidate?.id || "")) &&
-            candidate?.seller?.is_verified &&
             isSellerMarketplaceActive(candidate?.seller)
+        );
+        const rankedCandidates = scoreRecommendationProducts(
+          activeCandidates,
+          enrichedCartReferenceProducts
         );
 
         setRecommendationProducts(
-          pickCartRecommendationProducts(verifiedCandidates, {
+          pickCartRecommendationProducts(rankedCandidates, {
             cartCategories: cartCategoryList,
             maxResults: 8,
           })
@@ -222,7 +247,7 @@ export default function Cart() {
     };
 
     loadRecommendations();
-  }, [cartCategoryList, cartItems.length, cartProductIds]);
+  }, [cartCategoryList, cartProductIds, cartReferenceProducts, cartItems.length]);
 
   const removeItem = async (item) => {
     showGlobalConfirm("Remove Item", "Remove this item from your cart?", async () => {
@@ -569,8 +594,18 @@ export default function Cart() {
               </div>
             </div>
 
-            <section >
-              
+            <section>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-blue-900 sm:text-2xl">
+                    Similar products you may like
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    We boost strong matches, including verified campus sellers, without hiding other sellers.
+                  </p>
+                </div>
+                <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
+              </div>
 
               {recommendationLoading ? (
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">

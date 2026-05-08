@@ -13,6 +13,7 @@ const {
   mockEnsureCurrentUserContext,
   mockLoadAuthenticatedUserContext,
   mockRouteAuthenticatedUser,
+  mockSignOutAndClearAuthState,
   mockStoreAuthenticatedUser,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
@@ -23,6 +24,7 @@ const {
   mockEnsureCurrentUserContext: vi.fn(),
   mockLoadAuthenticatedUserContext: vi.fn(),
   mockRouteAuthenticatedUser: vi.fn(),
+  mockSignOutAndClearAuthState: vi.fn(),
   mockStoreAuthenticatedUser: vi.fn(),
 }));
 
@@ -53,6 +55,7 @@ vi.mock('../services/authSessionService', () => ({
   ensureCurrentUserContext: mockEnsureCurrentUserContext,
   loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
   routeAuthenticatedUser: mockRouteAuthenticatedUser,
+  signOutAndClearAuthState: mockSignOutAndClearAuthState,
   storeAuthenticatedUser: mockStoreAuthenticatedUser,
 }));
 
@@ -110,6 +113,7 @@ describe('Login', () => {
     mockEnsureCurrentUserContext.mockReset();
     mockLoadAuthenticatedUserContext.mockReset();
     mockRouteAuthenticatedUser.mockReset();
+    mockSignOutAndClearAuthState.mockReset();
     mockStoreAuthenticatedUser.mockReset();
 
     mockGetSession.mockResolvedValue({
@@ -131,6 +135,7 @@ describe('Login', () => {
       session: { user: { id: 'buyer-1' } },
       user: { id: 'buyer-1', role: 'buyer' },
     });
+    mockSignOutAndClearAuthState.mockResolvedValue();
     mockStoreAuthenticatedUser.mockImplementation(() => {});
     mockRouteAuthenticatedUser.mockImplementation((navigate, profile, options = {}) => {
       if (options.returnUrl) {
@@ -246,7 +251,7 @@ describe('Login', () => {
     expect(mockMergeGuestCart).toHaveBeenCalledWith('buyer-1');
   });
 
-  it('auto-routes even when the user picked the wrong login type first', async () => {
+  it('blocks login when the selected role does not match the stored role', async () => {
     mockEnsureCurrentUserContext.mockResolvedValue({
       id: 'seller-1',
       role: 'seller',
@@ -264,15 +269,21 @@ describe('Login', () => {
     selectLoginType('buyer');
     fillAndSubmitLoginForm();
 
-    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
-    expect(mockShowError).not.toHaveBeenCalled();
-    expect(mockShowWarning).toHaveBeenCalledWith(
-      'Role Updated',
-      'This account is registered as seller. You have been signed in with your actual account role.'
-    );
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Wrong Account Type',
+        'This account is registered as a seller account. Choose Seller and log in again.'
+      );
+    });
+
+    expect(screen.getByText('Welcome back! Please login to continue')).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
     });
+    expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
+    expect(mockRouteAuthenticatedUser).not.toHaveBeenCalled();
+    expect(mockStoreAuthenticatedUser).not.toHaveBeenCalled();
+    expect(mockMergeGuestCart).not.toHaveBeenCalled();
   });
 
   it('routes admin sign-ins to the admin dashboard', async () => {
@@ -323,15 +334,18 @@ describe('Login', () => {
       password: 'password123',
     });
 
-    expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Wrong Account Type',
+        'This account is registered as a seller account. Choose Seller and log in again.'
+      );
+    });
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledTimes(1);
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
     });
-    expect(mockShowWarning).toHaveBeenCalledWith(
-      'Role Updated',
-      'This account is registered as seller. You have been signed in with your actual account role.'
-    );
+    expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
+    expect(mockRouteAuthenticatedUser).not.toHaveBeenCalled();
   });
 
   it('restores an existing authenticated session through the shared auth context loader', async () => {

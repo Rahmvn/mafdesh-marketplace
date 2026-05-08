@@ -27,7 +27,7 @@ Use this sheet before calling Mafdesh launch-ready. Mark each item `Yes` only af
 
 ## Admin
 
-- `Yes / No` Admin can log in successfully
+- `Yes / No` Admin can log in successfully   
 - `Yes / No` Admin dashboard loads correctly
 - `Yes / No` Admin orders page works
 - `Yes / No` Admin order details work

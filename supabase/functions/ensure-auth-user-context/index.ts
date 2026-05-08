@@ -21,17 +21,10 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function normalizeRole(value: unknown, fallback = "") {
+function readSelfServiceRole(value: unknown) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
 
-  if (SELF_SERVICE_ROLES.has(normalized)) {
-    return normalized;
-  }
-
-  const normalizedFallback =
-    typeof fallback === "string" ? fallback.trim().toLowerCase() : "";
-
-  return SELF_SERVICE_ROLES.has(normalizedFallback) ? normalizedFallback : "buyer";
+  return SELF_SERVICE_ROLES.has(normalized) ? normalized : "";
 }
 
 function normalizeMarketplaceRole(value: unknown) {
@@ -112,13 +105,13 @@ serve(async (req) => {
 
     const metadata = authUser.user_metadata || authUser.raw_user_meta_data || {};
     const trustedRole = normalizeMarketplaceRole(existingUser?.role || "");
+    const existingSelfServiceRole = readSelfServiceRole(existingUser?.role || "");
+    const requestedRole = readSelfServiceRole(body?.role);
+    const metadataRole = readSelfServiceRole(metadata?.role);
     const desiredRole =
       trustedRole === "admin"
         ? "admin"
-        : normalizeRole(
-            body?.role || metadata?.role || existingUser?.role || "buyer",
-            existingUser?.role || "buyer"
-          );
+        : existingSelfServiceRole || requestedRole || metadataRole || "buyer";
 
     if (trustedRole === "admin" && existingUser?.role === "admin") {
       return jsonResponse({

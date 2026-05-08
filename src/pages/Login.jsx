@@ -10,6 +10,7 @@ import {
   ensureCurrentUserContext,
   loadAuthenticatedUserContext,
   routeAuthenticatedUser,
+  signOutAndClearAuthState,
   storeAuthenticatedUser,
 } from '../services/authSessionService';
 import { cartService } from '../services/cartService';
@@ -86,16 +87,17 @@ export default function Login() {
     routeAuthenticatedUser(navigate, profile, { returnUrl });
   }, [mergeGuestCartIfBuyer, navigate, returnUrl]);
 
-  const warnRoleMismatch = useCallback((selectedRole, actualRole) => {
-    if (!selectedRole || !actualRole || selectedRole === actualRole) {
-      return;
+  const getRoleMismatchMessage = useCallback((actualRole) => {
+    if (actualRole === 'admin') {
+      return 'This account is registered as an admin account. Choose Admin and log in again.';
     }
 
-    showWarning(
-      'Role Updated',
-      `This account is registered as ${actualRole}. You have been signed in with your actual account role.`
-    );
-  }, [showWarning]);
+    if (actualRole === 'seller') {
+      return 'This account is registered as a seller account. Choose Seller and log in again.';
+    }
+
+    return 'This account is registered as a buyer account. Choose Buyer and log in again.';
+  }, []);
 
   useEffect(() => {
     const checkExistingSession = async () => {
@@ -177,10 +179,11 @@ export default function Login() {
         throw new Error("User role not found.");
       }
 
-      warnRoleMismatch(userType, role);
-
       if (role !== userType) {
         setUserType(role);
+        await signOutAndClearAuthState();
+        showError('Wrong Account Type', getRoleMismatchMessage(role));
+        return;
       }
 
       await storeAndRouteUser(profile, user.id, { mergeGuestCart: true });

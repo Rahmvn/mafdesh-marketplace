@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -36,6 +36,7 @@ import {
 import { getProductPricing } from "../utils/flashSale";
 import { navigateBack } from "../utils/navigation";
 import { getAttributesForCategory } from "../utils/productAttributes";
+import { scoreRecommendationProducts } from "../utils/recommendationScoring";
 import { getStoredUser } from "../utils/storage";
 
 const SWIPE_THRESHOLD = 48;
@@ -57,10 +58,6 @@ function getCatalogDiscount(product) {
     price,
     discountPercent: Math.round((1 - price / originalPrice) * 100),
   };
-}
-
-function getSellerStatus(sellerData) {
-  return String(sellerData?.account_status || sellerData?.status || "active").toLowerCase();
 }
 
 function getSellerBusinessName(sellerData) {
@@ -331,6 +328,7 @@ export default function ProductDetail() {
   const [activeImage, setActiveImage] = useState(0);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [touchStartX, setTouchStartX] = useState(null);
+  const relatedRequestRef = useRef(0);
 
   const storedUser = getStoredUser() || {};
   const isAdmin = storedUser.role === "admin";
@@ -432,11 +430,16 @@ export default function ProductDetail() {
   }, [id, isAdmin, navigate]);
 
   const loadRelatedProducts = useCallback(
-    async (currentProduct) => {
+    async (currentProduct, currentSeller = null) => {
       if (!currentProduct?.id || !currentProduct?.category) {
+        relatedRequestRef.current += 1;
         setRelatedProducts([]);
+        setRelatedLoading(false);
         return;
       }
+
+      const requestId = relatedRequestRef.current + 1;
+      relatedRequestRef.current = requestId;
 
       const selectFields = `
         id,
@@ -498,17 +501,33 @@ export default function ProductDetail() {
         }
 
         const hydratedCandidates = await enrichProductsWithPublicSellerData(sameCategoryCandidates);
-        const verifiedCandidates = hydratedCandidates.filter(
-          (candidate) =>
-            candidate?.seller?.is_verified && isSellerMarketplaceActive(candidate?.seller)
+        const activeCandidates = hydratedCandidates.filter((candidate) =>
+          isSellerMarketplaceActive(candidate?.seller)
         );
+        const rankedCandidates = scoreRecommendationProducts(activeCandidates, [
+          {
+            ...currentProduct,
+            seller: currentSeller || null,
+          },
+        ]);
 
-        setRelatedProducts(verifiedCandidates.slice(0, 4));
+        if (relatedRequestRef.current !== requestId) {
+          return;
+        }
+
+        setRelatedProducts(rankedCandidates.slice(0, 4));
       } catch (error) {
         console.error("Error loading related products:", error);
+
+        if (relatedRequestRef.current !== requestId) {
+          return;
+        }
+
         setRelatedProducts([]);
       } finally {
-        setRelatedLoading(false);
+        if (relatedRequestRef.current === requestId) {
+          setRelatedLoading(false);
+        }
       }
     },
     [isAdmin]
@@ -523,8 +542,8 @@ export default function ProductDetail() {
   }, [id]);
 
   useEffect(() => {
-    loadRelatedProducts(product);
-  }, [loadRelatedProducts, product]);
+    loadRelatedProducts(product, seller);
+  }, [loadRelatedProducts, product, seller]);
 
   const galleryImages = useMemo(() => {
     const images = Array.isArray(product?.images) ? product.images.filter(Boolean) : [];
@@ -1104,7 +1123,7 @@ export default function ProductDetail() {
             <div>
               <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">More products you may like</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Explore more picks in this category.
+                Similar items are ranked by category fit, seller trust signals, and freshness.
               </p>
             </div>
             <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />

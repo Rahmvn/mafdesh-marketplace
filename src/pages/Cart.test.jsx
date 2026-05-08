@@ -13,6 +13,7 @@ const {
   mockShowGlobalWarning,
   mockEnrichProducts,
   mockPickRecommendations,
+  mockScoreRecommendationProducts,
   mockFrom,
 } = vi.hoisted(() => {
   const queryBuilder = {
@@ -34,6 +35,7 @@ const {
     mockShowGlobalWarning: vi.fn(),
     mockEnrichProducts: vi.fn(async () => []),
     mockPickRecommendations: vi.fn(() => []),
+    mockScoreRecommendationProducts: vi.fn((products) => products),
     mockFrom: vi.fn(() => queryBuilder),
   };
 });
@@ -84,6 +86,10 @@ vi.mock('../services/publicSellerService', () => ({
 
 vi.mock('../utils/cartRecommendations', () => ({
   pickCartRecommendationProducts: mockPickRecommendations,
+}));
+
+vi.mock('../utils/recommendationScoring', () => ({
+  scoreRecommendationProducts: mockScoreRecommendationProducts,
 }));
 
 function renderCart() {

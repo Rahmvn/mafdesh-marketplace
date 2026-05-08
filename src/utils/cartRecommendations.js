@@ -1,17 +1,8 @@
-function shuffleArray(items, randomFn = Math.random) {
-  const nextItems = [...items];
-
-  for (let index = nextItems.length - 1; index > 0; index -= 1) {
-    const randomIndex = Math.floor(randomFn() * (index + 1));
-    [nextItems[index], nextItems[randomIndex]] = [nextItems[randomIndex], nextItems[index]];
-  }
-
-  return nextItems;
-}
+import { compareRecommendationProducts } from "./recommendationScoring";
 
 export function pickCartRecommendationProducts(
   candidates = [],
-  { cartCategories = [], maxResults = 8, randomFn = Math.random } = {}
+  { cartCategories = [], maxResults = 8 } = {}
 ) {
   const normalizedCandidates = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
   const normalizedCategories = [...new Set((cartCategories || []).filter(Boolean))];
@@ -35,27 +26,44 @@ export function pickCartRecommendationProducts(
     return map;
   }, new Map());
 
-  const categoryQueue = shuffleArray(
-    normalizedCategories.filter((category) => (productsByCategory.get(category) || []).length > 0),
-    randomFn
+  const categoryPriority = new Map(
+    normalizedCategories.map((category, index) => [category, index])
   );
 
-  categoryQueue.forEach((category) => {
-    productsByCategory.set(
-      category,
-      shuffleArray(productsByCategory.get(category) || [], randomFn)
+  normalizedCategories.forEach((category) => {
+    const categoryProducts = [...(productsByCategory.get(category) || [])].sort(
+      compareRecommendationProducts
     );
+    productsByCategory.set(category, categoryProducts);
   });
+
+  const categoryQueue = normalizedCategories
+    .filter((category) => (productsByCategory.get(category) || []).length > 0)
+    .sort((leftCategory, rightCategory) => {
+      const leftTopProduct = productsByCategory.get(leftCategory)?.[0] || null;
+      const rightTopProduct = productsByCategory.get(rightCategory)?.[0] || null;
+      const productDifference = compareRecommendationProducts(leftTopProduct, rightTopProduct);
+
+      if (productDifference !== 0) {
+        return productDifference;
+      }
+
+      return (
+        Number(categoryPriority.get(leftCategory) || 0) -
+        Number(categoryPriority.get(rightCategory) || 0)
+      );
+    });
 
   const selectedProducts = [];
 
   while (selectedProducts.length < maxResults && categoryQueue.length > 0) {
-    for (let index = categoryQueue.length - 1; index >= 0; index -= 1) {
+    for (let index = 0; index < categoryQueue.length; index += 1) {
       const category = categoryQueue[index];
       const categoryProducts = productsByCategory.get(category) || [];
 
       if (categoryProducts.length === 0) {
         categoryQueue.splice(index, 1);
+        index -= 1;
         continue;
       }
 
@@ -67,6 +75,7 @@ export function pickCartRecommendationProducts(
 
       if (categoryProducts.length === 0) {
         categoryQueue.splice(index, 1);
+        index -= 1;
       }
     }
   }

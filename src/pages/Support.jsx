@@ -67,7 +67,7 @@ const FAQS = [
     category: 'Seller',
     question: 'How do I become a verified seller?',
     answer:
-      'Go to the seller verification page and subscribe to the verification plan. Verified sellers get priority support and additional trust benefits.',
+      'Go to the seller verification page, submit your university details, upload your proof, and wait for review. Approved sellers get the verified badge and stronger trust visibility.',
   },
   {
     id: 'priority-support',

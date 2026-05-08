@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import {
@@ -42,11 +42,19 @@ import {
   getOrderAdminHoldTitle,
 } from "../services/orderAdminHoldService";
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
-import { fetchPublicSellerDirectory } from "../services/publicSellerService";
+import { getProductPricing } from "../utils/flashSale";
+import {
+  enrichProductsWithPublicSellerData,
+  fetchPublicSellerDirectory,
+  getPublicSellerDisplayName,
+  isSellerMarketplaceActive,
+} from "../services/publicSellerService";
 import {
   useOrderDeadlineAutoProcessing,
 } from "../services/orderDeadlineService";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
+import { scoreRecommendationProducts } from "../utils/recommendationScoring";
 import {
   formatBusinessDeadline,
   formatLagosDeadline,
@@ -81,12 +89,75 @@ function shouldShowDistinctPickupAddress(label, address) {
   );
 }
 
+function formatPrice(value) {
+  return `₦${Number(value || 0).toLocaleString()}`;
+}
+
+function isMissingDeletedAtColumn(error) {
+  return (
+    error?.code === "42703" &&
+    String(error?.message || "").includes("deleted_at")
+  );
+}
+
+function OrderRecommendationCard({ product, onOpen }) {
+  const pricing = getProductPricing(product);
+  const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
+  const hasDiscount =
+    pricing.originalPrice != null &&
+    Number(pricing.originalPrice) > Number(pricing.displayPrice);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group overflow-hidden rounded-[22px] border border-gray-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
+    >
+      <div className="aspect-square overflow-hidden bg-slate-50 p-4">
+        <img
+          src={product.images?.[0] || "/placeholder.svg"}
+          alt={product.name}
+          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+        />
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
+          <span>{product.category}</span>
+        </div>
+
+        <p className="line-clamp-2 min-h-[2.8rem] text-sm font-semibold leading-5 text-slate-900">
+          {product.name}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-bold text-orange-600">
+            {formatPrice(pricing.displayPrice)}
+          </span>
+          {hasDiscount ? (
+            <span className="text-xs font-medium text-slate-400 line-through">
+              {formatPrice(pricing.originalPrice)}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span className="font-medium text-slate-700">{sellerName}</span>
+          {product?.seller?.is_verified ? <VerificationBadge /> : null}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function BuyerOrderDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [seller, setSeller] = useState(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationProducts, setRecommendationProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -104,6 +175,15 @@ export default function BuyerOrderDetails() {
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [cancelingRefund, setCancelingRefund] = useState(false);
   const { showConfirm, showError, showSuccess, showWarning, ModalComponent } = useModal();
+  const orderedCategories = useMemo(
+    () => [...new Set(items.map((item) => item?.product?.category).filter(Boolean))],
+    [items]
+  );
+  const orderedProductIds = useMemo(
+    () =>
+      new Set(items.map((item) => String(item?.product?.id || "")).filter(Boolean)),
+    [items]
+  );
 
   const loadSellerDetails = useCallback(async (orderId) => {
     const invokeCounterparty = async (accessToken) => {
@@ -289,6 +369,9 @@ export default function BuyerOrderDetails() {
       username,
       phone: sellerPhone,
       is_verified: Boolean(sellerDetails?.isVerified || publicSeller?.is_verified),
+      university_name: publicSeller?.university_name || "",
+      university_state: publicSeller?.university_state || "",
+      average_rating: publicSeller?.average_rating ?? null,
     });
     try {
       const refundRequestRows = await fetchOrderRefundRequests(id);
@@ -330,6 +413,104 @@ export default function BuyerOrderDetails() {
 
     return () => supabase.removeChannel(subscription);
   }, [id, loadOrder]);
+
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      const referenceProducts = items.map((item) => item?.product).filter(Boolean);
+
+      if (!referenceProducts.length || !orderedCategories.length) {
+        setRecommendationProducts([]);
+        setRecommendationLoading(false);
+        return;
+      }
+
+      setRecommendationLoading(true);
+
+      const selectFields = `
+        id,
+        name,
+        price,
+        original_price,
+        sale_price,
+        sale_start,
+        sale_end,
+        sale_quantity_limit,
+        sale_quantity_sold,
+        is_flash_sale,
+        category,
+        description,
+        stock_quantity,
+        images,
+        seller_id,
+        created_at
+      `;
+
+      const runQuery = async (includeDeletedCheck = true) => {
+        let query = supabase
+          .from("products")
+          .select(selectFields)
+          .in("category", orderedCategories)
+          .eq("is_approved", true)
+          .gt("stock_quantity", 0)
+          .order("created_at", { ascending: false })
+          .limit(48);
+
+        if (includeDeletedCheck) {
+          query = query.is("deleted_at", null);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          throw error;
+        }
+
+        return data || [];
+      };
+
+      try {
+        let candidates = [];
+
+        try {
+          candidates = await runQuery(true);
+        } catch (error) {
+          if (!isMissingDeletedAtColumn(error)) {
+            throw error;
+          }
+
+          candidates = await runQuery(false);
+        }
+
+        const [hydratedCandidates, enrichedReferenceProducts] = await Promise.all([
+          enrichProductsWithPublicSellerData(candidates),
+          enrichProductsWithPublicSellerData(referenceProducts),
+        ]);
+        const activeCandidates = hydratedCandidates.filter(
+          (candidate) =>
+            !orderedProductIds.has(String(candidate?.id || "")) &&
+            isSellerMarketplaceActive(candidate?.seller)
+        );
+        const rankedCandidates = scoreRecommendationProducts(
+          activeCandidates,
+          enrichedReferenceProducts
+        );
+
+        setRecommendationProducts(
+          pickCartRecommendationProducts(rankedCandidates, {
+            cartCategories: orderedCategories,
+            maxResults: 4,
+          })
+        );
+      } catch (error) {
+        console.error("Failed to load buyer order recommendations:", error);
+        setRecommendationProducts([]);
+      } finally {
+        setRecommendationLoading(false);
+      }
+    };
+
+    loadRecommendations();
+  }, [items, orderedCategories, orderedProductIds]);
 
   const refreshOrder = async () => {
     setRefreshing(true);
@@ -1129,6 +1310,48 @@ export default function BuyerOrderDetails() {
               <span>₦{orderAmounts.total.toLocaleString()}</span>
             </div>
           </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Similar products you may like</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Similar products are boosted by category fit, seller verification, campus match, rating, and freshness.
+              </p>
+            </div>
+            <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
+          </div>
+
+          {recommendationLoading ? (
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-[22px] border border-gray-200 bg-white p-4"
+                >
+                  <div className="aspect-square animate-pulse rounded-2xl bg-slate-100" />
+                  <div className="mt-4 h-3 w-20 animate-pulse rounded bg-blue-100" />
+                  <div className="mt-3 h-4 w-10/12 animate-pulse rounded bg-slate-100" />
+                  <div className="mt-2 h-4 w-6/12 animate-pulse rounded bg-orange-100" />
+                </div>
+              ))}
+            </div>
+          ) : recommendationProducts.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {recommendationProducts.map((product) => (
+                <OrderRecommendationCard
+                  key={product.id}
+                  product={product}
+                  onOpen={() => openProductDetails(product.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+              No similar products are available right now.
+            </div>
+          )}
         </div>
 
         {/* Action Area */}

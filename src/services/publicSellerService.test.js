@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const {
   mockRpc,
   mockProfilesIn,
-  mockProfilesSelect,
+  _mockProfilesSelect,
   mockFrom,
 } = vi.hoisted(() => {
   const mockRpc = vi.fn();
@@ -24,7 +24,7 @@ const {
   return {
     mockRpc,
     mockProfilesIn,
-    mockProfilesSelect,
+    _mockProfilesSelect: mockProfilesSelect,
     mockFrom,
   };
 });
@@ -56,6 +56,9 @@ describe('publicSellerService', () => {
           is_verified: true,
           status: 'active',
           account_status: 'active',
+          university_name: 'Mafdesh University',
+          university_state: 'Kaduna',
+          average_rating: 4.6,
         },
       ],
       error: null,
@@ -73,6 +76,9 @@ describe('publicSellerService', () => {
         is_verified: true,
         status: 'active',
         account_status: 'active',
+        university_name: 'Mafdesh University',
+        university_state: 'Kaduna',
+        average_rating: 4.6,
       },
     });
     expect(isSellerMarketplaceActive(sellerMap['seller-1'])).toBe(true);
@@ -94,6 +100,9 @@ describe('publicSellerService', () => {
           is_verified: false,
           status: 'suspended',
           account_status: 'suspended',
+          university_name: null,
+          university_state: null,
+          average_rating: null,
         },
         error: null,
       });
@@ -116,6 +125,9 @@ describe('publicSellerService', () => {
           is_verified: true,
           status: 'active',
           account_status: 'active',
+          university_name: 'Mafdesh University',
+          university_state: 'Kaduna',
+          average_rating: 4.8,
         },
       ],
       error: null,
@@ -138,6 +150,9 @@ describe('publicSellerService', () => {
       id: 'seller-1',
       display_name: 'Ada Seller',
       is_verified: true,
+      university_name: 'Mafdesh University',
+      university_state: 'Kaduna',
+      average_rating: 4.8,
       profiles: {
         id: 'seller-1',
         full_name: 'Ada Seller',
