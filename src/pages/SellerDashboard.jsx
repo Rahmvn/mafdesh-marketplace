@@ -158,7 +158,9 @@ export default function SellerDashboard() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const handleLogout = async () => {
@@ -496,7 +498,7 @@ export default function SellerDashboard() {
           title="Get back to work"
         >
           <div className="grid gap-3">
-            {!currentUser?.is_verified && (
+            {!currentUser?.is_verified_seller && !currentUser?.is_verified && (
               <div
                 className={`relative overflow-hidden rounded-[28px] border p-5 ${
                   themeState.darkMode
@@ -517,9 +519,9 @@ export default function SellerDashboard() {
                         <Sparkles className="h-3.5 w-3.5" />
                         Grow trust
                       </span>
-                      <h3 className="mt-4 text-xl font-bold">Become a verified seller</h3>
+                      <h3 className="mt-4 text-xl font-bold">Become a verified university seller</h3>
                       <p className={`mt-2 max-w-md text-sm leading-6 ${theme.mutedText}`}>
-                        Add a verified badge and theme access.
+                        Add the campus trust badge and stronger recommendation visibility.
                       </p>
                     </div>
                     <div
@@ -534,7 +536,7 @@ export default function SellerDashboard() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {['Verified badge', 'Buyer confidence', 'Theme access'].map((benefit) => (
+                    {['Verified University Seller badge', 'Buyer confidence', 'Recommendation boost'].map((benefit) => (
                       <span
                         key={benefit}
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${

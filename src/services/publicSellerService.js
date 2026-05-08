@@ -41,6 +41,17 @@ export function getPublicSellerDisplayName(seller, profile = null) {
   );
 }
 
+export function getPublicSellerCampusLabel(seller) {
+  const universityName = String(seller?.university_name || "").trim();
+  const universityState = String(seller?.university_state || "").trim();
+
+  if (universityName && universityState) {
+    return `${universityName}, ${universityState}`;
+  }
+
+  return universityName || universityState || "";
+}
+
 async function fetchSinglePublicSellerIdentity(sellerId) {
   const { data, error } = await supabase.rpc("get_public_seller_identity", {
     p_seller_id: sellerId,

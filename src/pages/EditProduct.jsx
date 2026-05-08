@@ -268,7 +268,9 @@ export default function EditProduct() {
   const [productRecord, setProductRecord] = useState(null);
   const [activeOrderCount, setActiveOrderCount] = useState(0);
   const [restockAmount, setRestockAmount] = useState('');
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
   const { showSuccess, showError, showWarning, ModalComponent } = useModal({
     darkMode: themeState.darkMode,

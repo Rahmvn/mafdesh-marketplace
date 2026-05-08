@@ -5,12 +5,20 @@ import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
 import SafeImage from '../components/SafeImage';
+import VerificationBadge from '../components/VerificationBadge';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
 import {
   enrichProductsWithPublicSellerData,
+  getPublicSellerCampusLabel,
+  getPublicSellerDisplayName,
   isSellerMarketplaceActive,
 } from '../services/publicSellerService';
+import {
+  fetchNearbyUniversitiesByState,
+  searchUniversities,
+} from '../services/universityService';
+import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import {
   excludeActiveFlashSaleProducts,
   getActiveFlashSaleProducts,
@@ -47,12 +55,19 @@ function readCachedProducts() {
   }
 }
 
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function ProductCard({ product, onOpen, featured = false }) {
   const showLowStock = Number(product.stock_quantity) < 5;
   const hasDiscount =
     product.original_price != null &&
     product.price != null &&
     Number(product.original_price) !== Number(product.price);
+  const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
+  const campusLabel = getPublicSellerCampusLabel(product?.seller);
+  const isVerifiedUniversitySeller = Boolean(product?.seller?.is_verified);
 
   return (
     <button
@@ -90,6 +105,17 @@ function ProductCard({ product, onOpen, featured = false }) {
             {formatPrice(product.price)}
           </p>
         </div>
+        <div className="mt-1.5 min-h-[30px] space-y-1">
+          <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium text-slate-600 md:text-[11px]">
+            <span className="truncate">{sellerName}</span>
+            {isVerifiedUniversitySeller ? <VerificationBadge /> : null}
+          </div>
+          {campusLabel ? (
+            <p className="line-clamp-1 text-[10px] text-slate-500 md:text-[11px]">
+              {campusLabel}
+            </p>
+          ) : null}
+        </div>
       </div>
     </button>
   );
@@ -120,6 +146,11 @@ export default function Marketplace() {
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [products, setProducts] = useState(() => readCachedProducts());
+  const [universities, setUniversities] = useState([]);
+  const [nearbyUniversities, setNearbyUniversities] = useState([]);
+  const [selectedState, setSelectedState] = useState('');
+  const [selectedUniversityId, setSelectedUniversityId] = useState('');
+  const [includeNearbyUniversities, setIncludeNearbyUniversities] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [isLoading, setIsLoading] = useState(() => readCachedProducts().length === 0);
   const [viewportWidth, setViewportWidth] = useState(() =>
@@ -167,6 +198,30 @@ export default function Marketplace() {
   }, [loadProducts]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadUniversities = async () => {
+      try {
+        const data = await searchUniversities({ limit: 200 });
+        if (!cancelled) {
+          setUniversities(data);
+        }
+      } catch (error) {
+        console.error('Error loading universities:', error);
+        if (!cancelled) {
+          setUniversities([]);
+        }
+      }
+    };
+
+    loadUniversities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -181,6 +236,43 @@ export default function Marketplace() {
       window.clearInterval(intervalId);
     };
   }, []);
+
+  const selectedUniversity = useMemo(
+    () => universities.find((university) => university.id === selectedUniversityId) || null,
+    [selectedUniversityId, universities]
+  );
+
+  useEffect(() => {
+    if (!selectedUniversity || !includeNearbyUniversities) {
+      setNearbyUniversities([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadNearbyUniversities = async () => {
+      try {
+        const data = await fetchNearbyUniversitiesByState(selectedUniversity.state, {
+          excludeId: selectedUniversity.id,
+        });
+
+        if (!cancelled) {
+          setNearbyUniversities(data);
+        }
+      } catch (error) {
+        console.error('Error loading nearby universities:', error);
+        if (!cancelled) {
+          setNearbyUniversities([]);
+        }
+      }
+    };
+
+    loadNearbyUniversities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [includeNearbyUniversities, selectedUniversity]);
 
   const flashSaleProducts = useMemo(() => getActiveFlashSaleProducts(products, now), [now, products]);
   const marketplaceProducts = useMemo(() => excludeActiveFlashSaleProducts(products, now), [now, products]);
@@ -205,17 +297,61 @@ export default function Marketplace() {
     return fuse.search(searchQuery).map((result) => result.item);
   }, [fuse, marketplaceProducts, searchQuery]);
 
+  const campusFilteredProducts = useMemo(() => {
+    const allowedNearbyUniversityIds = new Set(
+      nearbyUniversities.map((university) => String(university.id))
+    );
+    const normalizedSelectedState = normalizeText(selectedState);
+
+    return fuzzyFilteredProducts.filter((product) => {
+      const sellerState = normalizeText(product?.seller?.university_state);
+      const sellerUniversityName = normalizeText(product?.seller?.university_name);
+      const sellerUniversityId = String(product?.seller?.university_id || '');
+
+      if (normalizedSelectedState && sellerState !== normalizedSelectedState) {
+        return false;
+      }
+
+      if (!selectedUniversity) {
+        return true;
+      }
+
+      if (includeNearbyUniversities) {
+        if (sellerUniversityId && (
+          sellerUniversityId === String(selectedUniversity.id)
+          || allowedNearbyUniversityIds.has(sellerUniversityId)
+        )) {
+          return true;
+        }
+
+        return sellerState === normalizeText(selectedUniversity.state);
+      }
+
+      if (sellerUniversityId) {
+        return sellerUniversityId === String(selectedUniversity.id);
+      }
+
+      return sellerUniversityName === normalizeText(selectedUniversity.name);
+    });
+  }, [
+    fuzzyFilteredProducts,
+    includeNearbyUniversities,
+    nearbyUniversities,
+    selectedState,
+    selectedUniversity,
+  ]);
+
   const visibleProducts = useMemo(() => {
     if (selectedCategory === 'All') {
-      return fuzzyFilteredProducts;
+      return campusFilteredProducts;
     }
 
-    return fuzzyFilteredProducts.filter((product) => product.category === selectedCategory);
-  }, [selectedCategory, fuzzyFilteredProducts]);
+    return campusFilteredProducts.filter((product) => product.category === selectedCategory);
+  }, [campusFilteredProducts, selectedCategory]);
 
   const featuredProducts = useMemo(
-    () => marketplaceProducts.filter((product) => product.is_featured),
-    [marketplaceProducts]
+    () => campusFilteredProducts.filter((product) => product.is_featured),
+    [campusFilteredProducts]
   );
 
   const isDefaultCategoryView = selectedCategory === 'All' && !searchQuery.trim();
@@ -229,7 +365,7 @@ export default function Marketplace() {
       return [];
     }
 
-    const groupedProducts = marketplaceProducts.reduce((sections, product) => {
+    const groupedProducts = campusFilteredProducts.reduce((sections, product) => {
       const category = product.category || 'Other';
       if (!sections[category]) {
         sections[category] = [];
@@ -246,7 +382,26 @@ export default function Marketplace() {
         products: categoryProducts.slice(0, categoryPreviewLimit),
         totalCount: categoryProducts.length,
       }));
-  }, [categoryPreviewLimit, isDefaultCategoryView, marketplaceProducts]);
+  }, [campusFilteredProducts, categoryPreviewLimit, isDefaultCategoryView]);
+
+  const filteredUniversities = useMemo(() => {
+    if (!selectedState) {
+      return universities;
+    }
+
+    return universities.filter((university) => university.state === selectedState);
+  }, [selectedState, universities]);
+
+  const handleStateFilterChange = (event) => {
+    const nextState = event.target.value;
+    setSelectedState(nextState);
+    setIncludeNearbyUniversities(false);
+    setNearbyUniversities([]);
+
+    if (selectedUniversity && selectedUniversity.state !== nextState) {
+      setSelectedUniversityId('');
+    }
+  };
 
   const handleProductOpen = useCallback(
     (product) => {
@@ -292,6 +447,67 @@ export default function Marketplace() {
             ))}
           </div>
         </div>
+
+        <section className="mb-5 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+                Filter by state
+              </label>
+              <select
+                value={selectedState}
+                onChange={handleStateFilterChange}
+                className="w-full rounded-xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-900 focus:border-orange-400 focus:outline-none"
+              >
+                <option value="">All states</option>
+                {NIGERIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+                Filter by university
+              </label>
+              <select
+                value={selectedUniversityId}
+                onChange={(event) => {
+                  setSelectedUniversityId(event.target.value);
+                  setIncludeNearbyUniversities(false);
+                  setNearbyUniversities([]);
+                }}
+                className="w-full rounded-xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-900 focus:border-orange-400 focus:outline-none"
+              >
+                <option value="">All universities</option>
+                {filteredUniversities.map((university) => (
+                  <option key={university.id} value={university.id}>
+                    {university.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <label className="flex w-full items-center gap-3 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(selectedUniversity && includeNearbyUniversities)}
+                  disabled={!selectedUniversity}
+                  onChange={(event) => setIncludeNearbyUniversities(event.target.checked)}
+                  className="h-4 w-4 accent-orange-600"
+                />
+                Nearby universities
+              </label>
+            </div>
+          </div>
+
+          <p className="mt-3 text-sm text-slate-600">
+            The marketplace still shows products from all approved sellers equally. These filters help you narrow by campus or state, while recommendation boosts only apply on product, cart, and order suggestion surfaces.
+          </p>
+        </section>
 
         {flashSaleProducts.length > 0 && (
           <FlashSaleStrip

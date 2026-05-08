@@ -29,7 +29,9 @@ export default function SellerPayments() {
   const [currentUser, setCurrentUser] = useState(null);
   const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const handleLogout = async () => {

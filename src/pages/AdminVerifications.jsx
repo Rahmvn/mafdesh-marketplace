@@ -117,7 +117,7 @@ export default function AdminVerifications() {
           });
           showSuccess(
             'Verification Approved',
-            `${sellerLabel} is now marked as a verified seller.`
+            `${sellerLabel} is now marked as a Verified University Seller.`
           );
           await loadRequests({ showLoader: false });
         } catch (error) {

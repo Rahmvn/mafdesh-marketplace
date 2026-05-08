@@ -68,6 +68,11 @@ describe('adminVerificationService', () => {
           seller: {
             id: 'seller-1',
             email: 'seller@example.com',
+            business_name: 'Campus Gadgets',
+            profiles: {
+              full_name: 'Ada Seller',
+              username: 'adaseller',
+            },
           },
         },
       ],
@@ -86,6 +91,13 @@ describe('adminVerificationService', () => {
     expect(mockStorageFrom).toHaveBeenCalledWith('seller-verification-proofs');
     expect(requests[0]).toMatchObject({
       id: 'verification-1',
+      seller: {
+        id: 'seller-1',
+        email: 'seller@example.com',
+        business_name: 'Campus Gadgets',
+        full_name: 'Ada Seller',
+        username: 'adaseller',
+      },
       signedProofUrl: 'https://example.com/proof.png',
       isImageProof: true,
     });

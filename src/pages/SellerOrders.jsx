@@ -78,7 +78,9 @@ export default function SellerOrders() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [now, setNow] = useState(new Date());
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   useEffect(() => {

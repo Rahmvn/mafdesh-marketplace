@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Package, Users, ShoppingCart, DollarSign, Shield } from "lucide-react";
+import { ArrowRight, BadgeCheck, DollarSign, Package, Shield, ShoppingCart, Users } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import useModal from "../hooks/useModal";
@@ -46,6 +46,7 @@ export default function AdminDashboard() {
     escrowMoney: 0,
     pendingPayouts: 0,
     disputes: 0,
+    pendingVerifications: 0,
   });
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +117,11 @@ export default function AdminDashboard() {
         .select("*", { count: "exact", head: true })
         .eq("status", "DISPUTED");
 
+      const { count: pendingVerificationCount } = await supabase
+        .from("seller_verifications")
+        .select("*", { count: "exact", head: true })
+        .eq("verification_status", "pending");
+
       const { data: recent } = await supabase
         .from("orders")
         .select(
@@ -153,6 +159,7 @@ export default function AdminDashboard() {
         escrowMoney,
         pendingPayouts,
         disputes: disputeCount || 0,
+        pendingVerifications: pendingVerificationCount || 0,
       });
     } catch (err) {
       console.error("Error loading dashboard:", err);
@@ -206,6 +213,26 @@ export default function AdminDashboard() {
             <p className="text-sm text-gray-500">Disputed Orders</p>
             <p className="text-2xl font-bold text-red-600">{stats.disputes}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/verifications")}
+            className="bg-white border rounded-lg p-6 text-left transition hover:border-orange-300 hover:shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Pending Verifications</p>
+                <p className="text-2xl font-bold text-orange-600">{stats.pendingVerifications}</p>
+                <p className="mt-2 text-sm text-gray-600">
+                  Review seller university verification submissions.
+                </p>
+              </div>
+              <BadgeCheck className="shrink-0 text-orange-500" />
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-600">
+              Open verification queue
+              <ArrowRight className="h-4 w-4" />
+            </div>
+          </button>
         </div>
 
         <div className="bg-white rounded-lg border overflow-hidden">

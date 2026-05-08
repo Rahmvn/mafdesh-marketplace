@@ -120,7 +120,9 @@ export default function SellerAgreement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasReachedBottom, setHasReachedBottom] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
   const { showError, showSuccess, ModalComponent } = useModal({
     darkMode: themeState.darkMode,

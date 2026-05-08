@@ -135,7 +135,7 @@ export function SellerShell({
     () => getSellerThemeClasses(themeState?.darkMode),
     [themeState?.darkMode]
   );
-  const isVerified = Boolean(currentUser?.is_verified);
+  const isVerified = Boolean(currentUser?.is_verified || currentUser?.is_verified_seller);
 
   return (
     <div
@@ -163,7 +163,7 @@ export function SellerShell({
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${theme.badge}`}>
                     {isVerified ? <Sparkles className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
-                    {isVerified ? 'Verified seller workspace' : 'Seller workspace'}
+                    {isVerified ? 'Verified university seller workspace' : 'Seller workspace'}
                   </span>
                   {isVerified && <VerificationBadge className="!bg-white/10 !text-orange-200" />}
                 </div>
@@ -179,6 +179,12 @@ export function SellerShell({
                       <Shield className="h-4 w-4 text-orange-500" />
                       {currentUser.business_name || currentUser.full_name || currentUser.email}
                     </span>
+                    {currentUser.university_name && (
+                      <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${theme.panelMuted}`}>
+                        {currentUser.university_name}
+                        {currentUser.university_state ? `, ${currentUser.university_state}` : ''}
+                      </span>
+                    )}
                     {isVerified && currentUser.verification_expiry && (
                       <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 ${theme.panelMuted}`}>
                         Verified until {new Date(currentUser.verification_expiry).toLocaleDateString()}

@@ -69,7 +69,9 @@ export default function AddProductPreview() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
   const { showError, showSuccess, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 

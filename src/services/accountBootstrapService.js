@@ -10,7 +10,15 @@ export function normalizeSelfServiceRole(value, fallback = "") {
   return SELF_SERVICE_ACCOUNT_ROLES.includes(normalized) ? normalized : "";
 }
 
-export async function reconcileUserRole({ role, phoneNumber = null, businessName = null } = {}) {
+export async function reconcileUserRole({
+  role,
+  phoneNumber = null,
+  businessName = null,
+  universityId = null,
+  universityName = null,
+  universityState = null,
+  universityZone = null,
+} = {}) {
   const normalizedRole = normalizeSelfServiceRole(role);
 
   if (!normalizedRole) {
@@ -22,6 +30,10 @@ export async function reconcileUserRole({ role, phoneNumber = null, businessName
       role: normalizedRole,
       phone_number: phoneNumber || null,
       business_name: normalizedRole === "seller" ? businessName || null : null,
+      university_id: normalizedRole === "seller" ? universityId || null : null,
+      university_name: normalizedRole === "seller" ? universityName || null : null,
+      university_state: normalizedRole === "seller" ? universityState || null : null,
+      university_zone: normalizedRole === "seller" ? universityZone || null : null,
     },
   });
 

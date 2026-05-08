@@ -17,6 +17,7 @@ import { cartService } from "../services/cartService";
 import { getProductPricing } from "../utils/flashSale";
 import {
   enrichProductsWithPublicSellerData,
+  getPublicSellerCampusLabel,
   getPublicSellerDisplayName,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
@@ -37,6 +38,7 @@ function isMissingDeletedAtColumn(error) {
 function CartRecommendationCard({ product, onOpen }) {
   const pricing = getProductPricing(product);
   const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
+  const campusLabel = getPublicSellerCampusLabel(product?.seller);
   const hasDiscount =
     pricing.originalPrice != null &&
     Number(pricing.originalPrice) > Number(pricing.displayPrice);
@@ -79,6 +81,9 @@ function CartRecommendationCard({ product, onOpen }) {
           <span className="font-medium text-slate-700">{sellerName}</span>
           {product?.seller?.is_verified ? <VerificationBadge /> : null}
         </div>
+        {campusLabel ? (
+          <p className="text-xs text-slate-500">{campusLabel}</p>
+        ) : null}
       </div>
     </button>
   );

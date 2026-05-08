@@ -28,12 +28,15 @@ import {
   updateAuthenticatedPassword,
   verifyCurrentPassword,
 } from '../services/authSessionService';
+import { searchUniversities } from '../services/universityService';
 import {
   formatSavedAddressLandmark,
   formatSavedAddressLocation,
   formatSavedAddressStreet,
   pickDefaultSavedAddress,
 } from '../utils/savedAddresses';
+import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
+import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import {
   buildApprovedBankDetailsUpdate,
   buildBankDetailsPendingUpdate,
@@ -66,6 +69,24 @@ const NIGERIAN_BANKS = [
   'Wema Bank',
   'Zenith Bank',
 ];
+
+function getSellerVerificationLabel(status, isVerified) {
+  if (isVerified) {
+    return 'Approved';
+  }
+
+  const normalizedStatus = String(status || '').trim().toLowerCase();
+
+  if (normalizedStatus === 'pending') {
+    return 'Pending review';
+  }
+
+  if (normalizedStatus === 'rejected') {
+    return 'Rejected';
+  }
+
+  return 'Not submitted';
+}
 
 function InlineMessage({ message }) {
   if (!message?.text) {
@@ -297,6 +318,17 @@ export default function Profile() {
   const [passwordMessage, setPasswordMessage] = useState(null);
   const [bankMessage, setBankMessage] = useState(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState(null);
+  const [universityMessage, setUniversityMessage] = useState(null);
+  const [universitySuggestions, setUniversitySuggestions] = useState([]);
+  const [isSearchingUniversities, setIsSearchingUniversities] = useState(false);
+  const [isSavingUniversity, setIsSavingUniversity] = useState(false);
+  const [universityForm, setUniversityForm] = useState({
+    university_id: '',
+    university_name: '',
+    university_state: '',
+    university_zone: '',
+    university_role: 'student',
+  });
 
   const [pendingDetails, setPendingDetails] = useState({
     bank_name: '',
@@ -354,6 +386,13 @@ export default function Profile() {
           bvn: merged.bvn || '',
           tax_id: merged.tax_id || '',
         });
+        setUniversityForm({
+          university_id: merged.university_id || '',
+          university_name: merged.university_name || '',
+          university_state: merged.university_state || '',
+          university_zone: merged.university_zone || '',
+          university_role: merged.university_role || 'student',
+        });
       } else if (merged.role === 'buyer') {
         try {
           const savedAddresses = await listSavedAddresses();
@@ -405,6 +444,55 @@ export default function Profile() {
     };
   }, [loadUserProfile, profile?.id, profile?.role]);
 
+  useEffect(() => {
+    if (profile?.role !== 'seller') {
+      setUniversitySuggestions([]);
+      setIsSearchingUniversities(false);
+      return;
+    }
+
+    const query = String(universityForm.university_name || '').trim();
+
+    if (query.length < 2) {
+      setUniversitySuggestions([]);
+      setIsSearchingUniversities(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUniversitySuggestions = async () => {
+      setIsSearchingUniversities(true);
+
+      try {
+        const results = await searchUniversities({
+          query,
+          state: universityForm.university_state,
+          limit: 6,
+        });
+
+        if (!cancelled) {
+          setUniversitySuggestions(results);
+        }
+      } catch (error) {
+        console.error('Profile university search failed:', error);
+        if (!cancelled) {
+          setUniversitySuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearchingUniversities(false);
+        }
+      }
+    };
+
+    loadUniversitySuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.role, universityForm.university_name, universityForm.university_state]);
+
   const handlePendingDetailsChange = (field, value) => {
     const nextValue =
       field === 'account_number' || field === 'bvn'
@@ -447,8 +535,123 @@ export default function Profile() {
       await loadUserProfile();
       setSubscriptionMessage({
         type: 'success',
-        text: 'Subscription cancelled. Your verified badge has been removed.',
+        text: 'Subscription cancelled. Your Verified University Seller badge has been removed.',
       });
+    }
+  };
+
+  const handleUniversityFieldChange = (field, value) => {
+    setUniversityMessage(null);
+    setUniversityForm((current) => {
+      if (field === 'university_name') {
+        return {
+          ...current,
+          university_id: '',
+          university_name: value,
+        };
+      }
+
+      if (field === 'university_state') {
+        return {
+          ...current,
+          university_id: '',
+          university_state: value,
+          university_zone: getNigeriaGeoZoneForState(value) || '',
+        };
+      }
+
+      return {
+        ...current,
+        [field]: value,
+      };
+    });
+  };
+
+  const handleUniversitySuggestionSelect = (university) => {
+    setUniversityMessage(null);
+    setUniversityForm((current) => ({
+      ...current,
+      university_id: university?.id || '',
+      university_name: university?.name || '',
+      university_state: university?.state || '',
+      university_zone: university?.zone || getNigeriaGeoZoneForState(university?.state) || '',
+    }));
+    setUniversitySuggestions([]);
+  };
+
+  const submitUniversityIdentity = async (event) => {
+    event.preventDefault();
+    setUniversityMessage(null);
+
+    const payload = {
+      university_id: universityForm.university_id || null,
+      university_name: String(universityForm.university_name || '').trim(),
+      university_state: String(universityForm.university_state || '').trim(),
+      university_zone: String(universityForm.university_zone || '').trim(),
+      university_role: String(universityForm.university_role || '').trim() || null,
+    };
+
+    if (!payload.university_name || !payload.university_state) {
+      setUniversityMessage({
+        type: 'error',
+        text: 'University name and university state are required.',
+      });
+      return;
+    }
+
+    if (!payload.university_zone) {
+      setUniversityMessage({
+        type: 'error',
+        text: 'Select a valid university state to continue.',
+      });
+      return;
+    }
+
+    const identityChanged = (
+      (payload.university_id || '') !== String(profile?.university_id || '')
+      || payload.university_name !== String(profile?.university_name || '')
+      || payload.university_state !== String(profile?.university_state || '')
+      || payload.university_zone !== String(profile?.university_zone || '')
+      || (payload.university_role || '') !== String(profile?.university_role || '')
+    );
+
+    setIsSavingUniversity(true);
+
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update(payload)
+        .eq('id', profile.id);
+
+      if (error) {
+        throw error;
+      }
+
+      await loadUserProfile();
+
+      const shouldResetVerification = identityChanged && (
+        Boolean(profile?.is_verified_seller || profile?.is_verified)
+        || String(profile?.verification_status || '').trim().toLowerCase() !== 'not_submitted'
+      );
+
+      const successText = shouldResetVerification
+        ? 'University details saved. Seller verification has been reset and must be submitted again for the new campus identity.'
+        : 'University details saved successfully.';
+
+      setUniversityMessage({
+        type: 'success',
+        text: successText,
+      });
+      showSuccess('University Updated', successText);
+    } catch (error) {
+      const message = error?.message || 'We could not update your university details.';
+      setUniversityMessage({
+        type: 'error',
+        text: message,
+      });
+      showError('University Update Failed', message);
+    } finally {
+      setIsSavingUniversity(false);
     }
   };
 
@@ -637,7 +840,8 @@ export default function Profile() {
 
   const isSeller = profile.role === 'seller';
   const isBuyer = profile.role === 'buyer';
-  const isVerified = profile.is_verified;
+  const isVerified = Boolean(profile.is_verified || profile.is_verified_seller);
+  const verificationLabel = getSellerVerificationLabel(profile.verification_status, isVerified);
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
   const avatarGradientClass = isSeller
@@ -766,6 +970,21 @@ export default function Profile() {
                   </div>
                 </div>
               ) : null}
+
+              {isSeller && profile?.university_name ? (
+                <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
+                  <Calendar className="mt-0.5 text-orange-600" size={20} />
+                  <div className="flex-1">
+                    <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
+                      University Identity
+                    </div>
+                    <div className="font-medium text-orange-900">{profile.university_name}</div>
+                    <div className="mt-1 text-sm text-orange-700">
+                      {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {isBuyer ? (
@@ -817,6 +1036,108 @@ export default function Profile() {
             {isSeller ? (
               <div className="mb-8">
                 <div className="mb-3 flex items-center gap-2">
+                  <Calendar size={20} className="text-blue-600" />
+                  <h2 className="text-lg font-bold text-gray-800">University Settings</h2>
+                </div>
+                <form
+                  onSubmit={submitUniversityIdentity}
+                  className="space-y-4 rounded-xl border border-blue-200 bg-white p-4"
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">University name</label>
+                    <input
+                      type="text"
+                      value={universityForm.university_name}
+                      onChange={(event) => handleUniversityFieldChange('university_name', event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+                      placeholder="Search your university"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">
+                      Choose a suggested school when possible. If your campus is missing, keep typing and save it as a custom university.
+                    </p>
+                    {isSearchingUniversities ? (
+                      <p className="mt-2 text-sm font-medium text-orange-600">
+                        Loading university suggestions...
+                      </p>
+                    ) : null}
+                    {!isSearchingUniversities && universitySuggestions.length > 0 ? (
+                      <div className="mt-2 rounded-lg border border-orange-100 bg-orange-50/40 p-2">
+                        <div className="flex flex-col gap-2">
+                          {universitySuggestions.map((university) => (
+                            <button
+                              key={university.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleUniversitySuggestionSelect(university)}
+                              className="rounded-lg bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-orange-50"
+                            >
+                              <span className="block text-slate-900">{university.name}</span>
+                              <span className="block text-xs text-slate-500">
+                                {university.state} • {university.zone}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">University state</label>
+                      <select
+                        value={universityForm.university_state}
+                        onChange={(event) => handleUniversityFieldChange('university_state', event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+                      >
+                        <option value="">Select state</option>
+                        {NIGERIAN_STATES.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">University role</label>
+                      <select
+                        value={universityForm.university_role}
+                        onChange={(event) => handleUniversityFieldChange('university_role', event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
+                      >
+                        <option value="student">Student</option>
+                        <option value="staff">Staff</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                    <span className="font-semibold">University zone:</span>{' '}
+                    {universityForm.university_zone || 'Select a university state to auto-fill the zone'}
+                  </div>
+
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Changing your university identity after a submission or approval resets seller verification so the new campus details can be reviewed again.
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingUniversity}
+                    className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isSavingUniversity ? 'Saving...' : 'Save University Details'}
+                  </button>
+
+                  <InlineMessage message={universityMessage} />
+                </form>
+              </div>
+            ) : null}
+
+            {isSeller ? (
+              <div className="mb-8">
+                <div className="mb-3 flex items-center gap-2">
                   <Shield size={20} className="text-orange-500" />
                   <h2 className="text-lg font-bold text-gray-800">Verification Status</h2>
                 </div>
@@ -824,54 +1145,37 @@ export default function Profile() {
                   <div className="rounded-xl border border-green-200 bg-green-50 p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle size={18} className="text-green-600" />
-                      <p className="font-semibold text-green-700">Verified Seller</p>
+                      <p className="font-semibold text-green-700">Verified University Seller</p>
                     </div>
                     <p className="mt-1 text-sm text-green-600">
-                      Your account is verified. The orange badge appears on all your products.
+                      Your university verification is approved. The badge now appears across buyer-facing product and seller surfaces.
                     </p>
-                    {profile.verification_expiry ? (
+                    {profile.verification_approved_at ? (
                       <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
                         <Calendar size={12} />
-                        Valid until {new Date(profile.verification_expiry).toLocaleDateString()}
+                        Approved on {new Date(profile.verification_approved_at).toLocaleDateString()}
                       </p>
                     ) : null}
-
-                    {showCancelSubscriptionConfirm ? (
-                      <ConfirmationBox
-                        description="This will immediately remove your verified badge and you will not receive a refund for any unused time."
-                        onConfirm={cancelSubscription}
-                        onCancel={() => setShowCancelSubscriptionConfirm(false)}
-                        confirmLabel="Cancel Subscription"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSubscriptionMessage(null);
-                          setShowCancelSubscriptionConfirm(true);
-                        }}
-                        className="mt-3 rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
-                      >
-                        Cancel Subscription
-                      </button>
-                    )}
-                    <InlineMessage message={subscriptionMessage} />
                   </div>
                 ) : (
                   <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
                     <div className="flex items-center gap-2">
                       <AlertCircle size={18} className="text-orange-600" />
-                      <p className="font-semibold text-orange-700">Not Verified</p>
+                      <p className="font-semibold text-orange-700">{verificationLabel}</p>
                     </div>
                     <p className="mt-1 text-sm text-orange-600">
-                      Get verified to build trust and boost your sales.
+                      {verificationLabel === 'Pending review'
+                        ? 'Your university verification is waiting for admin review.'
+                        : verificationLabel === 'Rejected'
+                          ? 'Your last university verification was rejected. Update the details if needed and submit again.'
+                          : 'Get verified to build trust and earn better visibility in recommendation sections.'}
                     </p>
                     <button
                       type="button"
                       onClick={() => navigate('/seller/verification')}
                       className="mt-3 rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
                     >
-                      Get Verified Now
+                      {verificationLabel === 'Pending review' ? 'Open Verification Page' : 'Get Verified Now'}
                     </button>
                   </div>
                 )}

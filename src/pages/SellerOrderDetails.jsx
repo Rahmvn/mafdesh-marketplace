@@ -93,7 +93,9 @@ export default function SellerOrderDetails() {
   const [now, setNow] = useState(new Date());
   const [refundRequests, setRefundRequests] = useState([]);
   const [adminHolds, setAdminHolds] = useState([]);
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const openProductDetails = (productId) => {

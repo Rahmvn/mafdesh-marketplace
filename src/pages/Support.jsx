@@ -65,9 +65,9 @@ const FAQS = [
     id: 'seller-verification',
     audience: 'seller',
     category: 'Seller',
-    question: 'How do I become a verified seller?',
+    question: 'How do I become a Verified University Seller?',
     answer:
-      'Go to the seller verification page, submit your university details, upload your proof, and wait for review. Approved sellers get the verified badge and stronger trust visibility.',
+      'Go to the seller verification page, submit your university details, upload your proof, and wait for review. Approved sellers get the Verified University Seller badge and stronger trust visibility.',
   },
   {
     id: 'priority-support',
@@ -75,7 +75,7 @@ const FAQS = [
     category: 'Seller',
     question: 'Who gets priority support?',
     answer:
-      'Verified sellers are placed in the priority queue. During business hours, those requests are handled faster than standard support requests.',
+      'Verified University Sellers are placed in the priority queue. During business hours, those requests are handled faster than standard support requests.',
   },
   {
     id: 'payment-methods',
@@ -415,10 +415,10 @@ export default function Support() {
                   Priority Queue
                 </p>
                 <p className="mt-2 text-2xl font-bold text-blue-950">
-                  {isVerifiedSeller ? 'Active' : 'Verified Sellers'}
+                  {isVerifiedSeller ? 'Active' : 'Verified University Sellers'}
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  Verified sellers receive faster handling during support hours.
+                  Verified University Sellers receive faster handling during support hours.
                 </p>
               </div>
 
@@ -460,7 +460,7 @@ export default function Support() {
                   <h2 className="text-xl font-bold">Priority Support Active</h2>
                 </div>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-orange-50">
-                  As a verified seller, you get priority support with guaranteed 2-hour
+                  As a Verified University Seller, you get priority support with guaranteed 2-hour
                   response times during business hours.
                 </p>
               </div>

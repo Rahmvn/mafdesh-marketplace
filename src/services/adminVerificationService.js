@@ -9,6 +9,14 @@ function getProofExtension(path) {
   return extension.toLowerCase();
 }
 
+function getSellerProfile(seller) {
+  if (Array.isArray(seller?.profiles)) {
+    return seller.profiles[0] || null;
+  }
+
+  return seller?.profiles || null;
+}
+
 export function isImageProof(path) {
   return ['png', 'jpg', 'jpeg', 'webp'].includes(getProofExtension(path));
 }
@@ -53,10 +61,13 @@ export async function fetchPendingVerificationRequests() {
       seller:users!seller_verifications_seller_id_fkey (
         id,
         email,
-        full_name,
         business_name,
         is_verified_seller,
-        verification_status
+        verification_status,
+        profiles (
+          full_name,
+          username
+        )
       )
     `)
     .eq('verification_status', 'pending')
@@ -69,9 +80,17 @@ export async function fetchPendingVerificationRequests() {
   const requests = await Promise.all(
     (data || []).map(async (request) => {
       const signedProofUrl = await buildSignedProofUrl(request.proof_url);
+      const sellerProfile = getSellerProfile(request.seller);
 
       return {
         ...request,
+        seller: request.seller
+          ? {
+              ...request.seller,
+              full_name: sellerProfile?.full_name || null,
+              username: sellerProfile?.username || null,
+            }
+          : null,
         signedProofUrl,
         isImageProof: isImageProof(request.proof_url),
       };

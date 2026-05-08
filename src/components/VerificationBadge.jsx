@@ -1,11 +1,14 @@
 import React from 'react';
 import { BadgeCheck } from 'lucide-react';
 
-export default function VerificationBadge({ className = '' }) {
+export default function VerificationBadge({
+  className = '',
+  label = 'Verified University Seller',
+}) {
   return (
-    <div className={`inline-flex items-center gap-1 bg-orange-100 text-orange-600 px-2 py-1 rounded-full text-xs font-semibold ${className}`}>
+    <div className={`inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-600 ${className}`}>
       <BadgeCheck size={14} className="fill-orange-500" />
-      <span>Verified</span>
+      <span>{label}</span>
     </div>
   );
 }

@@ -60,7 +60,7 @@ export default function Footer() {
               </div>
             </div>
             <p className="text-blue-200 text-sm leading-relaxed mb-6">
-              Nigeria's most trusted marketplace connecting buyers with verified sellers. Shop with confidence, protected by our secure payment system.
+              Nigeria's most trusted marketplace connecting buyers with Verified University Sellers and everyday campus traders. Shop with confidence, protected by our secure payment system.
             </p>
             <div className="flex gap-3">
               <a href="https://facebook.com/mafdesh" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-full bg-blue-800 hover:bg-orange-600 transition-all flex items-center justify-center group">

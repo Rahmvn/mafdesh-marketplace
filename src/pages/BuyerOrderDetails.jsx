@@ -46,6 +46,7 @@ import { getProductPricing } from "../utils/flashSale";
 import {
   enrichProductsWithPublicSellerData,
   fetchPublicSellerDirectory,
+  getPublicSellerCampusLabel,
   getPublicSellerDisplayName,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
@@ -103,6 +104,7 @@ function isMissingDeletedAtColumn(error) {
 function OrderRecommendationCard({ product, onOpen }) {
   const pricing = getProductPricing(product);
   const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
+  const campusLabel = getPublicSellerCampusLabel(product?.seller);
   const hasDiscount =
     pricing.originalPrice != null &&
     Number(pricing.originalPrice) > Number(pricing.displayPrice);
@@ -145,6 +147,9 @@ function OrderRecommendationCard({ product, onOpen }) {
           <span className="font-medium text-slate-700">{sellerName}</span>
           {product?.seller?.is_verified ? <VerificationBadge /> : null}
         </div>
+        {campusLabel ? (
+          <p className="text-xs text-slate-500">{campusLabel}</p>
+        ) : null}
       </div>
     </button>
   );
@@ -1165,6 +1170,11 @@ export default function BuyerOrderDetails() {
       </p>
       {seller.is_verified && <VerificationBadge />}
     </div>
+    {seller.university_name ? (
+      <p className="mt-2 text-sm text-gray-600">
+        {[seller.university_name, seller.university_state].filter(Boolean).join(', ')}
+      </p>
+    ) : null}
     {seller.phone && (
       <div className="flex items-center gap-2 mt-2 text-gray-700">
         <Phone size={16} className="text-gray-500" />

@@ -15,6 +15,9 @@ import {
   runReadOperationWithRetry,
 } from '../utils/authResilience';
 import { safeParseJSON } from '../utils/storage';
+import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
+import { NIGERIAN_STATES } from '../utils/nigeriaStates';
+import { searchUniversities } from '../services/universityService';
 
 const SIGNUP_DRAFT_STORAGE_KEY = 'mafdesh_signup_draft';
 const EMPTY_SIGNUP_FORM = {
@@ -26,6 +29,10 @@ const EMPTY_SIGNUP_FORM = {
   confirmPassword: "",
   business_name: "",
   location: "",
+  university_id: "",
+  university_name: "",
+  university_state: "",
+  university_zone: "",
 };
 
 function hasSignupDraftContent({ formData, userType, agreedToTerms }) {
@@ -105,20 +112,13 @@ export default function SignUp() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_SIGNUP_FORM);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
-
-  const nigeriaStates = [
-    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
-    "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT - Abuja", "Gombe",
-    "Imo", "Jagawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos",
-    "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto",
-    "Taraba", "Yobe", "Zamfara"
-  ];
-
   const [usernameError, setUsernameError] = useState("");
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [universitySuggestions, setUniversitySuggestions] = useState([]);
+  const [isLoadingUniversities, setIsLoadingUniversities] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { showError, showWarning, ModalComponent } = useModal();
@@ -142,6 +142,55 @@ export default function SignUp() {
 
     persistSignupDraft({ userType, agreedToTerms, formData });
   }, [agreedToTerms, formData, hasHydratedDraft, userType]);
+
+  useEffect(() => {
+    if (userType !== 'seller') {
+      setUniversitySuggestions([]);
+      setIsLoadingUniversities(false);
+      return;
+    }
+
+    const query = String(formData.university_name || '').trim();
+
+    if (query.length < 2) {
+      setUniversitySuggestions([]);
+      setIsLoadingUniversities(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUniversities = async () => {
+      setIsLoadingUniversities(true);
+
+      try {
+        const results = await searchUniversities({
+          query,
+          state: formData.university_state,
+          limit: 6,
+        });
+
+        if (!cancelled) {
+          setUniversitySuggestions(results);
+        }
+      } catch (error) {
+        console.error('University search failed:', error);
+        if (!cancelled) {
+          setUniversitySuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingUniversities(false);
+        }
+      }
+    };
+
+    loadUniversities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.university_name, formData.university_state, userType]);
 
   const validateUsername = (username) => {
     if (username.length < 3) {
@@ -255,6 +304,38 @@ export default function SignUp() {
     });
   };
 
+  const updateUniversityDraft = (updates) => {
+    setFormData((current) => ({
+      ...current,
+      ...updates,
+    }));
+  };
+
+  const handleUniversityNameChange = (value) => {
+    updateUniversityDraft({
+      university_id: '',
+      university_name: value,
+    });
+  };
+
+  const handleUniversityStateChange = (value) => {
+    updateUniversityDraft({
+      university_id: '',
+      university_state: value,
+      university_zone: getNigeriaGeoZoneForState(value) || '',
+    });
+  };
+
+  const selectUniversity = (university) => {
+    updateUniversityDraft({
+      university_id: university?.id || '',
+      university_name: university?.name || '',
+      university_state: university?.state || '',
+      university_zone: university?.zone || getNigeriaGeoZoneForState(university?.state) || '',
+    });
+    setUniversitySuggestions([]);
+  };
+
   const handleSignUp = async (nextFormData) => {
     const { email, password } = nextFormData;
     let authUser = null;
@@ -274,6 +355,10 @@ export default function SignUp() {
               phone_number: nextFormData.phone_number,
               business_name: userType === 'seller' ? nextFormData.business_name : null,
               location: nextFormData.location,
+              university_id: userType === 'seller' ? nextFormData.university_id || null : null,
+              university_name: userType === 'seller' ? nextFormData.university_name || null : null,
+              university_state: userType === 'seller' ? nextFormData.university_state || null : null,
+              university_zone: userType === 'seller' ? nextFormData.university_zone || null : null,
             },
           },
         })
@@ -466,6 +551,9 @@ export default function SignUp() {
                   phone: formData.phone_number?.trim() || '',
                   businessName: formData.business_name?.trim() || '',
                   location: formData.location?.trim() || '',
+                  universityName: formData.university_name?.trim() || '',
+                  universityState: formData.university_state?.trim() || '',
+                  universityZone: formData.university_zone?.trim() || '',
                 };
 
                 const normalizedFormData = {
@@ -476,6 +564,9 @@ export default function SignUp() {
                   phone_number: trimmed.phone,
                   business_name: trimmed.businessName,
                   location: trimmed.location,
+                  university_name: trimmed.universityName,
+                  university_state: trimmed.universityState,
+                  university_zone: trimmed.universityZone,
                 };
 
                 if (!trimmed.fullName || !trimmed.email || !trimmed.username || !formData.password || !trimmed.location) {
@@ -485,6 +576,22 @@ export default function SignUp() {
 
                 if (userType === "seller" && !trimmed.businessName) {
                   showWarning('Business Name Required', 'Please enter your business name.');
+                  return;
+                }
+
+                if (userType === "seller" && (!trimmed.universityName || !trimmed.universityState)) {
+                  showWarning(
+                    'University Required',
+                    'Choose your university and its state before creating a seller account.'
+                  );
+                  return;
+                }
+
+                if (userType === "seller" && !trimmed.universityZone) {
+                  showWarning(
+                    'University State Required',
+                    'Select the correct university state so Mafdesh can place your store in the right campus zone.'
+                  );
                   return;
                 }
 
@@ -711,6 +818,7 @@ export default function SignUp() {
                 <select
                   value={formData.location}
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  aria-label="Location (State in Nigeria)"
                   className="w-full px-4 py-3.5 border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all appearance-none bg-blue-50/20 font-bold text-blue-900 shadow-sm hover:border-blue-200 cursor-pointer"
                   style={{
                     backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'%231e40af'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'6%209%2012%2015%2018%209'%3E%3C/polyline%3E%3C/svg%3E")`,
@@ -720,7 +828,7 @@ export default function SignUp() {
                   }}
                 >
                   <option value="" className="text-gray-400">Select your state</option>
-                  {nigeriaStates.map(state => (
+                  {NIGERIAN_STATES.map(state => (
                     <option key={state} value={state} className="text-blue-900">{state}</option>
                   ))}
                 </select>
@@ -901,51 +1009,160 @@ export default function SignUp() {
               </div>
 
               {userType === "seller" && (
-                <div className="pt-4 border-t border-gray-100">
-                  <label
-                    style={{
-                      color: "#374151",
-                      fontSize: "13px",
-                      fontWeight: "700",
-                      display: "block",
-                      marginBottom: "10px",
-                      letterSpacing: "0.3px",
-                    }}
-                  >
-                    BUSINESS NAME
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Your store name"
-                    value={formData.business_name}
-                    maxLength={100}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        business_name: e.target.value,
-                      })
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "13px 16px",
-                      borderRadius: "11px",
-                      border: "1.5px solid #e5e7eb",
-                      fontSize: "15px",
-                      fontFamily: "inherit",
-                      transition: "all 0.25s ease",
-                      boxSizing: "border-box",
-                      color: "#111827",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "#ea580c";
-                      e.target.style.boxShadow =
-                        "0 0 0 4px rgba(234, 88, 12, 0.12)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "#e5e7eb";
-                      e.target.style.boxShadow = "none";
-                    }}
-                  />
+                <div className="space-y-4 border-t border-gray-100 pt-4">
+                  <div>
+                    <label
+                      style={{
+                        color: "#374151",
+                        fontSize: "13px",
+                        fontWeight: "700",
+                        display: "block",
+                        marginBottom: "10px",
+                        letterSpacing: "0.3px",
+                      }}
+                    >
+                      BUSINESS NAME
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Your store name"
+                      value={formData.business_name}
+                      maxLength={100}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          business_name: e.target.value,
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "13px 16px",
+                        borderRadius: "11px",
+                        border: "1.5px solid #e5e7eb",
+                        fontSize: "15px",
+                        fontFamily: "inherit",
+                        transition: "all 0.25s ease",
+                        boxSizing: "border-box",
+                        color: "#111827",
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#ea580c";
+                        e.target.style.boxShadow =
+                          "0 0 0 4px rgba(234, 88, 12, 0.12)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#e5e7eb";
+                        e.target.style.boxShadow = "none";
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        color: "#374151",
+                        fontSize: "13px",
+                        fontWeight: "700",
+                        display: "block",
+                        marginBottom: "10px",
+                        letterSpacing: "0.3px",
+                      }}
+                    >
+                      UNIVERSITY
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Search your university"
+                      value={formData.university_name}
+                      maxLength={120}
+                      onChange={(e) => handleUniversityNameChange(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "13px 16px",
+                        borderRadius: "11px",
+                        border: "1.5px solid #e5e7eb",
+                        fontSize: "15px",
+                        fontFamily: "inherit",
+                        transition: "all 0.25s ease",
+                        boxSizing: "border-box",
+                        color: "#111827",
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = "#ea580c";
+                        e.target.style.boxShadow =
+                          "0 0 0 4px rgba(234, 88, 12, 0.12)";
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = "#e5e7eb";
+                        e.target.style.boxShadow = "none";
+                      }}
+                    />
+                    <p style={{ color: "#6b7280", fontSize: "11px", marginTop: "6px", fontWeight: "500" }}>
+                      Choose a suggested school when it appears. If your campus is missing, keep typing and continue with it as a custom university.
+                    </p>
+                    {isLoadingUniversities ? (
+                      <p style={{ color: "#ea580c", fontSize: "12px", marginTop: "6px", fontWeight: "600" }}>
+                        Loading university suggestions...
+                      </p>
+                    ) : null}
+                    {!isLoadingUniversities && universitySuggestions.length > 0 ? (
+                      <div className="mt-2 rounded-xl border border-orange-100 bg-orange-50/50 p-2">
+                        <div className="flex flex-col gap-2">
+                          {universitySuggestions.map((university) => (
+                            <button
+                              key={university.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => selectUniversity(university)}
+                              className="rounded-lg bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-orange-50"
+                            >
+                              <span className="block text-slate-900">{university.name}</span>
+                              <span className="block text-xs text-slate-500">
+                                {university.state} • {university.zone}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        color: "#374151",
+                        fontSize: "13px",
+                        fontWeight: "700",
+                        display: "block",
+                        marginBottom: "10px",
+                        letterSpacing: "0.3px",
+                      }}
+                    >
+                      UNIVERSITY STATE
+                    </label>
+                    <select
+                      value={formData.university_state}
+                      onChange={(e) => handleUniversityStateChange(e.target.value)}
+                      aria-label="University state"
+                      className="w-full px-4 py-3.5 border-2 border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all appearance-none bg-orange-50/20 font-bold text-orange-900 shadow-sm hover:border-orange-200 cursor-pointer"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'%23ea580c'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'6%209%2012%2015%2018%209'%3E%3C/polyline%3E%3C/svg%3E")`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "right 16px center",
+                        backgroundSize: "14px"
+                      }}
+                    >
+                      <option value="" className="text-gray-400">Select university state</option>
+                      {NIGERIAN_STATES.map((state) => (
+                        <option key={state} value={state} className="text-orange-900">{state}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-sm text-orange-900">
+                    <span className="font-semibold">University zone:</span>{' '}
+                    {formData.university_zone || 'Select the university state to auto-fill the zone'}
+                  </div>
                 </div>
               )}
 

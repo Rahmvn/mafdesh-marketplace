@@ -40,7 +40,7 @@ const ZONE_OPTIONS = [
   'South South',
   'South West',
 ];
-const ROLE_OPTIONS = ['student', 'staff'];
+const ROLE_OPTIONS = ['student', 'staff', 'other'];
 const ALLOWED_PROOF_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
 const MAX_PROOF_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -75,6 +75,7 @@ function getInitialFormState(snapshot) {
   const source = snapshot?.latestSubmission || snapshot?.user || {};
 
   return {
+    universityId: source.university_id || '',
     universityName: source.university_name || '',
     universityState: source.university_state || '',
     universityZone: source.university_zone || '',
@@ -115,7 +116,9 @@ export default function SellerVerificationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
   const handleLogout = async () => {
@@ -184,7 +187,7 @@ export default function SellerVerificationPage() {
         || verificationStatus === SELLER_VERIFICATION_STATUSES.APPROVED,
     },
     {
-      title: 'Verified seller badge',
+      title: 'Verified University Seller badge',
       complete: verificationStatus === SELLER_VERIFICATION_STATUSES.APPROVED,
     },
   ]), [verificationStatus]);
@@ -193,11 +196,20 @@ export default function SellerVerificationPage() {
     setSubmitMessage({ type: '', text: '' });
 
     setFormState((current) => {
+      if (field === 'universityName') {
+        return {
+          ...current,
+          universityId: '',
+          universityName: value,
+        };
+      }
+
       if (field === 'universityState') {
         const nextZone = getNigeriaGeoZoneForState(value);
 
         return {
           ...current,
+          universityId: '',
           universityState: value,
           universityZone: nextZone || current.universityZone,
         };
@@ -293,6 +305,7 @@ export default function SellerVerificationPage() {
     try {
       const result = await submitSellerVerificationApplication({
         sellerId: currentUser.id,
+        universityId: formState.universityId || currentUser?.university_id || null,
         universityName: formState.universityName.trim(),
         universityState: formState.universityState,
         universityZone: formState.universityZone,
@@ -303,6 +316,7 @@ export default function SellerVerificationPage() {
 
       const nextUser = result.user || {
         ...currentUser,
+        university_id: formState.universityId || currentUser?.university_id || null,
         university_name: formState.universityName.trim(),
         university_state: formState.universityState,
         university_zone: formState.universityZone,
@@ -354,7 +368,7 @@ export default function SellerVerificationPage() {
       themeState={themeState}
       showHeader
       title="Seller Verification"
-      subtitle="Submit your university details for early-access seller verification. Approved sellers get the verified badge and better visibility in recommendation surfaces."
+      subtitle="Submit your university details for early-access seller verification. Approved sellers get the Verified University Seller badge and better visibility in recommendation surfaces."
       actions={(
         <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${theme.badge}`}>
           <Shield className="h-4 w-4" />
@@ -396,7 +410,7 @@ export default function SellerVerificationPage() {
           </p>
           <h2 className="mt-2 text-2xl font-bold">Badge + boost</h2>
           <p className={`mt-3 text-sm leading-6 ${theme.mutedText}`}>
-            Approved sellers get the verified badge and stronger visibility in recommendation sections.
+            Approved sellers get the Verified University Seller badge and stronger visibility in recommendation sections.
           </p>
         </article>
       </section>
@@ -430,7 +444,7 @@ export default function SellerVerificationPage() {
                   {currentUser?.is_verified_seller ? (
                     <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
                       <BadgeCheck className="h-4 w-4" />
-                      Verified seller active
+                      Verified University Seller active
                     </span>
                   ) : null}
                 </div>

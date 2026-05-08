@@ -36,6 +36,11 @@ function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeOptionalUuid(value: unknown) {
+  const normalized = normalizeText(value);
+  return normalized || "";
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -157,6 +162,10 @@ serve(async (req) => {
 
     const phoneNumber = normalizeText(body?.phone_number || metadata?.phone_number);
     const businessName = normalizeText(body?.business_name || metadata?.business_name);
+    const universityId = normalizeOptionalUuid(body?.university_id || metadata?.university_id);
+    const universityName = normalizeText(body?.university_name || metadata?.university_name);
+    const universityState = normalizeText(body?.university_state || metadata?.university_state);
+    const universityZone = normalizeText(body?.university_zone || metadata?.university_zone);
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
@@ -185,6 +194,22 @@ serve(async (req) => {
           business_name:
             desiredRole === "seller"
               ? businessName || existingUser?.business_name || null
+              : null,
+          university_id:
+            desiredRole === "seller"
+              ? universityId || existingUser?.university_id || null
+              : null,
+          university_name:
+            desiredRole === "seller"
+              ? universityName || existingUser?.university_name || null
+              : null,
+          university_state:
+            desiredRole === "seller"
+              ? universityState || existingUser?.university_state || null
+              : null,
+          university_zone:
+            desiredRole === "seller"
+              ? universityZone || existingUser?.university_zone || null
               : null,
         },
         { onConflict: "id" }

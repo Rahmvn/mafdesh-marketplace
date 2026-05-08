@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
+  BadgeCheck,
   BookOpen,
   ChevronDown,
   CreditCard,
@@ -66,7 +67,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   );
   const [cartCount, setCartCount] = useState(() => readCachedCartCount());
   const [actionRequiredCount, setActionRequiredCount] = useState(0);
-  const [adminCounts, setAdminCounts] = useState({ refunds: 0 });
+  const [adminCounts, setAdminCounts] = useState({ refunds: 0, verifications: 0 });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -123,6 +124,7 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
     { to: '/admin/orders', label: 'Orders', icon: ShoppingCart },
     { to: '/admin/disputes', label: 'Disputes', icon: AlertCircle },
     { to: '/admin/refund-requests', label: 'Refund Requests', icon: RotateCcw, badgeKey: 'refunds' },
+    { to: '/admin/verifications', label: 'Seller Verifications', icon: BadgeCheck, badgeKey: 'verifications' },
     { to: '/admin/products', label: 'Products', icon: Package },
     { to: '/admin/users', label: 'Users', icon: Users },
     { to: '/admin/constitution', label: 'Constitution', icon: BookOpen },
@@ -203,10 +205,22 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   async function loadAdminCounts() {
     try {
       const refundCount = await fetchPendingRefundRequestCount();
-      setAdminCounts({ refunds: refundCount });
+      const { count: verificationCount, error: verificationError } = await supabase
+        .from('seller_verifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('verification_status', 'pending');
+
+      if (verificationError) {
+        throw verificationError;
+      }
+
+      setAdminCounts({
+        refunds: refundCount,
+        verifications: verificationCount || 0,
+      });
     } catch (error) {
       console.error('Admin counts error:', error);
-      setAdminCounts({ refunds: 0 });
+      setAdminCounts({ refunds: 0, verifications: 0 });
     }
   }
 

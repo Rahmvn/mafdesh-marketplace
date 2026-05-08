@@ -65,6 +65,7 @@ export async function fetchSellerVerificationSnapshot(sellerId) {
         business_name,
         is_verified,
         is_verified_seller,
+        university_id,
         university_name,
         university_state,
         university_zone,
@@ -80,6 +81,7 @@ export async function fetchSellerVerificationSnapshot(sellerId) {
       .select(`
         id,
         seller_id,
+        university_id,
         university_name,
         university_state,
         university_zone,
@@ -143,6 +145,7 @@ export async function uploadSellerVerificationProof(sellerId, proofFile) {
 
 export async function submitSellerVerificationApplication({
   sellerId,
+  universityId = null,
   universityName,
   universityState,
   universityZone,
@@ -155,6 +158,7 @@ export async function submitSellerVerificationApplication({
   try {
     const submissionPayload = {
       seller_id: sellerId,
+      university_id: universityId || null,
       university_name: universityName,
       university_state: universityState || null,
       university_zone: universityZone || null,
@@ -172,6 +176,7 @@ export async function submitSellerVerificationApplication({
       .select(`
         id,
         seller_id,
+        university_id,
         university_name,
         university_state,
         university_zone,
@@ -195,6 +200,7 @@ export async function submitSellerVerificationApplication({
 
     const submittedAt = new Date().toISOString();
     const userUpdatePayload = {
+      university_id: universityId || null,
       university_name: universityName,
       university_state: universityState || null,
       university_zone: universityZone || null,
@@ -214,6 +220,7 @@ export async function submitSellerVerificationApplication({
         business_name,
         is_verified,
         is_verified_seller,
+        university_id,
         university_name,
         university_state,
         university_zone,

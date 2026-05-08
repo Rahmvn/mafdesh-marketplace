@@ -25,6 +25,7 @@ import { getProductFulfillmentOptions } from "../services/deliveryService";
 import {
   enrichProductsWithPublicSellerData,
   fetchPublicSellerDirectory,
+  getPublicSellerCampusLabel,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
 import {
@@ -274,6 +275,7 @@ function RelatedProductCard({ product, onOpen }) {
     product.price != null &&
     Number(product.original_price) > Number(product.price);
   const sellerName = getSellerBusinessName(product.seller);
+  const campusLabel = getPublicSellerCampusLabel(product.seller);
 
   return (
     <button
@@ -309,6 +311,9 @@ function RelatedProductCard({ product, onOpen }) {
             {product.seller?.is_verified && <VerificationBadge />}
           </div>
         )}
+        {campusLabel ? (
+          <p className="text-xs text-slate-500">{campusLabel}</p>
+        ) : null}
       </div>
     </button>
   );
@@ -333,6 +338,7 @@ export default function ProductDetail() {
   const storedUser = getStoredUser() || {};
   const isAdmin = storedUser.role === "admin";
   const sellerBusinessName = getSellerBusinessName(seller);
+  const sellerCampusLabel = getPublicSellerCampusLabel(seller);
 
   const isMissingDeletedAtColumn = (error) =>
     error?.code === "42703" && String(error.message || "").includes("deleted_at");
@@ -919,6 +925,9 @@ export default function ProductDetail() {
                         ) : null}
                         {seller.is_verified && <VerificationBadge />}
                       </div>
+                      {sellerCampusLabel ? (
+                        <p className="mt-1 text-sm text-slate-600">{sellerCampusLabel}</p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -1020,7 +1029,7 @@ export default function ProductDetail() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <Shield size={18} className="text-blue-600" />
                   <p className="mt-3 text-sm font-semibold text-slate-900">
-                    Verified seller protection
+                    Verified University Seller protection
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -1123,7 +1132,7 @@ export default function ProductDetail() {
             <div>
               <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">More products you may like</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Similar items are ranked by category fit, seller trust signals, and freshness.
+                Similar items are boosted by category fit, university verification, campus match, rating, and freshness without hiding normal sellers.
               </p>
             </div>
             <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />

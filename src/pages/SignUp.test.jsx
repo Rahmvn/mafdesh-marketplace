@@ -9,6 +9,7 @@ import Policies from './policies';
 const {
   mockSignUp,
   mockProfilesMaybeSingle,
+  mockUniversitiesLimit,
   mockShowError,
   mockShowWarning,
   mockEnsureCurrentUserContext,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => {
   const mockSignUp = vi.fn();
   const mockProfilesMaybeSingle = vi.fn();
+  const mockUniversitiesLimit = vi.fn();
   const mockShowError = vi.fn();
   const mockShowWarning = vi.fn();
   const mockEnsureCurrentUserContext = vi.fn();
@@ -32,12 +34,35 @@ const {
       };
     }
 
+    if (table === 'universities') {
+      const activeChain = {
+        eq: vi.fn(() => activeChain),
+        ilike: vi.fn(() => activeChain),
+        order: vi.fn(() => ({
+          limit: mockUniversitiesLimit,
+        })),
+      };
+
+      return {
+        select: () => ({
+          eq: vi.fn((column) => {
+            if (column === 'is_active') {
+              return activeChain;
+            }
+
+            throw new Error(`Unexpected universities eq column: ${column}`);
+          }),
+        }),
+      };
+    }
+
     throw new Error(`Unexpected table: ${table}`);
   });
 
   return {
     mockSignUp,
     mockProfilesMaybeSingle,
+    mockUniversitiesLimit,
     mockShowError,
     mockShowWarning,
     mockEnsureCurrentUserContext,
@@ -108,7 +133,7 @@ function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {
   fireEvent.change(screen.getByPlaceholderText('johndoe123'), {
     target: { value: 'janedoe123' },
   });
-  fireEvent.change(screen.getByRole('combobox'), {
+  fireEvent.change(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i }), {
     target: { value: 'Lagos' },
   });
   fireEvent.change(screen.getByPlaceholderText('08012345678'), {
@@ -118,6 +143,12 @@ function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {
   if (asSeller) {
     fireEvent.change(screen.getByPlaceholderText('Your store name'), {
       target: { value: 'Jane Store' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+      target: { value: 'Mafdesh University' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
+      target: { value: 'Kaduna' },
     });
   }
 
@@ -144,6 +175,10 @@ describe('SignUp', () => {
     window.sessionStorage.clear();
     mockProfilesMaybeSingle.mockResolvedValue({
       data: null,
+      error: null,
+    });
+    mockUniversitiesLimit.mockResolvedValue({
+      data: [],
       error: null,
     });
     mockEnsureCurrentUserContext.mockResolvedValue({
@@ -179,9 +214,11 @@ describe('SignUp', () => {
 
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
     expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
-    expect(screen.getByRole('combobox')).toHaveValue('Lagos');
+    expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
     expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
+    expect(screen.getByPlaceholderText('Search your university')).toHaveValue('Mafdesh University');
+    expect(screen.getByRole('combobox', { name: /university state/i })).toHaveValue('Kaduna');
     expect(screen.getByRole('checkbox')).toBeChecked();
   });
 

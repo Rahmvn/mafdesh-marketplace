@@ -141,7 +141,9 @@ export default function AddProduct() {
   const [draftChoiceResolved, setDraftChoiceResolved] = useState(Boolean(restoredPreviewCache));
   const categoryDropdownRef = useRef(null);
 
-  const themeState = useSellerTheme(currentUser?.is_verified ?? null);
+  const themeState = useSellerTheme(
+    currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
+  );
   const theme = getSellerThemeClasses(themeState.darkMode);
   const { showError, showWarning, ModalComponent } = useModal({ darkMode: themeState.darkMode });
 

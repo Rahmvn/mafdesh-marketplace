@@ -29,6 +29,11 @@ function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeOptionalUuid(value: unknown) {
+  const normalized = normalizeText(value);
+  return normalized || "";
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -91,6 +96,10 @@ serve(async (req) => {
 
     const phoneNumber = normalizeText(body?.phone_number || authUser.user_metadata?.phone_number);
     const businessName = normalizeText(body?.business_name || authUser.user_metadata?.business_name);
+    const universityId = normalizeOptionalUuid(body?.university_id || authUser.user_metadata?.university_id);
+    const universityName = normalizeText(body?.university_name || authUser.user_metadata?.university_name);
+    const universityState = normalizeText(body?.university_state || authUser.user_metadata?.university_state);
+    const universityZone = normalizeText(body?.university_zone || authUser.user_metadata?.university_zone);
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -99,7 +108,7 @@ serve(async (req) => {
 
     const { data: existingUser, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, role, email, phone_number, business_name")
+      .select("id, role, email, phone_number, business_name, university_id, university_name, university_state, university_zone")
       .eq("id", authUser.id)
       .maybeSingle();
 
@@ -149,6 +158,14 @@ serve(async (req) => {
       phone_number: phoneNumber || existingUser?.phone_number || null,
       business_name:
         desiredRole === "seller" ? businessName || existingUser?.business_name || null : null,
+      university_id:
+        desiredRole === "seller" ? universityId || existingUser?.university_id || null : null,
+      university_name:
+        desiredRole === "seller" ? universityName || existingUser?.university_name || null : null,
+      university_state:
+        desiredRole === "seller" ? universityState || existingUser?.university_state || null : null,
+      university_zone:
+        desiredRole === "seller" ? universityZone || existingUser?.university_zone || null : null,
     };
 
     const { error: upsertUserError } = await supabaseAdmin
