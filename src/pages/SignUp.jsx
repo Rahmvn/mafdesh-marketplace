@@ -156,6 +156,28 @@ export default function SignUp() {
     return "";
   };
 
+  const readUsernameRecord = async (username) => {
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+
+    if (!normalizedUsername) {
+      return null;
+    }
+
+    const { data, error } = await runReadOperationWithRetry(() =>
+      supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', normalizedUsername)
+        .maybeSingle()
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return data || null;
+  };
+
   const checkUsernameUnique = async (username) => {
     if (!username) return true;
 
@@ -168,17 +190,7 @@ export default function SignUp() {
     setIsCheckingUsername(true);
 
     try {
-      const { data, error } = await runReadOperationWithRetry(() =>
-        supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', username)
-          .maybeSingle()
-      );
-
-      if (error) {
-        throw error;
-      }
+      const data = await readUsernameRecord(username);
 
       if (data) {
         setUsernameError("Username already taken");
@@ -195,6 +207,39 @@ export default function SignUp() {
     } finally {
       setIsCheckingUsername(false);
     }
+  };
+
+  const resolveSignupFailureFeedback = async (error, attemptedUsername) => {
+    const message = String(error?.message || '').trim();
+    const normalizedMessage = message.toLowerCase();
+
+    if (
+      normalizedMessage.includes('unexpected failure') ||
+      normalizedMessage.includes('database error saving new user')
+    ) {
+      try {
+        const usernameRecord = await readUsernameRecord(attemptedUsername);
+
+        if (usernameRecord) {
+          setUsernameError('This username is already taken. Please choose another one.');
+          return {
+            title: 'Username Already Taken',
+            message:
+              'That username was claimed before we could finish creating your account. Please choose another one and try again.',
+          };
+        }
+      } catch (diagnosticError) {
+        console.warn('Signup failure diagnosis could not confirm the username state:', diagnosticError);
+      }
+
+      return {
+        title: 'Signup Temporarily Unavailable',
+        message:
+          'We could not create your account because secure signup hit a server-side problem. Please try again in a moment. If it keeps happening, try a different username or contact support.',
+      };
+    }
+
+    return getAuthFeedback('sign up', error);
   };
 
   const getSignupRecoveryMessage = () =>
@@ -256,7 +301,7 @@ export default function SignUp() {
         return false;
       }
 
-      const feedback = getAuthFeedback('sign up', error);
+      const feedback = await resolveSignupFailureFeedback(error, nextFormData.username);
       showError(feedback.title, feedback.message);
       return false;
     }

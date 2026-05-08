@@ -296,6 +296,43 @@ describe('SignUp', () => {
     expect(screen.queryByText(/Account created successfully!/i)).not.toBeInTheDocument();
   });
 
+  it('surfaces a username-specific message when signup fails after the username is claimed', async () => {
+    mockProfilesMaybeSingle
+      .mockResolvedValueOnce({
+        data: null,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { id: 'other-user' },
+        error: null,
+      });
+    mockSignUp.mockRejectedValue(new Error('Unexpected failure, please check server logs for more information'));
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Username Already Taken',
+        'That username was claimed before we could finish creating your account. Please choose another one and try again.'
+      );
+    });
+  });
+
+  it('shows a friendlier message for generic server-side signup failures', async () => {
+    mockSignUp.mockRejectedValue(new Error('Unexpected failure, please check server logs for more information'));
+
+    const { container } = renderSignUpRoute();
+    fillAndSubmitSignUpForm(container);
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Signup Temporarily Unavailable',
+        'We could not create your account because secure signup hit a server-side problem. Please try again in a moment. If it keeps happening, try a different username or contact support.'
+      );
+    });
+  });
+
   it('retries transient auth lock conflicts during sign up and still navigates to login', async () => {
     mockSignUp
       .mockRejectedValueOnce(new Error('Navigator LockManager lock "lock:sb" could not be acquired'))
