@@ -27,6 +27,23 @@ describe('bankDetailsRequests', () => {
     });
   });
 
+  it('normalizes supported bank names before saving', () => {
+    expect(
+      sanitizeBankDetailsRequest({
+        bank_name: '  opay digital services limited (opay)  ',
+        account_number: '0123456789',
+        account_name: 'Jane Store',
+      })
+    ).toEqual({
+      bank_name: 'OPay Digital Services Limited (OPay)',
+      account_number: '0123456789',
+      account_name: 'Jane Store',
+      business_address: '',
+      bvn: '',
+      tax_id: '',
+    });
+  });
+
   it('builds a pending-only update payload so client writes do not touch approval state', () => {
     expect(
       buildBankDetailsPendingUpdate({
@@ -79,6 +96,19 @@ describe('bankDetailsRequests', () => {
       expect.objectContaining({
         ok: false,
         message: 'Account number must be exactly 10 digits.',
+      })
+    );
+
+    expect(
+      validateBankDetailsRequest({
+        bank_name: 'My Test Bank',
+        account_number: '0123456789',
+        account_name: 'Jane Store',
+      })
+    ).toEqual(
+      expect.objectContaining({
+        ok: false,
+        message: 'Please select a valid Nigerian bank from the list.',
       })
     );
 

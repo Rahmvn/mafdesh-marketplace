@@ -117,7 +117,7 @@ export default function AdminVerifications() {
           });
           showSuccess(
             'Verification Approved',
-            `${sellerLabel} is now marked as a Verified University Seller.`
+            `${sellerLabel} is now marked as a Verified Seller.`
           );
           await loadRequests({ showLoader: false });
         } catch (error) {
@@ -294,7 +294,10 @@ export default function AdminVerifications() {
                               <span className="font-semibold text-blue-950">Role:</span> {request.university_role || 'Not provided'}
                             </p>
                             <p className="sm:col-span-2">
-                              <span className="font-semibold text-blue-950">Matric / Staff ID:</span> {request.matric_or_staff_id || 'Not provided'}
+                              <span className="font-semibold text-blue-950">ID / Reference:</span> {request.matric_or_staff_id || 'Not provided'}
+                            </p>
+                            <p className="sm:col-span-2">
+                              <span className="font-semibold text-blue-950">Evidence notes:</span> {request.proof_notes || 'Not provided'}
                             </p>
                           </div>
                         </div>

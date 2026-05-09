@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Briefcase, Home, MapPin } from 'lucide-react';
+import SelectField from '../forms/SelectField';
 import { getLgasForState } from '../../utils/nigeriaData';
 import { NIGERIAN_STATES } from '../../utils/nigeriaStates';
 import {
@@ -102,46 +103,32 @@ export default function AddressFields({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700" htmlFor="saved-address-state">
-          State
-        </label>
-        <select
+        <SelectField
           id="saved-address-state"
+          label="State"
           value={form.state}
-          onChange={(event) => onChange('state', event.target.value)}
+          onChange={(nextValue) => onChange('state', nextValue)}
           onBlur={() => onBlur?.('state')}
-          className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
-        >
-          <option value="">Select state</option>
-          {NIGERIAN_STATES.map((state) => (
-            <option key={state} value={state}>
-              {state}
-            </option>
-          ))}
-        </select>
-        <FieldError message={errors.state} />
+          options={NIGERIAN_STATES}
+          placeholder="Select state"
+          tone="orange"
+          errorText={errors.state}
+        />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700" htmlFor="saved-address-lga">
-          LGA
-        </label>
-        <select
+        <SelectField
           id="saved-address-lga"
+          label="LGA"
           value={form.lga}
-          onChange={(event) => onChange('lga', event.target.value)}
+          onChange={(nextValue) => onChange('lga', nextValue)}
           onBlur={() => onBlur?.('lga')}
           disabled={!form.state}
-          className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-        >
-          <option value="">{form.state ? 'Select local government area' : 'Select state first'}</option>
-          {lgaOptions.map((lga) => (
-            <option key={lga} value={lga}>
-              {lga}
-            </option>
-          ))}
-        </select>
-        <FieldError message={errors.lga} />
+          options={lgaOptions}
+          placeholder={form.state ? 'Select local government area' : 'Select state first'}
+          tone="orange"
+          errorText={errors.lga}
+        />
       </div>
 
       <div>

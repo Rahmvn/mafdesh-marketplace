@@ -163,7 +163,7 @@ export function SellerShell({
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${theme.badge}`}>
                     {isVerified ? <Sparkles className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
-                    {isVerified ? 'Verified university seller workspace' : 'Seller workspace'}
+                    {isVerified ? 'Verified seller workspace' : 'Seller workspace'}
                   </span>
                   {isVerified && <VerificationBadge className="!bg-white/10 !text-orange-200" />}
                 </div>

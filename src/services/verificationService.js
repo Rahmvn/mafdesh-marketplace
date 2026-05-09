@@ -87,6 +87,7 @@ export async function fetchSellerVerificationSnapshot(sellerId) {
         university_zone,
         university_role,
         matric_or_staff_id,
+        proof_notes,
         proof_url,
         payment_amount,
         payment_status,
@@ -151,6 +152,7 @@ export async function submitSellerVerificationApplication({
   universityZone,
   universityRole,
   matricOrStaffId,
+  proofNotes,
   proofFile,
 }) {
   const proofPath = await uploadSellerVerificationProof(sellerId, proofFile);
@@ -164,6 +166,7 @@ export async function submitSellerVerificationApplication({
       university_zone: universityZone || null,
       university_role: universityRole,
       matric_or_staff_id: matricOrStaffId || null,
+      proof_notes: proofNotes || null,
       proof_url: proofPath,
       payment_amount: EARLY_VERIFICATION_FEE,
       payment_status: SELLER_VERIFICATION_PAYMENT_STATUSES.MANUAL_PENDING,
@@ -182,6 +185,7 @@ export async function submitSellerVerificationApplication({
         university_zone,
         university_role,
         matric_or_staff_id,
+        proof_notes,
         proof_url,
         payment_amount,
         payment_status,

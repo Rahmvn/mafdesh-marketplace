@@ -68,7 +68,7 @@ describe('SellerShell', () => {
       expect(screen.getByRole('button', { name: /switch to light mode/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/verified university seller workspace/i)).toBeInTheDocument();
+    expect(screen.getByText(/verified seller workspace/i)).toBeInTheDocument();
     expect(document.querySelector('[data-theme="dark"]')).not.toBeNull();
   });
 

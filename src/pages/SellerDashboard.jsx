@@ -519,7 +519,7 @@ export default function SellerDashboard() {
                         <Sparkles className="h-3.5 w-3.5" />
                         Grow trust
                       </span>
-                      <h3 className="mt-4 text-xl font-bold">Become a verified university seller</h3>
+                      <h3 className="mt-4 text-xl font-bold">Become a verified seller</h3>
                       <p className={`mt-2 max-w-md text-sm leading-6 ${theme.mutedText}`}>
                         Add the campus trust badge and stronger recommendation visibility.
                       </p>
@@ -536,7 +536,7 @@ export default function SellerDashboard() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {['Verified University Seller badge', 'Buyer confidence', 'Recommendation boost'].map((benefit) => (
+                    {['Verified Seller badge', 'Buyer confidence', 'Recommendation boost'].map((benefit) => (
                       <span
                         key={benefit}
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${

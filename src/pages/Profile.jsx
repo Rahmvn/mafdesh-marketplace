@@ -20,6 +20,8 @@ import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import { getSessionWithRetry } from '../utils/authResilience';
 import VerificationBadge from '../components/VerificationBadge';
+import SearchablePickerField from '../components/forms/SearchablePickerField';
+import SelectField from '../components/forms/SelectField';
 import useModal from '../hooks/useModal';
 import { RetryablePageError } from '../components/PageFeedback';
 import { listSavedAddresses } from '../services/savedAddressService';
@@ -43,48 +45,7 @@ import {
   sanitizeBankDetailsRequest,
   validateBankDetailsRequest,
 } from '../utils/bankDetailsRequests';
-
-const NIGERIAN_BANKS = [
-  'Access Bank',
-  'ALAT by Wema',
-  'Carbon',
-  'Citibank',
-  'Ecobank',
-  'FairMoney Microfinance Bank',
-  'Fidelity Bank',
-  'First Bank of Nigeria',
-  'First City Monument Bank (FCMB)',
-  'Globus Bank',
-  'Guaranty Trust Bank (GTBank)',
-  'Heritage Bank',
-  'Jaiz Bank',
-  'Keystone Bank',
-  'Kuda Microfinance Bank',
-  'Lotus Bank',
-  'Moniepoint Microfinance Bank',
-  'OPay Digital Services Limited (OPay)',
-  'Optimus Bank',
-  'PalmPay',
-  'Parallex Bank',
-  'Polaris Bank',
-  'PremiumTrust Bank',
-  'Providus Bank',
-  'Rubies Microfinance Bank',
-  'Signature Bank',
-  'Sparkle Microfinance Bank',
-  'Stanbic IBTC Bank',
-  'Standard Chartered Bank',
-  'Sterling Bank',
-  'SunTrust Bank',
-  'TAJBank',
-  'Titan Trust Bank',
-  'Union Bank of Nigeria',
-  'United Bank for Africa (UBA)',
-  'Unity Bank',
-  'VFD Microfinance Bank',
-  'Wema Bank',
-  'Zenith Bank',
-];
+import { findMatchingNigerianBankName, NIGERIAN_BANKS } from '../utils/nigerianBanks';
 
 function getSellerVerificationLabel(status, isVerified) {
   if (isVerified) {
@@ -102,6 +63,26 @@ function getSellerVerificationLabel(status, isVerified) {
   }
 
   return 'Not submitted';
+}
+
+function normalizeUniversityPayload(values = {}) {
+  return {
+    university_id: values.university_id || null,
+    university_name: String(values.university_name || '').trim(),
+    university_state: String(values.university_state || '').trim(),
+    university_zone: String(values.university_zone || '').trim(),
+    university_role: String(values.university_role || '').trim() || null,
+  };
+}
+
+function areUniversityPayloadsEqual(left = {}, right = {}) {
+  return (
+    (left.university_id || '') === (right.university_id || '')
+    && String(left.university_name || '') === String(right.university_name || '')
+    && String(left.university_state || '') === String(right.university_state || '')
+    && String(left.university_zone || '') === String(right.university_zone || '')
+    && String(left.university_role || '') === String(right.university_role || '')
+  );
 }
 
 function formatProfileDate(value) {
@@ -230,35 +211,33 @@ function BankDetailsForm({
 
     return bank.toLowerCase().includes(normalizedBankQuery);
   }).slice(0, 20);
+  const exactBankMatch = findMatchingNigerianBankName(bankQuery);
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       {title ? <p className="text-sm font-semibold text-gray-700">{title}</p> : null}
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700">Bank Name *</label>
-        <input
-          type="text"
-          list={bankDatalistId}
-          value={bankQuery}
-          onChange={(event) => {
-            const nextValue = event.target.value;
-            setBankQuery(nextValue);
-            onChange('bank_name', nextValue);
-          }}
-          className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
-          placeholder="Search or select your bank"
-          autoComplete="off"
-        />
-        <datalist id={bankDatalistId}>
-          {filteredBanks.map((bank) => (
-            <option key={bank} value={bank}>
-              {bank}
-            </option>
-          ))}
-        </datalist>
-        <p className="mt-1 text-xs text-gray-500">Start typing to search Nigerian banks.</p>
-      </div>
+      <SearchablePickerField
+        id={bankDatalistId}
+        label="Bank Name *"
+        value={bankQuery}
+        onChange={(nextValue) => {
+          setBankQuery(nextValue);
+          onChange('bank_name', nextValue);
+        }}
+        placeholder="Search Nigerian banks"
+        helperText="Type part of the bank name and pick a supported Nigerian bank."
+        options={filteredBanks}
+        onSelectOption={(bank) => {
+          setBankQuery(bank);
+          onChange('bank_name', bank);
+        }}
+        getOptionKey={(bank) => bank}
+        getOptionPrimaryText={(bank) => bank}
+        getOptionSecondaryText={() => ''}
+        selectedBadgeText={exactBankMatch ? 'Selected' : ''}
+        tone="blue"
+      />
 
       <div>
         <label className="block text-sm font-medium text-gray-700">Account Number *</label>
@@ -370,6 +349,7 @@ export default function Profile() {
     confirmPassword: '',
   });
   const [showChangeForm, setShowChangeForm] = useState(false);
+  const [isEditingUniversity, setIsEditingUniversity] = useState(false);
   const [showCancelSubscriptionConfirm, setShowCancelSubscriptionConfirm] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState(null);
   const [bankMessage, setBankMessage] = useState(null);
@@ -449,6 +429,8 @@ export default function Profile() {
           university_zone: merged.university_zone || '',
           university_role: merged.university_role || 'student',
         });
+        setIsEditingUniversity(false);
+        setShowChangeForm(false);
       } else if (merged.role === 'buyer') {
         try {
           const savedAddresses = await listSavedAddresses();
@@ -591,7 +573,7 @@ export default function Profile() {
       await loadUserProfile();
       setSubscriptionMessage({
         type: 'success',
-        text: 'Subscription cancelled. Your Verified University Seller badge has been removed.',
+        text: 'Subscription cancelled. Your Verified Seller badge has been removed.',
       });
     }
   };
@@ -635,17 +617,44 @@ export default function Profile() {
     setUniversitySuggestions([]);
   };
 
+  const useCustomUniversityName = () => {
+    setUniversityMessage(null);
+    setUniversityForm((current) => ({
+      ...current,
+      university_id: '',
+      university_name: String(current.university_name || '').trim(),
+    }));
+    setUniversitySuggestions([]);
+  };
+
+  const resetUniversityFormToProfile = () => {
+    setUniversitySuggestions([]);
+    setUniversityForm({
+      university_id: profile?.university_id || '',
+      university_name: profile?.university_name || '',
+      university_state: profile?.university_state || '',
+      university_zone: profile?.university_zone || '',
+      university_role: profile?.university_role || 'student',
+    });
+  };
+
+  const openUniversityEdit = () => {
+    setUniversityMessage(null);
+    resetUniversityFormToProfile();
+    setIsEditingUniversity(true);
+  };
+
+  const cancelUniversityEdit = () => {
+    setUniversityMessage(null);
+    resetUniversityFormToProfile();
+    setIsEditingUniversity(false);
+  };
+
   const submitUniversityIdentity = async (event) => {
     event.preventDefault();
     setUniversityMessage(null);
 
-    const payload = {
-      university_id: universityForm.university_id || null,
-      university_name: String(universityForm.university_name || '').trim(),
-      university_state: String(universityForm.university_state || '').trim(),
-      university_zone: String(universityForm.university_zone || '').trim(),
-      university_role: String(universityForm.university_role || '').trim() || null,
-    };
+    const payload = normalizeUniversityPayload(universityForm);
 
     if (!payload.university_name || !payload.university_state) {
       setUniversityMessage({
@@ -663,13 +672,18 @@ export default function Profile() {
       return;
     }
 
-    const identityChanged = (
-      (payload.university_id || '') !== String(profile?.university_id || '')
-      || payload.university_name !== String(profile?.university_name || '')
-      || payload.university_state !== String(profile?.university_state || '')
-      || payload.university_zone !== String(profile?.university_zone || '')
-      || (payload.university_role || '') !== String(profile?.university_role || '')
-    );
+    const currentIdentity = normalizeUniversityPayload(profile);
+    const identityChanged = !areUniversityPayloadsEqual(payload, currentIdentity);
+
+    if (!identityChanged) {
+      setUniversityMessage({
+        type: 'success',
+        text: 'No changes detected. Your university details stay the same.',
+      });
+      resetUniversityFormToProfile();
+      setIsEditingUniversity(false);
+      return;
+    }
 
     setIsSavingUniversity(true);
 
@@ -699,6 +713,7 @@ export default function Profile() {
         text: successText,
       });
       showSuccess('University Updated', successText);
+      setIsEditingUniversity(false);
     } catch (error) {
       const message = error?.message || 'We could not update your university details.';
       setUniversityMessage({
@@ -830,6 +845,26 @@ export default function Profile() {
     const sanitizedPendingDetails = validation.sanitized;
     setSaving(true);
     const isFirstTimeSetup = !hasActiveDetails;
+    const currentActiveDetails = sanitizeBankDetailsRequest({
+      bank_name: profile?.bank_name,
+      account_number: profile?.account_number,
+      account_name: profile?.account_name,
+      business_address: profile?.business_address,
+      bvn: profile?.bvn,
+      tax_id: profile?.tax_id,
+    });
+
+    if (!isFirstTimeSetup && JSON.stringify(sanitizedPendingDetails) === JSON.stringify(currentActiveDetails)) {
+      setBankMessage({
+        type: 'success',
+        text: 'No changes detected. Your bank details stay the same.',
+      });
+      setShowChangeForm(false);
+      setPendingDetails(currentActiveDetails);
+      setSaving(false);
+      return;
+    }
+
     const updatePayload = isFirstTimeSetup
       ? buildApprovedBankDetailsUpdate(sanitizedPendingDetails)
       : buildBankDetailsPendingUpdate(sanitizedPendingDetails);
@@ -900,6 +935,7 @@ export default function Profile() {
   const verificationLabel = getSellerVerificationLabel(profile.verification_status, isVerified);
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
+  const universityFieldsLocked = Boolean(profile.university_name) && !isEditingUniversity;
   const avatarGradientClass = isSeller
     ? 'bg-gradient-to-br from-orange-500 to-orange-600'
     : 'bg-gradient-to-br from-blue-800 to-blue-500';
@@ -1111,74 +1147,60 @@ export default function Profile() {
                   onSubmit={submitUniversityIdentity}
                   className="space-y-4 rounded-xl border border-blue-200 bg-white p-4"
                 >
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">University name</label>
-                    <input
-                      type="text"
-                      value={universityForm.university_name}
-                      onChange={(event) => handleUniversityFieldChange('university_name', event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
-                      placeholder="Search your university"
-                    />
-                    <p className="mt-2 text-xs text-gray-500">
-                      Choose a suggested school when possible. If your campus is missing, keep typing and save it as a custom university.
-                    </p>
-                    {isSearchingUniversities ? (
-                      <p className="mt-2 text-sm font-medium text-orange-600">
-                        Loading university suggestions...
-                      </p>
-                    ) : null}
-                    {!isSearchingUniversities && universitySuggestions.length > 0 ? (
-                      <div className="mt-2 rounded-lg border border-orange-100 bg-orange-50/40 p-2">
-                        <div className="flex flex-col gap-2">
-                          {universitySuggestions.map((university) => (
-                            <button
-                              key={university.id}
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => handleUniversitySuggestionSelect(university)}
-                              className="rounded-lg bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-orange-50"
-                            >
-                              <span className="block text-slate-900">{university.name}</span>
-                              <span className="block text-xs text-slate-500">
-                                {university.state} • {university.zone}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+                  {universityFieldsLocked ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      Your saved university details are locked until you click edit.
+                    </div>
+                  ) : null}
+
+                  <SearchablePickerField
+                    id="profile-university-name"
+                    label="University name"
+                    value={universityForm.university_name}
+                    onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
+                    placeholder="Search or choose your university"
+                    helperText="Pick a suggested school when it appears. If it is missing, use Other and keep your typed university name."
+                    disabled={universityFieldsLocked}
+                    loading={isSearchingUniversities}
+                    options={universitySuggestions}
+                    onSelectOption={handleUniversitySuggestionSelect}
+                    getOptionKey={(university) => university.id}
+                    getOptionPrimaryText={(university) => university.name}
+                    getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                    allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
+                    showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
+                    customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other university`}
+                    onCustomAction={useCustomUniversityName}
+                    selectedBadgeText={universityForm.university_id ? 'Catalog match' : universityForm.university_name ? 'Other' : ''}
+                    tone="orange"
+                  />
 
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">University state</label>
-                      <select
-                        value={universityForm.university_state}
-                        onChange={(event) => handleUniversityFieldChange('university_state', event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
-                      >
-                        <option value="">Select state</option>
-                        {NIGERIAN_STATES.map((state) => (
-                          <option key={state} value={state}>
-                            {state}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <SelectField
+                      id="profile-university-state"
+                      label="University state"
+                      value={universityForm.university_state}
+                      onChange={(nextValue) => handleUniversityFieldChange('university_state', nextValue)}
+                      options={NIGERIAN_STATES}
+                      placeholder="Select state"
+                      disabled={universityFieldsLocked}
+                      tone="orange"
+                    />
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">University role</label>
-                      <select
-                        value={universityForm.university_role}
-                        onChange={(event) => handleUniversityFieldChange('university_role', event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-gray-900"
-                      >
-                        <option value="student">Student</option>
-                        <option value="staff">Staff</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
+                    <SelectField
+                      id="profile-university-role"
+                      label="University role"
+                      value={universityForm.university_role}
+                      onChange={(nextValue) => handleUniversityFieldChange('university_role', nextValue)}
+                      options={[
+                        { value: 'student', label: 'Student' },
+                        { value: 'staff', label: 'Staff' },
+                        { value: 'other', label: 'Other' },
+                      ]}
+                      placeholder="Select role"
+                      disabled={universityFieldsLocked}
+                      tone="orange"
+                    />
                   </div>
 
                   <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
@@ -1190,13 +1212,36 @@ export default function Profile() {
                     Changing your university identity after a submission or approval resets seller verification so the new campus details can be reviewed again.
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSavingUniversity}
-                    className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {isSavingUniversity ? 'Saving...' : 'Save University Details'}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    {universityFieldsLocked ? (
+                      <button
+                        type="button"
+                        onClick={openUniversityEdit}
+                        className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+                      >
+                        Edit University Details
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="submit"
+                          disabled={isSavingUniversity}
+                          className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {isSavingUniversity ? 'Saving...' : 'Save University Details'}
+                        </button>
+                        {profile?.university_name ? (
+                          <button
+                            type="button"
+                            onClick={cancelUniversityEdit}
+                            className="rounded bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-300"
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
 
                   <InlineMessage message={universityMessage} />
                 </form>
@@ -1213,10 +1258,10 @@ export default function Profile() {
                   <div className="rounded-xl border border-green-200 bg-green-50 p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle size={18} className="text-green-600" />
-                      <p className="font-semibold text-green-700">Verified University Seller</p>
+                      <p className="font-semibold text-green-700">Verified Seller</p>
                     </div>
                     <p className="mt-1 text-sm text-green-600">
-                      Your university verification is approved. The badge now appears across buyer-facing product and seller surfaces.
+                      Your university verification is approved. Your Verified Seller badge now appears across buyer-facing product and seller surfaces.
                     </p>
                     {profile.verification_approved_at ? (
                       <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
@@ -1310,7 +1355,7 @@ export default function Profile() {
                           }}
                           className="rounded bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
                         >
-                          Request Change
+                          Edit Bank Details
                         </button>
                       ) : (
                         <div className="border-t pt-4">

@@ -5,6 +5,8 @@ import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
+import SearchablePickerField from '../components/forms/SearchablePickerField';
+import SelectField from '../components/forms/SelectField';
 import {
   ensureCurrentUserContext,
   getAuthCallbackUrl,
@@ -339,6 +341,14 @@ export default function SignUp() {
       university_name: university?.name || '',
       university_state: university?.state || '',
       university_zone: university?.zone || getNigeriaGeoZoneForState(university?.state) || '',
+    });
+    setUniversitySuggestions([]);
+  };
+
+  const useCustomUniversityName = () => {
+    updateUniversityDraft({
+      university_id: '',
+      university_name: String(formData.university_name || '').trim(),
     });
     setUniversitySuggestions([]);
   };
@@ -856,35 +866,16 @@ export default function SignUp() {
               </div>
 
               <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  LOCATION (STATE IN NIGERIA)
-                </label>
-                <select
+                <SelectField
+                  id="signup-location-state"
+                  label="LOCATION (STATE IN NIGERIA)"
                   value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  aria-label="Location (State in Nigeria)"
-                  className="w-full px-4 py-3.5 border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all appearance-none bg-blue-50/20 font-bold text-blue-900 shadow-sm hover:border-blue-200 cursor-pointer"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'%231e40af'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'6%209%2012%2015%2018%209'%3E%3C/polyline%3E%3C/svg%3E")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 16px center",
-                    backgroundSize: "14px"
-                  }}
-                >
-                  <option value="" className="text-gray-400">Select your state</option>
-                  {NIGERIAN_STATES.map(state => (
-                    <option key={state} value={state} className="text-blue-900">{state}</option>
-                  ))}
-                </select>
+                  onChange={(nextValue) => setFormData({ ...formData, location: nextValue })}
+                  ariaLabel="Location (State in Nigeria)"
+                  options={NIGERIAN_STATES}
+                  placeholder="Select your state"
+                  tone="blue"
+                />
               </div>
 
               <div>
@@ -1065,158 +1056,93 @@ export default function SignUp() {
                 <div className="space-y-4 border-t border-gray-100 pt-4">
                   {userType === "seller" ? (
                     <div>
-                    <label
-                      style={{
-                        color: "#374151",
-                        fontSize: "13px",
-                        fontWeight: "700",
-                        display: "block",
-                        marginBottom: "10px",
-                        letterSpacing: "0.3px",
-                      }}
-                    >
-                      BUSINESS NAME
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Your store name"
-                      value={formData.business_name}
-                      maxLength={100}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          business_name: e.target.value,
-                        })
-                      }
-                      style={{
-                        width: "100%",
-                        padding: "13px 16px",
-                        borderRadius: "11px",
-                        border: "1.5px solid #e5e7eb",
-                        fontSize: "15px",
-                        fontFamily: "inherit",
-                        transition: "all 0.25s ease",
-                        boxSizing: "border-box",
-                        color: "#111827",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = "#ea580c";
-                        e.target.style.boxShadow =
-                          "0 0 0 4px rgba(234, 88, 12, 0.12)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "#e5e7eb";
-                        e.target.style.boxShadow = "none";
-                      }}
-                    />
+                      <label
+                        style={{
+                          color: "#374151",
+                          fontSize: "13px",
+                          fontWeight: "700",
+                          display: "block",
+                          marginBottom: "10px",
+                          letterSpacing: "0.3px",
+                        }}
+                      >
+                        BUSINESS NAME
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Your store name"
+                        value={formData.business_name}
+                        maxLength={100}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            business_name: e.target.value,
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "13px 16px",
+                          borderRadius: "11px",
+                          border: "1.5px solid #e5e7eb",
+                          fontSize: "15px",
+                          fontFamily: "inherit",
+                          transition: "all 0.25s ease",
+                          boxSizing: "border-box",
+                          color: "#111827",
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.borderColor = "#ea580c";
+                          e.target.style.boxShadow =
+                            "0 0 0 4px rgba(234, 88, 12, 0.12)";
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.borderColor = "#e5e7eb";
+                          e.target.style.boxShadow = "none";
+                        }}
+                      />
                     </div>
                   ) : null}
 
                   <div>
-                    <label
-                      style={{
-                        color: "#374151",
-                        fontSize: "13px",
-                        fontWeight: "700",
-                        display: "block",
-                        marginBottom: "10px",
-                        letterSpacing: "0.3px",
-                      }}
-                    >
-                      {userType === "seller" ? "UNIVERSITY" : "UNIVERSITY (OPTIONAL)"}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Search your university"
+                    <SearchablePickerField
+                      id="signup-university-name"
+                      label={userType === "seller" ? "UNIVERSITY" : "UNIVERSITY (OPTIONAL)"}
                       value={formData.university_name}
+                      onChange={handleUniversityNameChange}
+                      placeholder="Search your university"
                       maxLength={120}
-                      onChange={(e) => handleUniversityNameChange(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "13px 16px",
-                        borderRadius: "11px",
-                        border: "1.5px solid #e5e7eb",
-                        fontSize: "15px",
-                        fontFamily: "inherit",
-                        transition: "all 0.25s ease",
-                        boxSizing: "border-box",
-                        color: "#111827",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = userType === "seller" ? "#ea580c" : "#1e40af";
-                        e.target.style.boxShadow =
-                          userType === "seller"
-                            ? "0 0 0 4px rgba(234, 88, 12, 0.12)"
-                            : "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "#e5e7eb";
-                        e.target.style.boxShadow = "none";
-                      }}
+                      helperText={
+                        userType === "seller"
+                          ? 'Choose a suggested school when it appears. If your campus is missing, use Other and keep typing it as a custom university.'
+                          : 'You can pick a suggested school or use Other if your university is not listed.'
+                      }
+                      loading={isLoadingUniversities}
+                      options={universitySuggestions}
+                      onSelectOption={selectUniversity}
+                      getOptionKey={(university) => university.id}
+                      getOptionPrimaryText={(university) => university.name}
+                      getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                      allowCustomAction={Boolean(String(formData.university_name || '').trim())}
+                      showCustomAction={Boolean(String(formData.university_name || '').trim())}
+                      customActionLabel={`Use "${String(formData.university_name || '').trim()}" as Other university`}
+                      onCustomAction={useCustomUniversityName}
+                      selectedBadgeText={formData.university_id ? 'Catalog match' : formData.university_name ? 'Other' : ''}
+                      tone={userType === "seller" ? "orange" : "blue"}
                     />
-                    <p style={{ color: "#6b7280", fontSize: "11px", marginTop: "6px", fontWeight: "500" }}>
-                      {userType === "seller"
-                        ? 'Choose a suggested school when it appears. If your campus is missing, keep typing and continue with it as a custom university.'
-                        : 'You can pick a suggested school or keep typing if your university is not listed.'}
-                    </p>
-                    {isLoadingUniversities ? (
-                      <p style={{ color: userType === "seller" ? "#ea580c" : "#1e40af", fontSize: "12px", marginTop: "6px", fontWeight: "600" }}>
-                        Loading university suggestions...
-                      </p>
-                    ) : null}
-                    {!isLoadingUniversities && universitySuggestions.length > 0 ? (
-                      <div className={`mt-2 rounded-xl p-2 ${userType === "seller" ? 'border border-orange-100 bg-orange-50/50' : 'border border-blue-100 bg-blue-50/50'}`}>
-                        <div className="flex flex-col gap-2">
-                          {universitySuggestions.map((university) => (
-                            <button
-                              key={university.id}
-                              type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => selectUniversity(university)}
-                              className="rounded-lg bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-orange-50"
-                            >
-                              <span className="block text-slate-900">{university.name}</span>
-                              <span className="block text-xs text-slate-500">
-                                {university.state} • {university.zone}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
 
                   {userType === "seller" ? (
                     <div>
-                    <label
-                      style={{
-                        color: "#374151",
-                        fontSize: "13px",
-                        fontWeight: "700",
-                        display: "block",
-                        marginBottom: "10px",
-                        letterSpacing: "0.3px",
-                      }}
-                    >
-                      UNIVERSITY STATE
-                    </label>
-                    <select
-                      value={formData.university_state}
-                      onChange={(e) => handleUniversityStateChange(e.target.value)}
-                      aria-label="University state"
-                      className="w-full px-4 py-3.5 border-2 border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all appearance-none bg-orange-50/20 font-bold text-orange-900 shadow-sm hover:border-orange-200 cursor-pointer"
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'%23ea580c'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpolyline%20points%3D'6%209%2012%2015%2018%209'%3E%3C/polyline%3E%3C/svg%3E")`,
-                        backgroundRepeat: "no-repeat",
-                        backgroundPosition: "right 16px center",
-                        backgroundSize: "14px"
-                      }}
-                    >
-                      <option value="" className="text-gray-400">Select university state</option>
-                      {NIGERIAN_STATES.map((state) => (
-                        <option key={state} value={state} className="text-orange-900">{state}</option>
-                      ))}
-                    </select>
+                      <SelectField
+                        id="signup-university-state"
+                        label="UNIVERSITY STATE"
+                        value={formData.university_state}
+                        onChange={handleUniversityStateChange}
+                        ariaLabel="University state"
+                        options={NIGERIAN_STATES}
+                        placeholder="Select university state"
+                        tone="orange"
+                      />
                     </div>
                   ) : null}
 

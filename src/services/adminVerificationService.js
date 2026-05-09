@@ -49,6 +49,7 @@ export async function fetchPendingVerificationRequests() {
       university_zone,
       university_role,
       matric_or_staff_id,
+      proof_notes,
       proof_url,
       payment_amount,
       payment_status,

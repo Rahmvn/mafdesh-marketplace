@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import SafeImage from '../components/SafeImage';
 import AddressSelector from '../components/buyer/AddressSelector';
+import SelectField from '../components/forms/SelectField';
 import {
   GenericContentSkeleton,
   InlineLoadingSkeleton,
@@ -402,22 +403,19 @@ export default function Checkout() {
 
               {deliveryType === DELIVERY_TYPE.PICKUP && pickupEnabled ? (
                 <div className="mt-4">
-                  <label className="mb-2 block text-sm font-semibold text-blue-900">
-                    Select Pickup Location
-                  </label>
-                  <select
+                  <SelectField
+                    id="checkout-pickup-location"
+                    label="Select Pickup Location"
                     value={selectedPickup}
-                    onChange={(event) => setSelectedPickup(event.target.value)}
-                    className="w-full rounded-lg border border-blue-200 p-3"
+                    onChange={setSelectedPickup}
+                    options={pickupOptions.map((location) => ({
+                      value: location.id,
+                      label: `${location.label} - ${formatPickupLocationAddress(location)}`,
+                    }))}
+                    placeholder="Choose a pickup point"
+                    tone="blue"
                     required
-                  >
-                    <option value="">Choose a pickup point</option>
-                    {pickupOptions.map((location) => (
-                      <option key={location.id} value={location.id}>
-                        {location.label} - {formatPickupLocationAddress(location)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                   <p className="mt-2 text-sm text-gray-500">
                     Seller has 2 business days to prepare. You&apos;ll be notified when ready.
                   </p>

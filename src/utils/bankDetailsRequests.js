@@ -1,3 +1,5 @@
+import { findMatchingNigerianBankName } from './nigerianBanks';
+
 function toTrimmedString(value) {
   return String(value || '').trim();
 }
@@ -7,8 +9,10 @@ function digitsOnly(value) {
 }
 
 export function sanitizeBankDetailsRequest(values = {}) {
+  const canonicalBankName = findMatchingNigerianBankName(values.bank_name);
+
   return {
-    bank_name: toTrimmedString(values.bank_name),
+    bank_name: canonicalBankName || toTrimmedString(values.bank_name),
     account_number: digitsOnly(values.account_number),
     account_name: toTrimmedString(values.account_name),
     business_address: toTrimmedString(values.business_address),
@@ -24,6 +28,14 @@ export function validateBankDetailsRequest(values = {}) {
     return {
       ok: false,
       message: 'Bank name, account number and account name are required.',
+      sanitized,
+    };
+  }
+
+  if (!findMatchingNigerianBankName(sanitized.bank_name)) {
+    return {
+      ok: false,
+      message: 'Please select a valid Nigerian bank from the list.',
       sanitized,
     };
   }

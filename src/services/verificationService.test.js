@@ -147,6 +147,7 @@ describe('verificationService', () => {
       universityZone: 'South West',
       universityRole: 'student',
       matricOrStaffId: 'MU/001',
+      proofNotes: 'Latest school fees receipt for 2025/2026 session',
       proofFile: new File(['proof'], 'proof.pdf', { type: 'application/pdf' }),
     });
 
@@ -178,6 +179,7 @@ describe('verificationService', () => {
         universityZone: 'South West',
         universityRole: 'student',
         matricOrStaffId: 'MU/001',
+        proofNotes: 'Student ID card',
         proofFile: new File(['proof'], 'proof.pdf', { type: 'application/pdf' }),
       })
     ).rejects.toThrow('insert failed');

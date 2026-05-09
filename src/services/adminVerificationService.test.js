@@ -65,6 +65,7 @@ describe('adminVerificationService', () => {
         {
           id: 'verification-1',
           proof_url: 'seller-1/proof.png',
+          proof_notes: 'Uploaded current course form',
           seller: {
             id: 'seller-1',
             email: 'seller@example.com',
@@ -100,6 +101,7 @@ describe('adminVerificationService', () => {
       },
       signedProofUrl: 'https://example.com/proof.png',
       isImageProof: true,
+      proof_notes: 'Uploaded current course form',
     });
   });
 

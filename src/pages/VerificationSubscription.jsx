@@ -10,6 +10,8 @@ import {
   Upload,
   XCircle,
 } from 'lucide-react';
+import SearchablePickerField from '../components/forms/SearchablePickerField';
+import SelectField from '../components/forms/SelectField';
 import Footer from '../components/Footer';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 import {
@@ -31,6 +33,7 @@ import { getSessionWithRetry } from '../utils/authResilience';
 import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
 import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import { setStoredUser } from '../utils/storage';
+import { searchUniversities } from '../services/universityService';
 
 const ZONE_OPTIONS = [
   'North Central',
@@ -81,6 +84,7 @@ function getInitialFormState(snapshot) {
     universityZone: source.university_zone || '',
     universityRole: source.university_role || 'student',
     matricOrStaffId: source.matric_or_staff_id || '',
+    proofNotes: source.proof_notes || '',
   };
 }
 
@@ -112,6 +116,8 @@ export default function SellerVerificationPage() {
   const [formState, setFormState] = useState(() => getInitialFormState());
   const [proofFile, setProofFile] = useState(null);
   const [proofInputKey, setProofInputKey] = useState(0);
+  const [universitySuggestions, setUniversitySuggestions] = useState([]);
+  const [isSearchingUniversities, setIsSearchingUniversities] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -162,6 +168,49 @@ export default function SellerVerificationPage() {
     loadVerificationData();
   }, [loadVerificationData]);
 
+  useEffect(() => {
+    const query = String(formState.universityName || '').trim();
+
+    if (query.length < 2) {
+      setUniversitySuggestions([]);
+      setIsSearchingUniversities(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSuggestions = async () => {
+      setIsSearchingUniversities(true);
+
+      try {
+        const results = await searchUniversities({
+          query,
+          state: formState.universityState,
+          limit: 6,
+        });
+
+        if (!cancelled) {
+          setUniversitySuggestions(results);
+        }
+      } catch (error) {
+        console.error('Verification university search failed:', error);
+        if (!cancelled) {
+          setUniversitySuggestions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearchingUniversities(false);
+        }
+      }
+    };
+
+    loadSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formState.universityName, formState.universityState]);
+
   const statusMeta = STATUS_META[verificationStatus] || STATUS_META[SELLER_VERIFICATION_STATUSES.NOT_SUBMITTED];
   const StatusIcon = statusMeta.icon;
   const proofLabel = proofFile?.name || getProofDisplayName(latestSubmission?.proof_url);
@@ -187,7 +236,7 @@ export default function SellerVerificationPage() {
         || verificationStatus === SELLER_VERIFICATION_STATUSES.APPROVED,
     },
     {
-      title: 'Verified University Seller badge',
+      title: 'Verified Seller badge',
       complete: verificationStatus === SELLER_VERIFICATION_STATUSES.APPROVED,
     },
   ]), [verificationStatus]);
@@ -220,6 +269,28 @@ export default function SellerVerificationPage() {
         [field]: value,
       };
     });
+  };
+
+  const handleUniversitySuggestionSelect = (university) => {
+    setSubmitMessage({ type: '', text: '' });
+    setFormState((current) => ({
+      ...current,
+      universityId: university?.id || '',
+      universityName: university?.name || '',
+      universityState: university?.state || '',
+      universityZone: university?.zone || getNigeriaGeoZoneForState(university?.state) || '',
+    }));
+    setUniversitySuggestions([]);
+  };
+
+  const useCustomUniversityName = () => {
+    setSubmitMessage({ type: '', text: '' });
+    setFormState((current) => ({
+      ...current,
+      universityId: '',
+      universityName: String(current.universityName || '').trim(),
+    }));
+    setUniversitySuggestions([]);
   };
 
   const handleProofChange = (event) => {
@@ -275,11 +346,6 @@ export default function SellerVerificationPage() {
       return false;
     }
 
-    if (!formState.matricOrStaffId.trim()) {
-      showGlobalWarning('ID Required', 'Enter your matric number or staff ID.');
-      return false;
-    }
-
     if (!proofFile) {
       showGlobalWarning('Proof Required', 'Upload a university proof document before submitting.');
       return false;
@@ -311,6 +377,7 @@ export default function SellerVerificationPage() {
         universityZone: formState.universityZone,
         universityRole: formState.universityRole,
         matricOrStaffId: formState.matricOrStaffId.trim(),
+        proofNotes: String(formState.proofNotes || '').trim(),
         proofFile,
       });
 
@@ -368,7 +435,7 @@ export default function SellerVerificationPage() {
       themeState={themeState}
       showHeader
       title="Seller Verification"
-      subtitle="Submit your university details for early-access seller verification. Approved sellers get the Verified University Seller badge and better visibility in recommendation surfaces."
+      subtitle="Submit your university details for early-access seller verification. Approved sellers get the Verified Seller badge and better visibility in recommendation surfaces."
       actions={(
         <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${theme.badge}`}>
           <Shield className="h-4 w-4" />
@@ -410,7 +477,7 @@ export default function SellerVerificationPage() {
           </p>
           <h2 className="mt-2 text-2xl font-bold">Badge + boost</h2>
           <p className={`mt-3 text-sm leading-6 ${theme.mutedText}`}>
-            Approved sellers get the Verified University Seller badge and stronger visibility in recommendation sections.
+            Approved sellers get the Verified Seller badge and stronger visibility in recommendation sections.
           </p>
         </article>
       </section>
@@ -444,7 +511,7 @@ export default function SellerVerificationPage() {
                   {currentUser?.is_verified_seller ? (
                     <span className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
                       <BadgeCheck className="h-4 w-4" />
-                      Verified University Seller active
+                      Verified Seller active
                     </span>
                   ) : null}
                 </div>
@@ -499,9 +566,14 @@ export default function SellerVerificationPage() {
                     <p>State: {latestSubmission.university_state || 'Not provided'}</p>
                     <p>Zone: {latestSubmission.university_zone || 'Not provided'}</p>
                     <p>Role: {latestSubmission.university_role || 'Not provided'}</p>
-                    <p>ID: {latestSubmission.matric_or_staff_id || 'Not provided'}</p>
+                    <p>ID / reference: {latestSubmission.matric_or_staff_id || 'Not provided'}</p>
                     <p>Payment: {latestSubmission.payment_status || 'pending'}</p>
                   </div>
+                  {latestSubmission.proof_notes ? (
+                    <p className={`mt-3 text-sm ${theme.mutedText}`}>
+                      Evidence notes: {latestSubmission.proof_notes}
+                    </p>
+                  ) : null}
                   {proofLabel ? (
                     <p className={`mt-3 text-sm ${theme.mutedText}`}>
                       Proof file: {proofLabel}
@@ -517,96 +589,103 @@ export default function SellerVerificationPage() {
           theme={theme}
           eyebrow="Submit details"
           title={verificationStatus === SELLER_VERIFICATION_STATUSES.REJECTED ? 'Update and resubmit' : 'University verification form'}
-          description="This phase collects your school details, ID, and proof document. Real payment integration is not enabled yet, so your fee state stays pending for manual follow-up."
+          description="This phase collects your school details, optional ID or reference, and proof document. Real payment integration is not enabled yet, so your fee state stays pending for manual follow-up."
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <label htmlFor="verification-university-name" className="mb-2 block text-sm font-semibold">
-                  University name
-                </label>
-                <input
+                <SearchablePickerField
                   id="verification-university-name"
-                  type="text"
+                  label="University name"
                   value={formState.universityName}
-                  onChange={(event) => handleFieldChange('universityName', event.target.value)}
-                  placeholder="Enter your university"
+                  onChange={(nextValue) => handleFieldChange('universityName', nextValue)}
+                  placeholder="Search or choose your university"
                   disabled={!canSubmit}
-                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
+                  helperText="Pick a suggested school when it appears. If it is not listed, use Other and keep your typed university name."
+                  loading={isSearchingUniversities}
+                  options={universitySuggestions}
+                  onSelectOption={handleUniversitySuggestionSelect}
+                  getOptionKey={(university) => university.id}
+                  getOptionPrimaryText={(university) => university.name}
+                  getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                  allowCustomAction={Boolean(String(formState.universityName || '').trim())}
+                  showCustomAction={Boolean(String(formState.universityName || '').trim())}
+                  customActionLabel={`Use "${String(formState.universityName || '').trim()}" as Other university`}
+                  onCustomAction={useCustomUniversityName}
+                  selectedBadgeText={formState.universityId ? 'Catalog match' : formState.universityName ? 'Other' : ''}
+                  tone="orange"
                 />
               </div>
 
               <div>
-                <label htmlFor="verification-university-state" className="mb-2 block text-sm font-semibold">
-                  University state
-                </label>
-                <select
+                <SelectField
                   id="verification-university-state"
+                  label="University state"
                   value={formState.universityState}
-                  onChange={(event) => handleFieldChange('universityState', event.target.value)}
+                  onChange={(nextValue) => handleFieldChange('universityState', nextValue)}
                   disabled={!canSubmit}
-                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
-                >
-                  <option value="">Select state</option>
-                  {NIGERIAN_STATES.map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
-                  ))}
-                </select>
+                  options={NIGERIAN_STATES}
+                  placeholder="Select state"
+                  tone="orange"
+                />
               </div>
 
               <div>
-                <label htmlFor="verification-university-zone" className="mb-2 block text-sm font-semibold">
-                  University zone
-                </label>
-                <select
+                <SelectField
                   id="verification-university-zone"
+                  label="University zone"
                   value={formState.universityZone}
-                  onChange={(event) => handleFieldChange('universityZone', event.target.value)}
+                  onChange={(nextValue) => handleFieldChange('universityZone', nextValue)}
                   disabled={!canSubmit}
-                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
-                >
-                  <option value="">Select zone</option>
-                  {ZONE_OPTIONS.map((zone) => (
-                    <option key={zone} value={zone}>
-                      {zone}
-                    </option>
-                  ))}
-                </select>
+                  options={ZONE_OPTIONS}
+                  placeholder="Select zone"
+                  tone="orange"
+                />
               </div>
 
               <div>
-                <label htmlFor="verification-university-role" className="mb-2 block text-sm font-semibold">
-                  University role
-                </label>
-                <select
+                <SelectField
                   id="verification-university-role"
+                  label="University role"
                   value={formState.universityRole}
-                  onChange={(event) => handleFieldChange('universityRole', event.target.value)}
+                  onChange={(nextValue) => handleFieldChange('universityRole', nextValue)}
                   disabled={!canSubmit}
-                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>
-                      {role.charAt(0).toUpperCase() + role.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                  options={ROLE_OPTIONS.map((role) => ({
+                    value: role,
+                    label: role.charAt(0).toUpperCase() + role.slice(1),
+                  }))}
+                  placeholder="Select role"
+                  tone="orange"
+                />
               </div>
 
               <div>
                 <label htmlFor="verification-matric-or-staff-id" className="mb-2 block text-sm font-semibold">
-                  Matric or staff ID
+                  Matric / staff ID or reference
                 </label>
                 <input
                   id="verification-matric-or-staff-id"
                   type="text"
                   value={formState.matricOrStaffId}
                   onChange={(event) => handleFieldChange('matricOrStaffId', event.target.value)}
-                  placeholder="Enter your ID"
+                  placeholder="Optional: matric number, staff ID, receipt reference"
                   disabled={!canSubmit}
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="verification-proof-notes" className="mb-2 block text-sm font-semibold">
+                  Evidence notes
+                </label>
+                <textarea
+                  id="verification-proof-notes"
+                  value={formState.proofNotes}
+                  onChange={(event) => handleFieldChange('proofNotes', event.target.value)}
+                  placeholder="Optional: tell admin whether this is a recent school-fees receipt, course form, student ID card, staff ID card, portal screenshot, or another school proof."
+                  disabled={!canSubmit}
+                  rows={3}
+                  className={`w-full rounded-2xl px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
                 />
               </div>
             </div>
@@ -616,7 +695,7 @@ export default function SellerVerificationPage() {
                 <div>
                   <p className="font-semibold">Proof upload</p>
                   <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                    Upload an ID card, portal evidence, admission proof, or staff proof in image or PDF format.
+                    Upload a recent school-fees receipt, course form, student ID card, staff ID card, portal evidence, admission proof, or similar school document in image or PDF format.
                   </p>
                 </div>
                 <label

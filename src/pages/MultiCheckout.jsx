@@ -13,6 +13,7 @@ import {
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import AddressSelector from '../components/buyer/AddressSelector';
+import SelectField from '../components/forms/SelectField';
 import { supabase } from '../supabaseClient';
 import { getSessionWithRetry } from '../utils/authResilience';
 import useModal from '../hooks/useModal';
@@ -993,29 +994,26 @@ export default function MultiCheckout() {
                     <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
                       {canPickUp ? (
                         <>
-                          <label className="block text-sm font-medium text-blue-900 mb-2">
-                            Pickup location for {group.sellerName}
-                          </label>
-                          <select
+                          <SelectField
+                            id={`multi-checkout-pickup-${group.sellerId}`}
+                            label={`Pickup location for ${group.sellerName}`}
                             value={group.selection.pickupLocationId}
-                            onChange={(event) =>
+                            onChange={(nextValue) =>
                               setGroupSelections((current) => ({
                                 ...current,
                                 [group.sellerId]: {
                                   ...current[group.sellerId],
-                                  pickupLocationId: event.target.value,
+                                  pickupLocationId: nextValue,
                                 },
                               }))
                             }
-                            className="w-full border border-blue-200 rounded-xl p-3"
-                          >
-                            <option value="">Choose a pickup location</option>
-                            {group.pickupQuote.pickupLocations.map((pickupLocation) => (
-                              <option key={pickupLocation.id} value={pickupLocation.id}>
-                                {pickupLocation.label} - {formatPickupLocationAddress(pickupLocation)}
-                              </option>
-                            ))}
-                          </select>
+                            options={group.pickupQuote.pickupLocations.map((pickupLocation) => ({
+                              value: pickupLocation.id,
+                              label: `${pickupLocation.label} - ${formatPickupLocationAddress(pickupLocation)}`,
+                            }))}
+                            placeholder="Choose a pickup location"
+                            tone="blue"
+                          />
                         </>
                       ) : (
                         <div className="flex items-start gap-2 text-sm text-red-700">

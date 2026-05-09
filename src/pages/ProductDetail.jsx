@@ -1029,7 +1029,7 @@ export default function ProductDetail() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <Shield size={18} className="text-blue-600" />
                   <p className="mt-3 text-sm font-semibold text-slate-900">
-                    Verified University Seller protection
+                    Verified Seller protection
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
