@@ -65,9 +65,34 @@ export default function SearchablePickerField({
   selectedBadgeText = '',
   emptyStateText = 'No matching options yet.',
   maxLength,
+  inputRef,
+  minQueryLength = 0,
+  hidePanelUntilMinQueryLength = false,
+  minQueryLengthText = '',
+  showEmptyState = true,
 }) {
   const styles = TONE_STYLES[tone] || TONE_STYLES.orange;
-  const hasPanel = loading || options.length > 0 || (allowCustomAction && showCustomAction);
+  const normalizedValue = String(value || '').trim();
+  const meetsMinQueryLength = normalizedValue.length >= minQueryLength;
+  const shouldHideOptionsPanel = hidePanelUntilMinQueryLength && !meetsMinQueryLength;
+  const shouldShowOptions = !shouldHideOptionsPanel && options.length > 0;
+  const shouldShowEmptyState =
+    showEmptyState
+    && !loading
+    && !shouldHideOptionsPanel
+    && options.length === 0
+    && !(allowCustomAction && showCustomAction);
+  const shouldShowMinQueryLengthText =
+    Boolean(minQueryLengthText)
+    && hidePanelUntilMinQueryLength
+    && normalizedValue.length > 0
+    && !meetsMinQueryLength;
+  const hasPanel =
+    loading
+    || shouldShowOptions
+    || (allowCustomAction && showCustomAction)
+    || shouldShowEmptyState
+    || shouldShowMinQueryLengthText;
 
   return (
     <div>
@@ -77,6 +102,7 @@ export default function SearchablePickerField({
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
+          ref={inputRef}
           id={id}
           type="text"
           value={value}
@@ -106,7 +132,7 @@ export default function SearchablePickerField({
             </p>
           ) : null}
 
-          {!loading && options.length > 0 ? (
+          {!loading && shouldShowOptions ? (
             <div className="flex flex-col gap-2">
               {options.map((option) => (
                 <button
@@ -130,7 +156,11 @@ export default function SearchablePickerField({
             </div>
           ) : null}
 
-          {!loading && options.length === 0 && !(allowCustomAction && showCustomAction) ? (
+          {!loading && shouldShowMinQueryLengthText ? (
+            <p className={`px-3 py-2 text-sm ${styles.meta}`}>{minQueryLengthText}</p>
+          ) : null}
+
+          {!loading && shouldShowEmptyState ? (
             <p className={`px-3 py-2 text-sm ${styles.meta}`}>{emptyStateText}</p>
           ) : null}
 

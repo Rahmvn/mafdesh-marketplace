@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
@@ -182,6 +182,29 @@ function DetailItem({ label, value, accent = 'blue' }) {
   );
 }
 
+const SELLER_PROFILE_TABS = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    Icon: Shield,
+  },
+  {
+    id: 'university',
+    label: 'University',
+    Icon: Calendar,
+  },
+  {
+    id: 'payout',
+    label: 'Payout',
+    Icon: CreditCard,
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    Icon: Lock,
+  },
+];
+
 function BankDetailsForm({
   values,
   onChange,
@@ -204,14 +227,20 @@ function BankDetailsForm({
       ? 'Submit Request'
       : 'Save Bank Details');
   const normalizedBankQuery = String(bankQuery || '').trim().toLowerCase();
+  const shouldShowBankSuggestions = normalizedBankQuery.length >= 2;
   const filteredBanks = NIGERIAN_BANKS.filter((bank) => {
-    if (!normalizedBankQuery) {
-      return true;
+    if (!shouldShowBankSuggestions) {
+      return false;
     }
 
     return bank.toLowerCase().includes(normalizedBankQuery);
-  }).slice(0, 20);
+  }).slice(0, 8);
   const exactBankMatch = findMatchingNigerianBankName(bankQuery);
+  const bankHelperText = exactBankMatch
+    ? 'Supported bank selected.'
+    : shouldShowBankSuggestions
+      ? 'Select a valid Nigerian bank from the suggestions.'
+      : 'Type at least 2 characters to search supported Nigerian banks.';
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
@@ -226,7 +255,7 @@ function BankDetailsForm({
           onChange('bank_name', nextValue);
         }}
         placeholder="Search Nigerian banks"
-        helperText="Type part of the bank name and pick a supported Nigerian bank."
+        helperText={bankHelperText}
         options={filteredBanks}
         onSelectOption={(bank) => {
           setBankQuery(bank);
@@ -235,7 +264,11 @@ function BankDetailsForm({
         getOptionKey={(bank) => bank}
         getOptionPrimaryText={(bank) => bank}
         getOptionSecondaryText={() => ''}
-        selectedBadgeText={exactBankMatch ? 'Selected' : ''}
+        selectedBadgeText={exactBankMatch ? 'Selected bank' : ''}
+        emptyStateText="No supported Nigerian bank matches that search."
+        minQueryLength={2}
+        hidePanelUntilMinQueryLength
+        minQueryLengthText="Type at least 2 characters to start searching."
         tone="blue"
       />
 

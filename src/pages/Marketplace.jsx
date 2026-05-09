@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
+import { ChevronDown, MapPin, Search, X } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
@@ -18,7 +19,6 @@ import {
   fetchNearbyUniversitiesByState,
   searchUniversities,
 } from '../services/universityService';
-import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import {
   excludeActiveFlashSaleProducts,
   getActiveFlashSaleProducts,
@@ -27,6 +27,7 @@ import {
 
 const CACHED_PRODUCTS_KEY = 'cached_products';
 const RECENTLY_VIEWED_KEY = 'recently_viewed';
+const CAMPUS_OPTION_LIMIT = 14;
 
 function formatPrice(value) {
   return `\u20A6${Number(value).toLocaleString()}`;
@@ -148,14 +149,16 @@ export default function Marketplace() {
   const [products, setProducts] = useState(() => readCachedProducts());
   const [universities, setUniversities] = useState([]);
   const [nearbyUniversities, setNearbyUniversities] = useState([]);
-  const [selectedState, setSelectedState] = useState('');
   const [selectedUniversityId, setSelectedUniversityId] = useState('');
   const [includeNearbyUniversities, setIncludeNearbyUniversities] = useState(false);
+  const [isCampusPickerOpen, setIsCampusPickerOpen] = useState(false);
+  const [campusQuery, setCampusQuery] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [isLoading, setIsLoading] = useState(() => readCachedProducts().length === 0);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === 'undefined' ? 1280 : window.innerWidth
   );
+  const campusPickerRef = useRef(null);
 
   const availableCategories = ['All', ...PRODUCT_CATEGORIES];
 
@@ -241,6 +244,8 @@ export default function Marketplace() {
     () => universities.find((university) => university.id === selectedUniversityId) || null,
     [selectedUniversityId, universities]
   );
+  const normalizedSelectedUniversityState = normalizeText(selectedUniversity?.state);
+  const hasActiveCampusFilter = Boolean(selectedUniversity || includeNearbyUniversities);
 
   useEffect(() => {
     if (!selectedUniversity || !includeNearbyUniversities) {
@@ -274,6 +279,32 @@ export default function Marketplace() {
     };
   }, [includeNearbyUniversities, selectedUniversity]);
 
+  useEffect(() => {
+    if (!isCampusPickerOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!campusPickerRef.current?.contains(event.target)) {
+        setIsCampusPickerOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setIsCampusPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isCampusPickerOpen]);
+
   const flashSaleProducts = useMemo(() => getActiveFlashSaleProducts(products, now), [now, products]);
   const marketplaceProducts = useMemo(() => excludeActiveFlashSaleProducts(products, now), [now, products]);
   const nearestFlashSaleExpiry = useMemo(
@@ -301,16 +332,11 @@ export default function Marketplace() {
     const allowedNearbyUniversityIds = new Set(
       nearbyUniversities.map((university) => String(university.id))
     );
-    const normalizedSelectedState = normalizeText(selectedState);
 
     return fuzzyFilteredProducts.filter((product) => {
       const sellerState = normalizeText(product?.seller?.university_state);
       const sellerUniversityName = normalizeText(product?.seller?.university_name);
       const sellerUniversityId = String(product?.seller?.university_id || '');
-
-      if (normalizedSelectedState && sellerState !== normalizedSelectedState) {
-        return false;
-      }
 
       if (!selectedUniversity) {
         return true;
@@ -324,7 +350,7 @@ export default function Marketplace() {
           return true;
         }
 
-        return sellerState === normalizeText(selectedUniversity.state);
+        return sellerState === normalizedSelectedUniversityState;
       }
 
       if (sellerUniversityId) {
@@ -337,7 +363,7 @@ export default function Marketplace() {
     fuzzyFilteredProducts,
     includeNearbyUniversities,
     nearbyUniversities,
-    selectedState,
+    normalizedSelectedUniversityState,
     selectedUniversity,
   ]);
 
@@ -385,22 +411,45 @@ export default function Marketplace() {
   }, [campusFilteredProducts, categoryPreviewLimit, isDefaultCategoryView]);
 
   const filteredUniversities = useMemo(() => {
-    if (!selectedState) {
-      return universities;
+    const normalizedQuery = normalizeText(campusQuery);
+    const sortedUniversities = [...universities].sort((left, right) =>
+      String(left?.name || '').localeCompare(String(right?.name || ''))
+    );
+
+    const matchingUniversities = normalizedQuery
+      ? sortedUniversities.filter((university) =>
+          normalizeText(university?.name).includes(normalizedQuery)
+          || normalizeText(university?.state).includes(normalizedQuery)
+        )
+      : sortedUniversities;
+
+    if (!selectedUniversity) {
+      return matchingUniversities.slice(0, CAMPUS_OPTION_LIMIT);
     }
 
-    return universities.filter((university) => university.state === selectedState);
-  }, [selectedState, universities]);
+    const selectedId = String(selectedUniversity.id);
+    const prioritizedUniversities = [
+      ...matchingUniversities.filter((university) => String(university.id) === selectedId),
+      ...matchingUniversities.filter((university) => String(university.id) !== selectedId),
+    ];
 
-  const handleStateFilterChange = (event) => {
-    const nextState = event.target.value;
-    setSelectedState(nextState);
+    return prioritizedUniversities.slice(0, CAMPUS_OPTION_LIMIT);
+  }, [campusQuery, selectedUniversity, universities]);
+
+  const handleUniversitySelect = (university) => {
+    setSelectedUniversityId(String(university?.id || ''));
     setIncludeNearbyUniversities(false);
     setNearbyUniversities([]);
+    setCampusQuery('');
+    setIsCampusPickerOpen(false);
+  };
 
-    if (selectedUniversity && selectedUniversity.state !== nextState) {
-      setSelectedUniversityId('');
-    }
+  const handleClearCampusFilters = () => {
+    setSelectedUniversityId('');
+    setIncludeNearbyUniversities(false);
+    setNearbyUniversities([]);
+    setCampusQuery('');
+    setIsCampusPickerOpen(false);
   };
 
   const handleProductOpen = useCallback(
@@ -430,84 +479,170 @@ export default function Marketplace() {
       <AuthNavbarWrapper />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-2 py-5">
-        <div className="sticky top-0 z-10 mb-4 rounded-lg border border-blue-100 bg-white px-2 py-2.5 shadow-sm">
-          <div className="scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
-            {availableCategories.map((category) => (
+        <div className="sticky top-0 z-10 mb-5 space-y-2">
+          <div className="rounded-lg border border-blue-100 bg-white px-2 py-2.5 shadow-sm">
+            <div className="scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
+              {availableCategories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setSelectedCategory(category)}
+                  className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                    selectedCategory === category
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <section className="relative">
+            <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="relative shrink-0" ref={campusPickerRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCampusQuery('');
+                    setIsCampusPickerOpen((current) => !current);
+                  }}
+                  aria-expanded={isCampusPickerOpen}
+                  aria-haspopup="dialog"
+                  className={`inline-flex items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
+                    selectedUniversity
+                      ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
+                      : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
+                  }`}
+                >
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  <span className="max-w-[11rem] truncate sm:max-w-[14rem]">
+                    {selectedUniversity?.name || 'All campuses'}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition ${isCampusPickerOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isCampusPickerOpen ? (
+                  <div
+                    role="dialog"
+                    aria-label="Campus filter"
+                    className="absolute left-0 top-full z-20 mt-2 w-[min(26rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)]"
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Nearby expands to same-state campuses after you choose one.
+                        </p>
+                      </div>
+                      {selectedUniversity ? (
+                        <button
+                          type="button"
+                          onClick={handleClearCampusFilters}
+                          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                        >
+                          All campuses
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2">
+                      <Search className="h-4 w-4 text-blue-500" />
+                      <input
+                        type="text"
+                        value={campusQuery}
+                        onChange={(event) => setCampusQuery(event.target.value)}
+                        placeholder="Search campuses"
+                        aria-label="Search campuses"
+                        autoFocus
+                        className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                      />
+                      {campusQuery ? (
+                        <button
+                          type="button"
+                          onClick={() => setCampusQuery('')}
+                          aria-label="Clear campus search"
+                          className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {filteredUniversities.map((university) => {
+                        const isSelected = String(university.id) === String(selectedUniversity?.id || '');
+
+                        return (
+                          <button
+                            key={university.id}
+                            type="button"
+                            onClick={() => handleUniversitySelect(university)}
+                            className={`w-full rounded-xl border px-3 py-3 text-left text-sm transition ${
+                              isSelected
+                                ? 'border-orange-200 bg-orange-50 text-orange-700 ring-1 ring-orange-100'
+                                : 'border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50/70'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="block font-semibold">{university.name}</span>
+                              {isSelected ? (
+                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700">
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
+                            <span className="mt-1 block text-xs text-slate-500">
+                              {[university.state, university.zone].filter(Boolean).join(' • ') || 'Campus'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {filteredUniversities.length === 0 ? (
+                      <p className="mt-3 px-1 text-sm text-slate-500">
+                        No campuses match that search yet.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
               <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-                  selectedCategory === category
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                type="button"
+                onClick={() => setIncludeNearbyUniversities((current) => !current)}
+                disabled={!selectedUniversity}
+                aria-pressed={Boolean(selectedUniversity && includeNearbyUniversities)}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
+                  selectedUniversity
+                    ? includeNearbyUniversities
+                      ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
+                      : 'border-slate-200 text-slate-700 hover:border-orange-200 hover:text-orange-700'
+                    : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
                 }`}
               >
-                {category}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <section className="mb-5 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
-                Filter by state
-              </label>
-              <select
-                value={selectedState}
-                onChange={handleStateFilterChange}
-                className="w-full rounded-xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-900 focus:border-orange-400 focus:outline-none"
-              >
-                <option value="">All states</option>
-                {NIGERIAN_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
-                Filter by university
-              </label>
-              <select
-                value={selectedUniversityId}
-                onChange={(event) => {
-                  setSelectedUniversityId(event.target.value);
-                  setIncludeNearbyUniversities(false);
-                  setNearbyUniversities([]);
-                }}
-                className="w-full rounded-xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-900 focus:border-orange-400 focus:outline-none"
-              >
-                <option value="">All universities</option>
-                {filteredUniversities.map((university) => (
-                  <option key={university.id} value={university.id}>
-                    {university.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <label className="flex w-full items-center gap-3 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(selectedUniversity && includeNearbyUniversities)}
-                  disabled={!selectedUniversity}
-                  onChange={(event) => setIncludeNearbyUniversities(event.target.checked)}
-                  className="h-4 w-4 accent-orange-600"
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    includeNearbyUniversities && selectedUniversity ? 'bg-orange-500' : 'bg-slate-300'
+                  }`}
                 />
-                Nearby universities
-              </label>
-            </div>
-          </div>
+                Nearby
+              </button>
 
-          <p className="mt-3 text-sm text-slate-600">
-            The marketplace still shows products from all approved sellers equally. These filters help you narrow by campus or state, while recommendation boosts only apply on product, cart, and order suggestion surfaces.
-          </p>
-        </section>
+              {hasActiveCampusFilter ? (
+                <button
+                  type="button"
+                  onClick={handleClearCampusFilters}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </section>
+        </div>
 
         {flashSaleProducts.length > 0 && (
           <FlashSaleStrip
