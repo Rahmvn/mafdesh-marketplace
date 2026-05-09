@@ -119,7 +119,7 @@ function renderSignUpRoute() {
   );
 }
 
-function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {}) {
+function moveToContactStep({ asSeller = false } = {}) {
   if (asSeller) {
     fireEvent.click(screen.getByRole('button', { name: /seller/i }));
   }
@@ -133,15 +133,33 @@ function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {
   fireEvent.change(screen.getByPlaceholderText('johndoe123'), {
     target: { value: 'janedoe123' },
   });
+  fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+}
+
+function moveToDetailsStep({ asSeller = false } = {}) {
+  moveToContactStep({ asSeller });
+
+  fireEvent.change(screen.getByLabelText(/date of birth/i), {
+    target: { value: '1999-04-10' },
+  });
   fireEvent.change(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i }), {
     target: { value: 'Lagos' },
   });
   fireEvent.change(screen.getByPlaceholderText('08012345678'), {
     target: { value: '08012345678' },
   });
-  fireEvent.change(screen.getByLabelText(/date of birth/i), {
-    target: { value: '1999-04-10' },
+  fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
+    target: { value: 'password123' },
   });
+  fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
+    target: { value: 'password123' },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
+}
+
+function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
+  moveToDetailsStep({ asSeller });
 
   if (asSeller) {
     fireEvent.change(screen.getByPlaceholderText('Your store name'), {
@@ -155,21 +173,13 @@ function fillSignUpForm(container, { agreeToTerms = true, asSeller = false } = {
     });
   }
 
-  const passwordInputs = container.querySelectorAll('input[type="password"]');
-  fireEvent.change(passwordInputs[0], {
-    target: { value: 'password123' },
-  });
-  fireEvent.change(passwordInputs[1], {
-    target: { value: 'password123' },
-  });
-
   if (agreeToTerms) {
     fireEvent.click(screen.getByRole('checkbox'));
   }
 }
 
-function fillAndSubmitSignUpForm(container, options) {
-  fillSignUpForm(container, options);
+function fillAndSubmitSignUpForm(options) {
+  fillSignUpForm(options);
   fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 }
 
@@ -203,48 +213,54 @@ describe('SignUp', () => {
   });
 
   it('restores the signup draft after viewing terms and returning to signup', async () => {
-    const { container } = renderSignUpRoute();
+    renderSignUpRoute();
 
-    fillSignUpForm(container, { asSeller: true });
+    fillSignUpForm({ asSeller: true });
     fireEvent.click(screen.getByRole('button', { name: /terms & conditions/i }));
 
     expect(await screen.findByText('Terms & Conditions')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
-    });
-
-    expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
-    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
-    expect(screen.getByLabelText(/date of birth/i)).toHaveValue('1999-04-10');
-    expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
-    expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
+    expect(await screen.findByText(/step 3 of 3/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
     expect(screen.getByPlaceholderText('Search your university')).toHaveValue('Mafdesh University');
     expect(screen.getByRole('combobox', { name: /university state/i })).toHaveValue('Kaduna');
     expect(screen.getByRole('checkbox')).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue('1999-04-10');
+    expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
+    expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
+    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
   });
 
   it('restores the signup draft after viewing policies and returning to signup', async () => {
-    const { container } = renderSignUpRoute();
+    renderSignUpRoute();
 
-    fillSignUpForm(container);
+    fillSignUpForm();
     fireEvent.click(screen.getByRole('button', { name: /privacy policy/i }));
 
     expect(await screen.findByText('Marketplace Policies')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
-    });
-
+    expect(await screen.findByText(/step 3 of 3/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+
+    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
+    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
   });
 
   it('redirects to login with the normal success message after a successful signup', async () => {
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     expect(
       await screen.findByText('Account created successfully! Please check your email to verify before logging in.')
@@ -254,9 +270,9 @@ describe('SignUp', () => {
   });
 
   it('passes date of birth and optional buyer university data into auth signup metadata', async () => {
-    const { container } = renderSignUpRoute();
+    renderSignUpRoute();
 
-    fillSignUpForm(container);
+    fillSignUpForm();
     fireEvent.change(screen.getByPlaceholderText('Search your university'), {
       target: { value: 'Mafdesh University' },
     });
@@ -279,6 +295,24 @@ describe('SignUp', () => {
     );
   });
 
+  it('preserves values when moving back through steps', async () => {
+    renderSignUpRoute();
+
+    fillSignUpForm({ asSeller: true, agreeToTerms: false });
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue('1999-04-10');
+    expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+
+    fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
+    expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
+    expect(screen.getByPlaceholderText('Search your university')).toHaveValue('Mafdesh University');
+  });
+
   it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {
     mockSignUp.mockResolvedValue({
       data: {
@@ -290,8 +324,8 @@ describe('SignUp', () => {
       error: null,
     });
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     expect(
       await screen.findByText('Account created successfully! Please check your email to verify before logging in.')
@@ -314,8 +348,8 @@ describe('SignUp', () => {
     });
     mockEnsureCurrentUserContext.mockRejectedValue(new Error('Profile sync timed out'));
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     expect(
       await screen.findByText(/Your account was created successfully\. Please check your email to verify it, then log in\./i)
@@ -335,8 +369,8 @@ describe('SignUp', () => {
     });
     mockEnsureCurrentUserContext.mockRejectedValue(new Error('Users table write failed'));
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     expect(
       await screen.findByText(/Your account was created successfully\. Please check your email to verify it, then log in\./i)
@@ -352,8 +386,8 @@ describe('SignUp', () => {
       error: new Error('Account already exists'),
     });
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalled();
@@ -375,8 +409,8 @@ describe('SignUp', () => {
       });
     mockSignUp.mockRejectedValue(new Error('Unexpected failure, please check server logs for more information'));
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith(
@@ -389,8 +423,8 @@ describe('SignUp', () => {
   it('shows a friendlier message for generic server-side signup failures', async () => {
     mockSignUp.mockRejectedValue(new Error('Unexpected failure, please check server logs for more information'));
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith(
@@ -410,8 +444,8 @@ describe('SignUp', () => {
         error: null,
       });
 
-    const { container } = renderSignUpRoute();
-    fillAndSubmitSignUpForm(container);
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm();
 
     await waitFor(() => {
       expect(mockSignUp).toHaveBeenCalledTimes(2);

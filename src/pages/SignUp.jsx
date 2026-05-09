@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import noBgLogo from '../../mafdesh-img/noBackground-logo.png';
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
-import { supabase } from "../supabaseClient";
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import SearchablePickerField from '../components/forms/SearchablePickerField';
@@ -22,27 +22,44 @@ import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import { searchUniversities } from '../services/universityService';
 
 const SIGNUP_DRAFT_STORAGE_KEY = 'mafdesh_signup_draft';
+const SIGNUP_STEPS = [
+  {
+    id: 1,
+    label: 'Account',
+    description: 'Choose your role and core account identity.',
+  },
+  {
+    id: 2,
+    label: 'Contact & Security',
+    description: 'Add your location and secure the account.',
+  },
+  {
+    id: 3,
+    label: 'Details',
+    description: 'Finish the role-specific details and submit.',
+  },
+];
 const EMPTY_SIGNUP_FORM = {
-  full_name: "",
-  email: "",
-  username: "",
-  phone_number: "",
-  date_of_birth: "",
-  password: "",
-  confirmPassword: "",
-  business_name: "",
-  location: "",
-  university_id: "",
-  university_name: "",
-  university_state: "",
-  university_zone: "",
+  full_name: '',
+  email: '',
+  username: '',
+  phone_number: '',
+  date_of_birth: '',
+  password: '',
+  confirmPassword: '',
+  business_name: '',
+  location: '',
+  university_id: '',
+  university_name: '',
+  university_state: '',
+  university_zone: '',
 };
 
 function hasSignupDraftContent({ formData, userType, agreedToTerms }) {
   return (
-    agreedToTerms ||
-    userType === 'seller' ||
-    Object.values(formData || {}).some((value) => String(value || '').trim() !== '')
+    agreedToTerms
+    || userType === 'seller'
+    || Object.values(formData || {}).some((value) => String(value || '').trim() !== '')
   );
 }
 
@@ -64,9 +81,12 @@ function readSignupDraft() {
     });
   }
 
+  const parsedStep = Number(parsedDraft.currentStep);
+
   return {
     userType: parsedDraft.userType === 'seller' ? 'seller' : 'buyer',
     agreedToTerms: Boolean(parsedDraft.agreedToTerms),
+    currentStep: parsedStep >= 1 && parsedStep <= SIGNUP_STEPS.length ? parsedStep : 1,
     formData: nextFormData,
   };
 }
@@ -87,6 +107,10 @@ function persistSignupDraft(draftState) {
       JSON.stringify({
         userType: draftState.userType === 'seller' ? 'seller' : 'buyer',
         agreedToTerms: Boolean(draftState.agreedToTerms),
+        currentStep:
+          Number(draftState.currentStep) >= 1 && Number(draftState.currentStep) <= SIGNUP_STEPS.length
+            ? Number(draftState.currentStep)
+            : 1,
         formData: {
           ...EMPTY_SIGNUP_FORM,
           ...(draftState.formData || {}),
@@ -110,12 +134,47 @@ function clearSignupDraft() {
   }
 }
 
+function StepBadge({ step, currentStep, accent }) {
+  const isActive = step.id === currentStep;
+  const isComplete = step.id < currentStep;
+  const activeClasses = accent === 'orange'
+    ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+    : 'border-blue-600 bg-blue-600 text-white shadow-sm';
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:px-4">
+      <div
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold transition-colors ${isActive
+          ? activeClasses
+          : isComplete
+            ? 'border-emerald-500 bg-emerald-500 text-white'
+            : 'border-slate-200 bg-slate-100 text-slate-500'}`}
+      >
+        {step.id}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-900">{step.label}</p>
+        <p className="truncate text-xs text-slate-500">{step.description}</p>
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({ children }) {
+  return (
+    <label className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+      {children}
+    </label>
+  );
+}
+
 export default function SignUp() {
-  const [userType, setUserType] = useState("buyer");
+  const [userType, setUserType] = useState('buyer');
+  const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_SIGNUP_FORM);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
-  const [usernameError, setUsernameError] = useState("");
+  const [usernameError, setUsernameError] = useState('');
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -126,11 +185,27 @@ export default function SignUp() {
   const navigate = useNavigate();
   const { showError, showWarning, ModalComponent } = useModal();
 
+  const isSeller = userType === 'seller';
+  const accent = isSeller ? 'orange' : 'blue';
+  const primaryButtonClass = isSeller
+    ? 'bg-orange-600 text-white hover:bg-orange-700 focus:ring-orange-500/20'
+    : 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500/20';
+  const secondaryButtonClass = isSeller
+    ? 'border-orange-200 text-orange-700 hover:bg-orange-50'
+    : 'border-blue-200 text-blue-700 hover:bg-blue-50';
+  const inputClass = 'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:outline-none focus:ring-4';
+  const inputFocusClass = isSeller
+    ? 'focus:border-orange-500 focus:ring-orange-500/15'
+    : 'focus:border-blue-500 focus:ring-blue-500/15';
+  const roleButtonBaseClass = 'flex-1 rounded-2xl border px-4 py-4 text-left text-sm font-semibold transition-all';
+  const progressCopy = SIGNUP_STEPS[currentStep - 1];
+
   useEffect(() => {
     const storedDraft = readSignupDraft();
 
     if (storedDraft) {
       setUserType(storedDraft.userType);
+      setCurrentStep(storedDraft.currentStep);
       setFormData(storedDraft.formData);
       setAgreedToTerms(storedDraft.agreedToTerms);
     }
@@ -143,16 +218,10 @@ export default function SignUp() {
       return;
     }
 
-    persistSignupDraft({ userType, agreedToTerms, formData });
-  }, [agreedToTerms, formData, hasHydratedDraft, userType]);
+    persistSignupDraft({ userType, agreedToTerms, currentStep, formData });
+  }, [agreedToTerms, currentStep, formData, hasHydratedDraft, userType]);
 
   useEffect(() => {
-    if (userType !== 'seller' && userType !== 'buyer') {
-      setUniversitySuggestions([]);
-      setIsLoadingUniversities(false);
-      return;
-    }
-
     const query = String(formData.university_name || '').trim();
 
     if (query.length < 2) {
@@ -169,7 +238,7 @@ export default function SignUp() {
       try {
         const results = await searchUniversities({
           query,
-          state: userType === 'seller' ? formData.university_state : '',
+          state: isSeller ? formData.university_state : '',
           limit: 6,
         });
 
@@ -193,19 +262,19 @@ export default function SignUp() {
     return () => {
       cancelled = true;
     };
-  }, [formData.university_name, formData.university_state, userType]);
+  }, [formData.university_name, formData.university_state, isSeller]);
 
   const validateUsername = (username) => {
     if (username.length < 3) {
-      return "Username must be at least 3 characters";
+      return 'Username must be at least 3 characters';
     }
     if (username.length > 30) {
-      return "Username must not exceed 30 characters";
+      return 'Username must not exceed 30 characters';
     }
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return "Username can only contain letters, numbers, and underscores";
+      return 'Username can only contain letters, numbers, and underscores';
     }
-    return "";
+    return '';
   };
 
   const readUsernameRecord = async (username) => {
@@ -231,7 +300,9 @@ export default function SignUp() {
   };
 
   const checkUsernameUnique = async (username) => {
-    if (!username) return true;
+    if (!username) {
+      return true;
+    }
 
     const validationError = validateUsername(username);
     if (validationError) {
@@ -245,11 +316,11 @@ export default function SignUp() {
       const data = await readUsernameRecord(username);
 
       if (data) {
-        setUsernameError("Username already taken");
+        setUsernameError('Username already taken');
         return false;
       }
 
-      setUsernameError("");
+      setUsernameError('');
       return true;
     } catch (error) {
       console.error('Username availability check failed:', error);
@@ -266,8 +337,8 @@ export default function SignUp() {
     const normalizedMessage = message.toLowerCase();
 
     if (
-      normalizedMessage.includes('unexpected failure') ||
-      normalizedMessage.includes('database error saving new user')
+      normalizedMessage.includes('unexpected failure')
+      || normalizedMessage.includes('database error saving new user')
     ) {
       try {
         const usernameRecord = await readUsernameRecord(attemptedUsername);
@@ -298,13 +369,20 @@ export default function SignUp() {
     'Your account was created successfully. Please check your email to verify it, then log in. If login does not work right away, try Forgot Password or contact support.';
 
   const navigateToLegalPage = (path) => {
-    persistSignupDraft({ userType, agreedToTerms, formData });
+    persistSignupDraft({ userType, agreedToTerms, currentStep, formData });
     navigate(path, {
       state: {
         fromSignup: true,
         returnTo: location.pathname,
       },
     });
+  };
+
+  const setFieldValue = (field, value) => {
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+    }));
   };
 
   const updateUniversityDraft = (updates) => {
@@ -318,12 +396,12 @@ export default function SignUp() {
     updateUniversityDraft({
       university_id: '',
       university_name: value,
-      ...(userType === 'buyer'
-        ? {
+      ...(isSeller
+        ? {}
+        : {
             university_state: '',
             university_zone: '',
-          }
-        : {}),
+          }),
     });
   };
 
@@ -353,6 +431,115 @@ export default function SignUp() {
     setUniversitySuggestions([]);
   };
 
+  const normalizeFormData = () => {
+    const trimmed = {
+      fullName: formData.full_name?.trim() || '',
+      email: formData.email?.trim().toLowerCase() || '',
+      username: formData.username?.trim().toLowerCase() || '',
+      phone: formData.phone_number?.trim() || '',
+      dateOfBirth: formData.date_of_birth || '',
+      businessName: formData.business_name?.trim() || '',
+      location: formData.location?.trim() || '',
+      universityName: formData.university_name?.trim() || '',
+      universityState: formData.university_state?.trim() || '',
+      universityZone: formData.university_zone?.trim() || '',
+    };
+
+    return {
+      ...formData,
+      full_name: trimmed.fullName,
+      email: trimmed.email,
+      username: trimmed.username,
+      phone_number: trimmed.phone,
+      date_of_birth: trimmed.dateOfBirth,
+      business_name: trimmed.businessName,
+      location: trimmed.location,
+      university_name: trimmed.universityName,
+      university_state: trimmed.universityState,
+      university_zone: trimmed.universityZone,
+    };
+  };
+
+  const validateAccountStep = (normalizedFormData) => {
+    if (!normalizedFormData.full_name || !normalizedFormData.email || !normalizedFormData.username) {
+      showWarning('Missing Details', 'Please fill in your full name, email, and username.');
+      return false;
+    }
+
+    const nextUsernameError = validateUsername(normalizedFormData.username);
+    if (nextUsernameError) {
+      setUsernameError(nextUsernameError);
+      showWarning('Username Invalid', nextUsernameError);
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateContactStep = (normalizedFormData) => {
+    if (!normalizedFormData.date_of_birth || !normalizedFormData.location || !normalizedFormData.password) {
+      showWarning('Missing Details', 'Please fill in all required fields including date of birth and location.');
+      return false;
+    }
+
+    if (normalizedFormData.password.length < 6) {
+      showWarning('Password Too Short', 'Password must be at least 6 characters.');
+      return false;
+    }
+
+    if (normalizedFormData.password !== normalizedFormData.confirmPassword) {
+      showWarning('Password Mismatch', 'Passwords do not match.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateDetailsStep = (normalizedFormData, { requireTerms = false } = {}) => {
+    if (isSeller && !normalizedFormData.business_name) {
+      showWarning('Business Name Required', 'Please enter your business name.');
+      return false;
+    }
+
+    if (isSeller && (!normalizedFormData.university_name || !normalizedFormData.university_state)) {
+      showWarning(
+        'University Required',
+        'Choose your university and its state before creating a seller account.'
+      );
+      return false;
+    }
+
+    if (isSeller && !normalizedFormData.university_zone) {
+      showWarning(
+        'University State Required',
+        'Select the correct university state so Mafdesh can place your store in the right campus zone.'
+      );
+      return false;
+    }
+
+    if (requireTerms && !agreedToTerms) {
+      showWarning('Terms Required', 'Please agree to the Terms & Conditions and Privacy Policy.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const goToNextStep = () => {
+    const normalizedFormData = normalizeFormData();
+
+    if (currentStep === 1 && !validateAccountStep(normalizedFormData)) {
+      return;
+    }
+
+    if (currentStep === 2 && !validateContactStep(normalizedFormData)) {
+      return;
+    }
+
+    setFormData(normalizedFormData);
+    setCurrentStep((current) => Math.min(SIGNUP_STEPS.length, current + 1));
+  };
+
   const handleSignUp = async (nextFormData) => {
     const { email, password } = nextFormData;
     let authUser = null;
@@ -364,14 +551,14 @@ export default function SignUp() {
           email,
           password,
           options: {
-            emailRedirectTo: getAuthCallbackUrl("signup"),
+            emailRedirectTo: getAuthCallbackUrl('signup'),
             data: {
               role: userType,
               full_name: nextFormData.full_name,
               username: nextFormData.username,
               phone_number: nextFormData.phone_number,
               date_of_birth: nextFormData.date_of_birth || null,
-              business_name: userType === 'seller' ? nextFormData.business_name : null,
+              business_name: isSeller ? nextFormData.business_name : null,
               location: nextFormData.location,
               university_id: nextFormData.university_id || null,
               university_name: nextFormData.university_name || null,
@@ -389,7 +576,7 @@ export default function SignUp() {
       signUpData = data;
       authUser = data.user || data.session?.user || null;
       if (!authUser) {
-        showError("Signup Failed", "Signup failed.");
+        showError('Signup Failed', 'Signup failed.');
         return false;
       }
     } catch (error) {
@@ -427,692 +614,310 @@ export default function SignUp() {
     }
   };
 
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (currentStep < SIGNUP_STEPS.length) {
+      goToNextStep();
+      return;
+    }
+
+    if (isSubmitting) {
+      return;
+    }
+
+    const normalizedFormData = normalizeFormData();
+
+    if (!validateAccountStep(normalizedFormData)) {
+      setCurrentStep(1);
+      return;
+    }
+
+    if (!validateContactStep(normalizedFormData)) {
+      setCurrentStep(2);
+      return;
+    }
+
+    if (!validateDetailsStep(normalizedFormData, { requireTerms: true })) {
+      return;
+    }
+
+    const isUnique = await checkUsernameUnique(normalizedFormData.username);
+    if (isUnique !== true) {
+      if (isUnique === false) {
+        setUsernameError('This username is already taken. Please choose another one.');
+        setCurrentStep(1);
+      }
+      return;
+    }
+
+    setFormData(normalizedFormData);
+    setIsSubmitting(true);
+    const success = await handleSignUp(normalizedFormData);
+    setIsSubmitting(false);
+
+    if (success) {
+      clearSignupDraft();
+      navigate('/login', {
+        state: {
+          message:
+            typeof success === 'object' && success?.message
+              ? success.message
+              : 'Account created successfully! Please check your email to verify before logging in.',
+        },
+      });
+    }
+  };
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "white",
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-      className="flex flex-col"
-    >
+    <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,_#f8fbff_0%,_#ffffff_35%,_#fff7ed_100%)]">
       <main className="flex flex-1 items-center justify-center px-4 py-8 sm:py-10">
-      <div style={{ maxWidth: "500px", width: "100%" }}>
-        {/* Logo Section */}
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="mb-3 flex items-center justify-center">
-            <img
-              src={noBgLogo}
-              alt="Mafdesh Logo"
-              className="w-auto"
-              style={{ height: '96px' }}
-            />
-          </div>
-          <p className="text-blue-700 text-base font-medium">
-            Create your account
-          </p>
-        </div>
-
-        {/* Card */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: "18px",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.08)",
-          }}
-        >
-          {/* Header accent bar */}
-          <div
-            style={{
-              height: "5px",
-              background: "linear-gradient(90deg, #1e40af 0%, #ea580c 100%)",
-              borderRadius: "18px 18px 0 0",
-            }}
-          ></div>
-
-          <div style={{ padding: "36px 28px" }}>
-            {/* User Type Selector */}
-            <div className="mb-7">
-              <p
-                style={{
-                  color: "#374151",
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  letterSpacing: "0.8px",
-                  marginBottom: "14px",
-                  textTransform: "uppercase",
-                }}
-              >
-                Join as
-              </p>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setUserType("buyer")}
-                  style={{
-                    background: userType === "buyer" ? "#1e40af" : "#f9fafb",
-                    color: userType === "buyer" ? "#ffffff" : "#6b7280",
-                    flex: 1,
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    border:
-                      userType === "buyer" ? "none" : "1.5px solid #e5e7eb",
-                    cursor: "pointer",
-                    transition: "all 0.25s ease",
-                  }}
-                  onMouseOver={(e) => {
-                    if (userType !== "buyer") {
-                      e.target.style.background = "#f3f4f6";
-                      e.target.style.borderColor = "#d1d5db";
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (userType !== "buyer") {
-                      e.target.style.background = "#f9fafb";
-                      e.target.style.borderColor = "#e5e7eb";
-                    }
-                  }}
-                >
-                  👤 Buyer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserType("seller")}
-                  style={{
-                    background: userType === "seller" ? "#ea580c" : "#f9fafb",
-                    color: userType === "seller" ? "#ffffff" : "#6b7280",
-                    flex: 1,
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    border:
-                      userType === "seller" ? "none" : "1.5px solid #e5e7eb",
-                    cursor: "pointer",
-                    transition: "all 0.25s ease",
-                  }}
-                  onMouseOver={(e) => {
-                    if (userType !== "seller") {
-                      e.target.style.background = "#f3f4f6";
-                      e.target.style.borderColor = "#d1d5db";
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (userType !== "seller") {
-                      e.target.style.background = "#f9fafb";
-                      e.target.style.borderColor = "#e5e7eb";
-                    }
-                  }}
-                >
-                  🏪 Seller
-                </button>
-              </div>
+        <div className="w-full max-w-3xl">
+          <div className="mb-6 text-center sm:mb-8">
+            <div className="mb-3 flex items-center justify-center">
+              <img
+                src={noBgLogo}
+                alt="Mafdesh Logo"
+                className="h-24 w-auto"
+              />
             </div>
+            <p className="text-base font-medium text-blue-700">Create your account</p>
+          </div>
 
-            {/* Form */}
-            <form
-              className="space-y-6"
-              onSubmit={async (e) => {
-                e.preventDefault();
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+            <div className={`h-1.5 ${isSeller ? 'bg-[linear-gradient(90deg,_#ea580c_0%,_#fb923c_48%,_#1d4ed8_100%)]' : 'bg-[linear-gradient(90deg,_#1d4ed8_0%,_#60a5fa_48%,_#ea580c_100%)]'}`} />
 
-                if (isSubmitting) {
-                  return;
-                }
-
-                const trimmed = {
-                  fullName: formData.full_name?.trim() || '',
-                  email: formData.email?.trim().toLowerCase() || '',
-                  username: formData.username?.trim().toLowerCase() || '',
-                  phone: formData.phone_number?.trim() || '',
-                  dateOfBirth: formData.date_of_birth || '',
-                  businessName: formData.business_name?.trim() || '',
-                  location: formData.location?.trim() || '',
-                  universityName: formData.university_name?.trim() || '',
-                  universityState: formData.university_state?.trim() || '',
-                  universityZone: formData.university_zone?.trim() || '',
-                };
-
-                const normalizedFormData = {
-                  ...formData,
-                  full_name: trimmed.fullName,
-                  email: trimmed.email,
-                  username: trimmed.username,
-                  phone_number: trimmed.phone,
-                  date_of_birth: trimmed.dateOfBirth,
-                  business_name: trimmed.businessName,
-                  location: trimmed.location,
-                  university_name: trimmed.universityName,
-                  university_state: trimmed.universityState,
-                  university_zone: trimmed.universityZone,
-                };
-
-                if (!trimmed.fullName || !trimmed.email || !trimmed.username || !trimmed.dateOfBirth || !formData.password || !trimmed.location) {
-                  showWarning('Missing Details', 'Please fill in all required fields including date of birth and location.');
-                  return;
-                }
-
-                if (userType === "seller" && !trimmed.businessName) {
-                  showWarning('Business Name Required', 'Please enter your business name.');
-                  return;
-                }
-
-                if (userType === "seller" && (!trimmed.universityName || !trimmed.universityState)) {
-                  showWarning(
-                    'University Required',
-                    'Choose your university and its state before creating a seller account.'
-                  );
-                  return;
-                }
-
-                if (userType === "seller" && !trimmed.universityZone) {
-                  showWarning(
-                    'University State Required',
-                    'Select the correct university state so Mafdesh can place your store in the right campus zone.'
-                  );
-                  return;
-                }
-
-                if (formData.password.length < 6) {
-                  showWarning('Password Too Short', 'Password must be at least 6 characters.');
-                  return;
-                }
-
-                if (formData.password !== formData.confirmPassword) {
-                  showWarning('Password Mismatch', 'Passwords do not match.');
-                  return;
-                }
-
-                if (!agreedToTerms) {
-                  showWarning('Terms Required', 'Please agree to the Terms & Conditions and Privacy Policy.');
-                  return;
-                }
-
-                const isUnique = await checkUsernameUnique(trimmed.username);
-                if (isUnique !== true) {
-                  if (isUnique === false) {
-                    setUsernameError('This username is already taken. Please choose another one.');
-                  }
-                  return;
-                }
-
-                setIsSubmitting(true);
-                const success = await handleSignUp(normalizedFormData);
-                setIsSubmitting(false);
-
-                if (success) {
-                  clearSignupDraft();
-                  navigate('/login', {
-                    state: {
-                      message:
-                        typeof success === 'object' && success?.message
-                          ? success.message
-                          : 'Account created successfully! Please check your email to verify before logging in.'
-                    }
-                  });
-                }
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  FULL NAME
-                </label>
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  value={formData.full_name}
-                  maxLength={100}
-                  onChange={(e) =>
-                    setFormData({ ...formData, full_name: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    border: "1.5px solid #e5e7eb",
-                    fontSize: "15px",
-                    fontFamily: "inherit",
-                    transition: "all 0.25s ease",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#1e40af";
-                    e.target.style.boxShadow =
-                      "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  DATE OF BIRTH
-                </label>
-                <input
-                  type="date"
-                  value={formData.date_of_birth}
-                  aria-label="Date of birth"
-                  onChange={(e) =>
-                    setFormData({ ...formData, date_of_birth: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    border: "1.5px solid #e5e7eb",
-                    fontSize: "15px",
-                    fontFamily: "inherit",
-                    transition: "all 0.25s ease",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#1e40af";
-                    e.target.style.boxShadow =
-                      "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  EMAIL ADDRESS
-                </label>
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={formData.email}
-                  maxLength={254}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    border: "1.5px solid #e5e7eb",
-                    fontSize: "15px",
-                    fontFamily: "inherit",
-                    transition: "all 0.25s ease",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#1e40af";
-                    e.target.style.boxShadow =
-                      "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  USERNAME
-                </label>
-                <input
-                  type="text"
-                  placeholder="johndoe123"
-                  value={formData.username}
-                  maxLength={30}
-                  onChange={(e) => {
-                    setFormData({ ...formData, username: e.target.value });
-                    if (usernameError) setUsernameError("");
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value) {
-                      checkUsernameUnique(e.target.value);
-                    }
-                    e.target.style.borderColor = usernameError ? "#dc2626" : "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    border: usernameError ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb",
-                    fontSize: "15px",
-                    fontFamily: "inherit",
-                    transition: "all 0.25s ease",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = usernameError ? "#dc2626" : "#1e40af";
-                    e.target.style.boxShadow = usernameError
-                      ? "0 0 0 4px rgba(220, 38, 38, 0.12)"
-                      : "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                  }}
-                />
-                {!usernameError && !isCheckingUsername && (
-                  <p style={{
-                    color: "#6b7280",
-                    fontSize: "11px",
-                    marginTop: "6px",
-                    fontWeight: "500"
-                  }}>
-                    3-20 characters, letters, numbers, and underscores only
-                  </p>
-                )}
-                {isCheckingUsername && (
-                  <p style={{
-                    color: "#1e40af",
-                    fontSize: "12px",
-                    marginTop: "6px",
-                    fontWeight: "600"
-                  }}>
-                    Checking availability...
-                  </p>
-                )}
-                {usernameError && (
-                  <p style={{
-                    color: "#dc2626",
-                    fontSize: "12px",
-                    marginTop: "6px",
-                    fontWeight: "600"
-                  }}>
-                    {usernameError}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <SelectField
-                  id="signup-location-state"
-                  label="LOCATION (STATE IN NIGERIA)"
-                  value={formData.location}
-                  onChange={(nextValue) => setFormData({ ...formData, location: nextValue })}
-                  ariaLabel="Location (State in Nigeria)"
-                  options={NIGERIAN_STATES}
-                  placeholder="Select your state"
-                  tone="blue"
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  PHONE NUMBER
-                </label>
-                <input
-                  type="tel"
-                  placeholder="08012345678"
-                  value={formData.phone_number}
-                  maxLength={11}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone_number: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "13px 16px",
-                    borderRadius: "11px",
-                    border: "1.5px solid #e5e7eb",
-                    fontSize: "15px",
-                    fontFamily: "inherit",
-                    transition: "all 0.25s ease",
-                    boxSizing: "border-box",
-                    color: "#111827",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#1e40af";
-                    e.target.style.boxShadow =
-                      "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  PASSWORD
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••••••"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "13px 48px 13px 16px",
-                      borderRadius: "11px",
-                      border: "1.5px solid #e5e7eb",
-                      fontSize: "15px",
-                      fontFamily: "inherit",
-                      transition: "all 0.25s ease",
-                      boxSizing: "border-box",
-                      color: "#111827",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "#1e40af";
-                      e.target.style.boxShadow =
-                        "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "#e5e7eb";
-                      e.target.style.boxShadow = "none";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: "absolute",
-                      right: "12px",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "4px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#6b7280",
-                    }}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    color: "#374151",
-                    fontSize: "13px",
-                    fontWeight: "700",
-                    display: "block",
-                    marginBottom: "10px",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  CONFIRM PASSWORD
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="••••••••••••"
-                    value={formData.confirmPassword}
-                    onChange={(e) =>
-                      setFormData({ ...formData, confirmPassword: e.target.value })
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "13px 48px 13px 16px",
-                      borderRadius: "11px",
-                      border: "1.5px solid #e5e7eb",
-                      fontSize: "15px",
-                      fontFamily: "inherit",
-                      transition: "all 0.25s ease",
-                      boxSizing: "border-box",
-                      color: "#111827",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "#1e40af";
-                      e.target.style.boxShadow =
-                        "0 0 0 4px rgba(30, 64, 175, 0.12)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "#e5e7eb";
-                      e.target.style.boxShadow = "none";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    style={{
-                      position: "absolute",
-                      right: "12px",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "4px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#6b7280",
-                    }}
-                  >
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              {(userType === "seller" || userType === "buyer") && (
-                <div className="space-y-4 border-t border-gray-100 pt-4">
-                  {userType === "seller" ? (
-                    <div>
-                      <label
-                        style={{
-                          color: "#374151",
-                          fontSize: "13px",
-                          fontWeight: "700",
-                          display: "block",
-                          marginBottom: "10px",
-                          letterSpacing: "0.3px",
-                        }}
-                      >
-                        BUSINESS NAME
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Your store name"
-                        value={formData.business_name}
-                        maxLength={100}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            business_name: e.target.value,
-                          })
-                        }
-                        style={{
-                          width: "100%",
-                          padding: "13px 16px",
-                          borderRadius: "11px",
-                          border: "1.5px solid #e5e7eb",
-                          fontSize: "15px",
-                          fontFamily: "inherit",
-                          transition: "all 0.25s ease",
-                          boxSizing: "border-box",
-                          color: "#111827",
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = "#ea580c";
-                          e.target.style.boxShadow =
-                            "0 0 0 4px rgba(234, 88, 12, 0.12)";
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = "#e5e7eb";
-                          e.target.style.boxShadow = "none";
-                        }}
-                      />
-                    </div>
-                  ) : null}
-
+            <div className="space-y-8 p-6 sm:p-8">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
                   <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">
+                      Step {currentStep} of {SIGNUP_STEPS.length}
+                    </p>
+                    <h1 className="mt-2 text-2xl font-bold text-slate-900">{progressCopy.label}</h1>
+                    <p className="mt-1 text-sm text-slate-500">{progressCopy.description}</p>
+                  </div>
+                  <div className={`rounded-full px-3 py-1 text-xs font-semibold ${isSeller ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
+                    {isSeller ? 'Seller path' : 'Buyer path'}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  {SIGNUP_STEPS.map((step) => (
+                    <StepBadge key={step.id} step={step} currentStep={currentStep} accent={accent} />
+                  ))}
+                </div>
+              </div>
+
+              <form className="space-y-8" onSubmit={handleSubmit}>
+                {currentStep === 1 ? (
+                  <div className="space-y-6">
+                    <div>
+                      <FieldLabel>Join as</FieldLabel>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setUserType('buyer')}
+                          className={`${roleButtonBaseClass} ${!isSeller
+                            ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'}`}
+                        >
+                          <span className="block text-base">Buyer</span>
+                          <span className={`mt-1 block text-xs ${!isSeller ? 'text-blue-100' : 'text-slate-500'}`}>
+                            Browse products, save addresses, and check out faster.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUserType('seller')}
+                          className={`${roleButtonBaseClass} ${isSeller
+                            ? 'border-orange-600 bg-orange-600 text-white shadow-sm'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700'}`}
+                        >
+                          <span className="block text-base">Seller</span>
+                          <span className={`mt-1 block text-xs ${isSeller ? 'text-orange-100' : 'text-slate-500'}`}>
+                            Open your campus store and complete verification later.
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <FieldLabel>Full name</FieldLabel>
+                        <input
+                          type="text"
+                          placeholder="John Doe"
+                          value={formData.full_name}
+                          maxLength={100}
+                          onChange={(event) => setFieldValue('full_name', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Email address</FieldLabel>
+                        <input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={formData.email}
+                          onChange={(event) => setFieldValue('email', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Username</FieldLabel>
+                        <input
+                          type="text"
+                          placeholder="johndoe123"
+                          value={formData.username}
+                          maxLength={30}
+                          onChange={(event) => {
+                            setFieldValue('username', event.target.value);
+                            setUsernameError('');
+                          }}
+                          onBlur={() => {
+                            if (formData.username?.trim()) {
+                              checkUsernameUnique(formData.username);
+                            }
+                          }}
+                          className={`${inputClass} ${usernameError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/15' : inputFocusClass}`}
+                        />
+                        {!usernameError && !isCheckingUsername ? (
+                          <p className="mt-2 text-xs font-medium text-slate-500">
+                            3-30 characters, letters, numbers, and underscores only.
+                          </p>
+                        ) : null}
+                        {isCheckingUsername ? (
+                          <p className="mt-2 text-xs font-semibold text-blue-600">Checking availability...</p>
+                        ) : null}
+                        {usernameError ? (
+                          <p className="mt-2 text-xs font-semibold text-red-600">{usernameError}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {currentStep === 2 ? (
+                  <div className="space-y-6">
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div>
+                        <FieldLabel>Date of birth</FieldLabel>
+                        <input
+                          type="date"
+                          aria-label="Date of birth"
+                          value={formData.date_of_birth}
+                          onChange={(event) => setFieldValue('date_of_birth', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <SelectField
+                          id="signup-location-state"
+                          label="LOCATION (STATE IN NIGERIA)"
+                          value={formData.location}
+                          onChange={(nextValue) => setFieldValue('location', nextValue)}
+                          ariaLabel="Location (State in Nigeria)"
+                          options={NIGERIAN_STATES}
+                          placeholder="Select your state"
+                          tone="blue"
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Phone number</FieldLabel>
+                        <input
+                          type="tel"
+                          placeholder="08012345678"
+                          value={formData.phone_number}
+                          maxLength={11}
+                          onChange={(event) => setFieldValue('phone_number', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                        <p className="mt-2 text-xs font-medium text-slate-500">
+                          Optional, but helpful for delivery coordination.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div>
+                        <FieldLabel>Password</FieldLabel>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Enter a password"
+                            value={formData.password}
+                            onChange={(event) => setFieldValue('password', event.target.value)}
+                            className={`${inputClass} ${inputFocusClass} pr-12`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((current) => !current)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <FieldLabel>Confirm password</FieldLabel>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="Confirm your password"
+                            value={formData.confirmPassword}
+                            onChange={(event) => setFieldValue('confirmPassword', event.target.value)}
+                            className={`${inputClass} ${inputFocusClass} pr-12`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword((current) => !current)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
+                          >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {currentStep === 3 ? (
+                  <div className="space-y-6">
+                    <div className={`rounded-2xl border px-4 py-4 text-sm ${isSeller ? 'border-orange-100 bg-orange-50/70 text-orange-900' : 'border-blue-100 bg-blue-50/70 text-blue-900'}`}>
+                      {isSeller
+                        ? 'Your university details shape your campus zone now, and you can finish verification after signup.'
+                        : 'You can add your university now or leave it blank and still create your buyer account.'}
+                    </div>
+
+                    {isSeller ? (
+                      <div>
+                        <FieldLabel>Business name</FieldLabel>
+                        <input
+                          type="text"
+                          placeholder="Your store name"
+                          value={formData.business_name}
+                          maxLength={100}
+                          onChange={(event) => setFieldValue('business_name', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                      </div>
+                    ) : null}
+
                     <SearchablePickerField
                       id="signup-university-name"
-                      label={userType === "seller" ? "UNIVERSITY" : "UNIVERSITY (OPTIONAL)"}
+                      label={isSeller ? 'UNIVERSITY' : 'UNIVERSITY (OPTIONAL)'}
                       value={formData.university_name}
                       onChange={handleUniversityNameChange}
                       placeholder="Search your university"
                       maxLength={120}
                       helperText={
-                        userType === "seller"
+                        isSeller
                           ? 'Choose a suggested school when it appears. If your campus is missing, use Other and keep typing it as a custom university.'
                           : 'You can pick a suggested school or use Other if your university is not listed.'
                       }
@@ -1127,166 +932,113 @@ export default function SignUp() {
                       customActionLabel={`Use "${String(formData.university_name || '').trim()}" as Other university`}
                       onCustomAction={useCustomUniversityName}
                       selectedBadgeText={formData.university_id ? 'Catalog match' : formData.university_name ? 'Other' : ''}
-                      tone={userType === "seller" ? "orange" : "blue"}
+                      tone={isSeller ? 'orange' : 'blue'}
                     />
+
+                    {isSeller ? (
+                      <>
+                        <SelectField
+                          id="signup-university-state"
+                          label="UNIVERSITY STATE"
+                          value={formData.university_state}
+                          onChange={handleUniversityStateChange}
+                          ariaLabel="University state"
+                          options={NIGERIAN_STATES}
+                          placeholder="Select university state"
+                          tone="orange"
+                        />
+
+                        <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
+                          <span className="font-semibold">University zone:</span>{' '}
+                          {formData.university_zone || 'Select the university state to auto-fill the zone'}
+                        </div>
+                      </>
+                    ) : formData.university_name ? (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
+                        <span className="font-semibold">Campus details:</span>{' '}
+                        {[formData.university_state, formData.university_zone].filter(Boolean).join(' • ') || 'You can leave it as a custom university name if no exact match appears.'}
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                      <input
+                        type="checkbox"
+                        id="terms"
+                        checked={agreedToTerms}
+                        onChange={(event) => setAgreedToTerms(event.target.checked)}
+                        className={`mt-1 h-5 w-5 shrink-0 cursor-pointer rounded ${isSeller ? 'accent-orange-600' : 'accent-blue-600'}`}
+                      />
+                      <div className="text-sm leading-6 text-slate-600">
+                        I agree to the{' '}
+                        <button
+                          type="button"
+                          onClick={() => navigateToLegalPage('/terms')}
+                          className={`bg-transparent font-semibold ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}
+                        >
+                          Terms & Conditions
+                        </button>{' '}
+                        and{' '}
+                        <button
+                          type="button"
+                          onClick={() => navigateToLegalPage('/policies')}
+                          className={`bg-transparent font-semibold ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}
+                        >
+                          Privacy Policy
+                        </button>
+                        .
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    {currentStep > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
+                        className={`inline-flex items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold transition-colors ${secondaryButtonClass}`}
+                      >
+                        Back
+                      </button>
+                    ) : null}
                   </div>
 
-                  {userType === "seller" ? (
-                    <div>
-                      <SelectField
-                        id="signup-university-state"
-                        label="UNIVERSITY STATE"
-                        value={formData.university_state}
-                        onChange={handleUniversityStateChange}
-                        ariaLabel="University state"
-                        options={NIGERIAN_STATES}
-                        placeholder="Select university state"
-                        tone="orange"
-                      />
-                    </div>
-                  ) : null}
-
-                  {userType === "seller" ? (
-                    <div className="rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3 text-sm text-orange-900">
-                      <span className="font-semibold">University zone:</span>{' '}
-                      {formData.university_zone || 'Select the university state to auto-fill the zone'}
-                    </div>
-                  ) : formData.university_name ? (
-                    <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3 text-sm text-blue-900">
-                      <span className="font-semibold">Campus details:</span>{' '}
-                      {[formData.university_state, formData.university_zone].filter(Boolean).join(' • ') || 'You can leave it as a custom university name if no exact match appears.'}
-                    </div>
-                  ) : null}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    {currentStep < SIGNUP_STEPS.length ? (
+                      <button
+                        type="button"
+                        onClick={goToNextStep}
+                        className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-4 ${primaryButtonClass}`}
+                      >
+                        Next: {SIGNUP_STEPS[currentStep].label}
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:opacity-70 ${primaryButtonClass}`}
+                      >
+                        {isSubmitting ? 'Creating Account...' : 'Create Account'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
+              </form>
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "12px",
-                  marginTop: "20px",
-                  paddingTop: "4px",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  id="terms"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  style={{
-                    width: "20px",
-                    height: "20px",
-                    minWidth: "20px",
-                    marginTop: "2px",
-                    cursor: "pointer",
-                    accentColor: userType === "buyer" ? "#1e40af" : "#ea580c",
-                  }}
-                />
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: "14px",
-                    lineHeight: "1.6",
-                    fontWeight: "500",
-                  }}
-                >
-                  I agree to the{" "}
-                  <button
-                    type="button"
-                    onClick={() => navigateToLegalPage('/terms')}
-                    style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
-                    className="cursor-pointer bg-transparent p-0"
-                  >
-                    Terms & Conditions
-                  </button>{" "}
-                  and{" "}
-                  <button
-                    type="button"
-                    onClick={() => navigateToLegalPage('/policies')}
-                    style={{ color: userType === "buyer" ? "#1e40af" : "#ea580c", fontWeight: "700", textDecoration: "none" }}
-                    className="cursor-pointer bg-transparent p-0"
-                  >
-                    Privacy Policy
-                  </button>
-                  {" "}<span style={{ color: "#dc2626" }}>*</span>
-                </div>
+              <div className="border-t border-slate-100 pt-6 text-center">
+                <p className="text-sm font-medium text-slate-500">
+                  Already have an account?{' '}
+                  <Link to="/login" className="font-semibold text-blue-700 hover:underline">
+                    Login here
+                  </Link>
+                </p>
               </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="hover:shadow-lg"
-                style={{
-                  width: "100%",
-                  background: userType === "buyer" ? "#1e40af" : "#ea580c",
-                  color: "#ffffff",
-                  padding: "15px 16px",
-                  borderRadius: "11px",
-                  border: "none",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  cursor: isSubmitting ? "not-allowed" : "pointer",
-                  marginTop: "24px",
-                  transition: "all 0.3s ease",
-                  letterSpacing: "0.3px",
-                  opacity: isSubmitting ? 0.7 : 1,
-                }}
-                onMouseOver={(e) => {
-                  if (isSubmitting) return;
-                  e.target.style.transform = "translateY(-2px)";
-                  e.target.style.boxShadow =
-                    userType === "buyer"
-                      ? "0 12px 24px rgba(30, 64, 175, 0.3)"
-                      : "0 12px 24px rgba(234, 88, 12, 0.3)";
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.transform = "translateY(0)";
-                  e.target.style.boxShadow = "none";
-                }}
-              >
-                {isSubmitting ? "Creating Account..." : "Create Account"}
-              </button>
-            </form>
-
-            {/* Footer */}
-            <div
-              style={{
-                marginTop: "24px",
-                paddingTop: "24px",
-                borderTop: "1.5px solid #f3f4f6",
-                textAlign: "center",
-              }}
-            >
-              <p
-                style={{
-                  color: "#6b7280",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                }}
-              >
-                Already have an account?{" "}
-                <Link
-                  to="/login"
-                  style={{
-                    color: "#1e40af",
-                    fontWeight: "700",
-                    textDecoration: "none",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseOver={(e) =>
-                    (e.target.style.textDecoration = "underline")
-                  }
-                  onMouseOut={(e) => (e.target.style.textDecoration = "none")}
-                >
-                  Login here
-                </Link>
-              </p>
             </div>
           </div>
         </div>
-      </div>
       </main>
+
       <Footer />
       <ModalComponent />
     </div>

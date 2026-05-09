@@ -215,17 +215,12 @@ function BankDetailsForm({
   submitLabel = '',
 }) {
   const bankDatalistId = React.useId();
-  const [bankQuery, setBankQuery] = useState(values.bank_name || '');
-
-  useEffect(() => {
-    setBankQuery(values.bank_name || '');
-  }, [values.bank_name]);
-
   const resolvedSubmitLabel =
     submitLabel ||
     (title?.toLowerCase().includes('change')
       ? 'Submit Request'
       : 'Save Bank Details');
+  const bankQuery = values.bank_name || '';
   const normalizedBankQuery = String(bankQuery || '').trim().toLowerCase();
   const shouldShowBankSuggestions = normalizedBankQuery.length >= 2;
   const filteredBanks = NIGERIAN_BANKS.filter((bank) => {
@@ -251,14 +246,12 @@ function BankDetailsForm({
         label="Bank Name *"
         value={bankQuery}
         onChange={(nextValue) => {
-          setBankQuery(nextValue);
           onChange('bank_name', nextValue);
         }}
         placeholder="Search Nigerian banks"
         helperText={bankHelperText}
         options={filteredBanks}
         onSelectOption={(bank) => {
-          setBankQuery(bank);
           onChange('bank_name', bank);
         }}
         getOptionKey={(bank) => bank}
@@ -375,6 +368,7 @@ export default function Profile() {
   const [defaultAddress, setDefaultAddress] = useState(null);
   const [addressPreviewLoading, setAddressPreviewLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeSellerTab, setActiveSellerTab] = useState('overview');
   const [isPasswordFormOpen, setIsPasswordFormOpen] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -383,10 +377,8 @@ export default function Profile() {
   });
   const [showChangeForm, setShowChangeForm] = useState(false);
   const [isEditingUniversity, setIsEditingUniversity] = useState(false);
-  const [showCancelSubscriptionConfirm, setShowCancelSubscriptionConfirm] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState(null);
   const [bankMessage, setBankMessage] = useState(null);
-  const [subscriptionMessage, setSubscriptionMessage] = useState(null);
   const [universityMessage, setUniversityMessage] = useState(null);
   const [universitySuggestions, setUniversitySuggestions] = useState([]);
   const [isSearchingUniversities, setIsSearchingUniversities] = useState(false);
@@ -408,6 +400,7 @@ export default function Profile() {
     tax_id: '',
   });
   const [saving, setSaving] = useState(false);
+  const universityNameInputRef = useRef(null);
 
   const loadUserProfile = useCallback(async () => {
     try {
@@ -564,6 +557,21 @@ export default function Profile() {
     };
   }, [profile?.role, universityForm.university_name, universityForm.university_state]);
 
+  useEffect(() => {
+    if (profile?.role !== 'seller' || !isEditingUniversity) {
+      return undefined;
+    }
+
+    const focusHandle = window.setTimeout(() => {
+      universityNameInputRef.current?.focus();
+      universityNameInputRef.current?.select?.();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusHandle);
+    };
+  }, [isEditingUniversity, profile?.role]);
+
   const handlePendingDetailsChange = (field, value) => {
     const nextValue =
       field === 'account_number' || field === 'bvn'
@@ -583,32 +591,6 @@ export default function Profile() {
       [field]: value,
     }));
     setPasswordMessage(null);
-  };
-
-  const cancelSubscription = async () => {
-    setShowCancelSubscriptionConfirm(false);
-
-    const { error } = await supabase
-      .from('users')
-      .update({
-        is_verified: false,
-        verification_expiry: null,
-      })
-      .eq('id', profile.id);
-
-    if (error) {
-      setSubscriptionMessage({
-        type: 'error',
-        text: 'Failed to cancel subscription.',
-      });
-      console.error(error);
-    } else {
-      await loadUserProfile();
-      setSubscriptionMessage({
-        type: 'success',
-        text: 'Subscription cancelled. Your Verified Seller badge has been removed.',
-      });
-    }
   };
 
   const handleUniversityFieldChange = (field, value) => {
@@ -673,6 +655,7 @@ export default function Profile() {
 
   const openUniversityEdit = () => {
     setUniversityMessage(null);
+    setActiveSellerTab('university');
     resetUniversityFormToProfile();
     setIsEditingUniversity(true);
   };
@@ -963,7 +946,6 @@ export default function Profile() {
   }
 
   const isSeller = profile.role === 'seller';
-  const isBuyer = profile.role === 'buyer';
   const isVerified = Boolean(profile.is_verified || profile.is_verified_seller);
   const verificationLabel = getSellerVerificationLabel(profile.verification_status, isVerified);
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
@@ -1001,6 +983,556 @@ export default function Profile() {
       { label: 'Tax ID', value: profile.bank_details_pending.tax_id || 'Not set' },
     ]
     : [];
+  const overviewCards = (
+    <div className="space-y-4">
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <Mail className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Email Address
+          </div>
+          <div className="font-medium text-blue-900">{profile?.email}</div>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <AtSign className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Username
+          </div>
+          <div className="font-medium text-blue-900">@{profile?.username || 'N/A'}</div>
+        </div>
+      </div>
+
+      {profile?.phone_number ? (
+        <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <Phone className="mt-0.5 text-blue-600" size={20} />
+          <div className="flex-1">
+            <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+              Phone Number
+            </div>
+            <div className="font-medium text-blue-900">{profile?.phone_number}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {profile?.date_of_birth ? (
+        <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <Calendar className="mt-0.5 text-blue-600" size={20} />
+          <div className="flex-1">
+            <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+              Date of Birth
+            </div>
+            <div className="font-medium text-blue-900">{formatProfileDate(profile?.date_of_birth)}</div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <Shield className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Account Type
+          </div>
+          <div className="font-medium capitalize text-blue-900">{profile?.role}</div>
+        </div>
+      </div>
+
+      {profile?.business_name ? (
+        <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
+          <Briefcase className="mt-0.5 text-orange-600" size={20} />
+          <div className="flex-1">
+            <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
+              Business Name
+            </div>
+            <div className="font-medium text-orange-900">{profile?.business_name}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {profile?.university_name ? (
+        <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
+          <Calendar className={`mt-0.5 ${isSeller ? 'text-orange-600' : 'text-blue-600'}`} size={20} />
+          <div className="flex-1">
+            <div className={`mb-1 text-xs font-semibold uppercase ${isSeller ? 'text-orange-600' : 'text-blue-600'}`}>
+              {isSeller ? 'University Identity' : 'University'}
+            </div>
+            <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile.university_name}</div>
+            <div className={`mt-1 text-sm ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}>
+              {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+  const sellerTabContent = (() => {
+    if (activeSellerTab === 'overview') {
+      const payoutStatus = hasPendingRequest
+        ? 'Pending bank review'
+        : hasActiveDetails
+          ? 'Payout details ready'
+          : 'Payout details needed';
+
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">
+                Verification
+              </p>
+              <p className="mt-2 text-lg font-bold text-slate-900">
+                {isVerified ? 'Verified Seller' : verificationLabel}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {isVerified
+                  ? 'Your campus identity is approved and visible across buyer-facing surfaces.'
+                  : 'Finish your university and payout setup without working through a long stacked page.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                Payout
+              </p>
+              <p className="mt-2 text-lg font-bold text-slate-900">{payoutStatus}</p>
+              <p className="mt-2 text-sm text-slate-600">
+                {hasPendingRequest
+                  ? 'Your current approved account stays active while the requested change is reviewed.'
+                  : hasActiveDetails
+                    ? 'Your active payout details are saved. Open the payout tab for changes.'
+                    : 'Add your bank details once and they become your active payout account immediately.'}
+              </p>
+            </div>
+          </div>
+          {overviewCards}
+        </div>
+      );
+    }
+
+    if (activeSellerTab === 'university') {
+      return (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Shield size={20} className="text-orange-500" />
+              <h2 className="text-lg font-bold text-gray-800">Verification Status</h2>
+            </div>
+            {isVerified ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={18} className="text-green-600" />
+                  <p className="font-semibold text-green-700">Verified Seller</p>
+                </div>
+                <p className="mt-1 text-sm text-green-600">
+                  Your university verification is approved. Your Verified Seller badge now appears across buyer-facing product and seller surfaces.
+                </p>
+                {profile.verification_approved_at ? (
+                  <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                    <Calendar size={12} />
+                    Approved on {new Date(profile.verification_approved_at).toLocaleDateString()}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-orange-200 bg-white p-4">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={18} className="text-orange-600" />
+                  <p className="font-semibold text-orange-700">{verificationLabel}</p>
+                </div>
+                <p className="mt-1 text-sm text-orange-600">
+                  {verificationLabel === 'Pending review'
+                    ? 'Your university verification is waiting for admin review.'
+                    : verificationLabel === 'Rejected'
+                      ? 'Your last university verification was rejected. Update the details if needed and submit again.'
+                      : 'Get verified to build trust and earn better visibility in recommendation sections.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/seller/verification')}
+                  className="mt-3 rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+                >
+                  {verificationLabel === 'Pending review' ? 'Open Verification Page' : 'Get Verified Now'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-blue-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Calendar size={20} className="text-blue-600" />
+              <h2 className="text-lg font-bold text-gray-800">University Settings</h2>
+            </div>
+            <form
+              onSubmit={submitUniversityIdentity}
+              className="space-y-4"
+            >
+              {universityFieldsLocked ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  Your saved university details are locked until you click edit.
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Update your campus identity here. If the identity changes after submission or approval, verification resets so the new details can be reviewed again.
+                </div>
+              )}
+
+              <SearchablePickerField
+                id="profile-university-name"
+                inputRef={universityNameInputRef}
+                label="University name"
+                value={universityForm.university_name}
+                onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
+                placeholder="Search or choose your university"
+                helperText="Pick a suggested school when it appears. If it is missing, use Other and keep your typed university name."
+                disabled={universityFieldsLocked}
+                loading={isSearchingUniversities}
+                options={universitySuggestions}
+                onSelectOption={handleUniversitySuggestionSelect}
+                getOptionKey={(university) => university.id}
+                getOptionPrimaryText={(university) => university.name}
+                getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
+                showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
+                customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other university`}
+                onCustomAction={useCustomUniversityName}
+                selectedBadgeText={universityForm.university_id ? 'Catalog match' : universityForm.university_name ? 'Other' : ''}
+                tone="orange"
+              />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <SelectField
+                  id="profile-university-state"
+                  label="University state"
+                  value={universityForm.university_state}
+                  onChange={(nextValue) => handleUniversityFieldChange('university_state', nextValue)}
+                  options={NIGERIAN_STATES}
+                  placeholder="Select state"
+                  disabled={universityFieldsLocked}
+                  tone="orange"
+                />
+
+                <SelectField
+                  id="profile-university-role"
+                  label="University role"
+                  value={universityForm.university_role}
+                  onChange={(nextValue) => handleUniversityFieldChange('university_role', nextValue)}
+                  options={[
+                    { value: 'student', label: 'Student' },
+                    { value: 'staff', label: 'Staff' },
+                    { value: 'other', label: 'Other' },
+                  ]}
+                  placeholder="Select role"
+                  disabled={universityFieldsLocked}
+                  tone="orange"
+                />
+              </div>
+
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <span className="font-semibold">University zone:</span>{' '}
+                {universityForm.university_zone || 'Select a university state to auto-fill the zone'}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                {universityFieldsLocked ? (
+                  <button
+                    type="button"
+                    onClick={openUniversityEdit}
+                    className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+                  >
+                    Edit University Details
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="submit"
+                      disabled={isSavingUniversity}
+                      className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {isSavingUniversity ? 'Saving...' : 'Save University Details'}
+                    </button>
+                    {(profile?.university_name || isEditingUniversity) ? (
+                      <button
+                        type="button"
+                        onClick={cancelUniversityEdit}
+                        className="rounded bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-300"
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </div>
+
+              <InlineMessage message={universityMessage} />
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSellerTab === 'payout') {
+      return (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-5">
+            <div className="flex items-start gap-3">
+              <Briefcase className="mt-0.5 h-5 w-5 text-orange-600" />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600">
+                  Seller business
+                </p>
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {profile.business_name || 'Business name not set'}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Your bank selection stays strict, but the list now appears only after you search so the form stays lighter.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-5">
+            <div className="mb-1 flex items-center gap-2">
+              <CreditCard size={20} className="text-blue-600" />
+              <h2 className="text-lg font-bold text-gray-800">Business &amp; Bank Details</h2>
+            </div>
+
+            {!hasActiveDetails && !hasPendingRequest ? (
+              <>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-sm font-semibold text-blue-800">
+                    Set up your payout details
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    Your first bank setup is saved immediately and becomes your active payout account.
+                  </p>
+                </div>
+                <BankDetailsForm
+                  values={pendingDetails}
+                  onChange={handlePendingDetailsChange}
+                  onSubmit={submitChangeRequest}
+                  saving={saving}
+                  title="Active payout details"
+                  submitLabel="Save Bank Details"
+                />
+              </>
+            ) : null}
+
+            {hasActiveDetails && !hasPendingRequest ? (
+              <>
+                <div className="border-b border-gray-100 pb-4">
+                  <p className="mb-3 text-sm font-semibold text-gray-700">
+                    Current Active Details
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {activeDetails.map((item) => (
+                      <DetailItem key={item.label} label={item.label} value={item.value} />
+                    ))}
+                  </div>
+                </div>
+
+                {!showChangeForm ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBankMessage(null);
+                      setPendingDetails(
+                        sanitizeBankDetailsRequest({
+                          bank_name: profile.bank_name,
+                          account_number: profile.account_number,
+                          account_name: profile.account_name,
+                          business_address: profile.business_address,
+                          bvn: profile.bvn,
+                          tax_id: profile.tax_id,
+                        })
+                      );
+                      setShowChangeForm(true);
+                    }}
+                    className="rounded bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
+                  >
+                    Edit Bank Details
+                  </button>
+                ) : (
+                  <div className="border-t pt-4">
+                    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <p className="font-semibold">Admin review is required for bank changes.</p>
+                      <p className="mt-1">
+                        Your current approved payout account remains active until this request is approved.
+                      </p>
+                      <p className="mt-1">
+                        Orders that were already completed keep paying to the bank snapshot captured at completion time.
+                      </p>
+                    </div>
+                    <BankDetailsForm
+                      values={pendingDetails}
+                      onChange={handlePendingDetailsChange}
+                      onSubmit={submitChangeRequest}
+                      onCancel={() => {
+                        setPendingDetails(
+                          sanitizeBankDetailsRequest({
+                            bank_name: profile.bank_name,
+                            account_number: profile.account_number,
+                            account_name: profile.account_name,
+                            business_address: profile.business_address,
+                            bvn: profile.bvn,
+                            tax_id: profile.tax_id,
+                          })
+                        );
+                        setShowChangeForm(false);
+                      }}
+                      saving={saving}
+                      title="Request change"
+                      submitLabel="Submit Change Request"
+                    />
+                  </div>
+                )}
+              </>
+            ) : null}
+
+            {hasPendingRequest ? (
+              <div className="rounded-2xl border border-yellow-200 border-l-4 border-l-yellow-400 bg-yellow-50 p-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-800">Pending Approval</p>
+                    <p className="mt-1 text-sm text-yellow-700">
+                      Your bank-details change request is under admin review. Your current approved payout account stays active until a decision is made.
+                    </p>
+                    <p className="mt-1 text-sm text-yellow-700">
+                      Completed orders that already captured a payout snapshot will continue paying to that older snapshot.
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-yellow-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-800">
+                    Under Review
+                  </span>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-gray-700">Current active details</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {activeDetails.map((item) => (
+                        <DetailItem key={`active-${item.label}`} label={item.label} value={item.value} />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-yellow-800">Requested changes</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {pendingRequestDetails.map((item) => (
+                        <DetailItem
+                          key={`pending-${item.label}`}
+                          label={item.label}
+                          value={item.value}
+                          accent="yellow"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <InlineMessage message={bankMessage} />
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-2xl border border-blue-200 bg-white p-5">
+        {!isPasswordFormOpen ? (
+          <>
+            <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Account Settings</p>
+            <button
+              type="button"
+              onClick={() => {
+                setPasswordMessage(null);
+                setIsPasswordFormOpen(true);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700"
+            >
+              <Lock size={18} />
+              <span>Change Password</span>
+            </button>
+          </>
+        ) : (
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-6">
+            <h3 className="mb-4 text-lg font-bold text-blue-900">Change Password</h3>
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(event) =>
+                    handlePasswordFieldChange('currentPassword', event.target.value)
+                  }
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  placeholder="Enter current password"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(event) =>
+                    handlePasswordFieldChange('newPassword', event.target.value)
+                  }
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  placeholder="Enter new password"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(event) =>
+                    handlePasswordFieldChange('confirmPassword', event.target.value)
+                  }
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  placeholder="Confirm new password"
+                  required
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
+                >
+                  Update Password
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasswordFormOpen(false);
+                    setPasswordMessage(null);
+                    setPasswordData({
+                      currentPassword: '',
+                      newPassword: '',
+                      confirmPassword: '',
+                    });
+                  }}
+                  className="flex-1 rounded-lg border border-blue-300 bg-white px-4 py-2 font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+            <InlineMessage message={passwordMessage} />
+          </div>
+        )}
+      </div>
+    );
+  })();
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -1041,529 +1573,79 @@ export default function Profile() {
               {isSeller ? 'Seller' : 'Buyer'}
             </p>
 
-            <div className="mb-8 space-y-4">
-              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <Mail className="mt-0.5 text-blue-600" size={20} />
-                <div className="flex-1">
-                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-                    Email Address
-                  </div>
-                  <div className="font-medium text-blue-900">{profile?.email}</div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <AtSign className="mt-0.5 text-blue-600" size={20} />
-                <div className="flex-1">
-                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-                    Username
-                  </div>
-                  <div className="font-medium text-blue-900">@{profile?.username || 'N/A'}</div>
-                </div>
-              </div>
-
-              {profile?.phone_number ? (
-                <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                  <Phone className="mt-0.5 text-blue-600" size={20} />
-                  <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-                      Phone Number
-                    </div>
-                    <div className="font-medium text-blue-900">{profile?.phone_number}</div>
-                  </div>
-                </div>
-              ) : null}
-
-              {profile?.date_of_birth ? (
-                <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                  <Calendar className="mt-0.5 text-blue-600" size={20} />
-                  <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-                      Date of Birth
-                    </div>
-                    <div className="font-medium text-blue-900">{formatProfileDate(profile?.date_of_birth)}</div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <Shield className="mt-0.5 text-blue-600" size={20} />
-                <div className="flex-1">
-                  <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-                    Account Type
-                  </div>
-                  <div className="font-medium capitalize text-blue-900">{profile?.role}</div>
-                </div>
-              </div>
-
-              {profile?.business_name ? (
-                <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
-                  <Briefcase className="mt-0.5 text-orange-600" size={20} />
-                  <div className="flex-1">
-                    <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
-                      Business Name
-                    </div>
-                    <div className="font-medium text-orange-900">{profile?.business_name}</div>
-                  </div>
-                </div>
-              ) : null}
-
-              {profile?.university_name ? (
-                <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
-                  <Calendar className={`mt-0.5 ${isSeller ? 'text-orange-600' : 'text-blue-600'}`} size={20} />
-                  <div className="flex-1">
-                    <div className={`mb-1 text-xs font-semibold uppercase ${isSeller ? 'text-orange-600' : 'text-blue-600'}`}>
-                      {isSeller ? 'University Identity' : 'University'}
-                    </div>
-                    <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile.university_name}</div>
-                    <div className={`mt-1 text-sm ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}>
-                      {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {isBuyer ? (
-              <div className="mb-8">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-bold text-gray-800">Address Book</h2>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/account/addresses')}
-                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
-                  >
-                    Manage addresses →
-                  </button>
-                </div>
-
-                {addressPreviewLoading ? (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-                    Loading your saved addresses...
-                  </div>
-                ) : defaultAddress ? (
-                  <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-5 w-5 text-orange-600" />
-                        <p className="font-semibold text-gray-900">{defaultAddress.label}</p>
-                      </div>
-                      <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
-                        Default
-                      </span>
-                    </div>
-                    <div className="mt-3 space-y-1 text-sm text-gray-700">
-                      <p className="font-semibold text-gray-900">{defaultAddress.full_name}</p>
-                      <p>{defaultAddress.phone_number}</p>
-                      <p>{formatSavedAddressStreet(defaultAddress)}</p>
-                      {formatSavedAddressLandmark(defaultAddress) ? (
-                        <p>{formatSavedAddressLandmark(defaultAddress)}</p>
-                      ) : null}
-                      <p>{formatSavedAddressLocation(defaultAddress)}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-700">
-                    No saved addresses. Add one for faster checkout.
-                  </div>
-                )}
-              </div>
-            ) : null}
-
             {isSeller ? (
               <div className="mb-8">
-                <div className="mb-3 flex items-center gap-2">
-                  <Calendar size={20} className="text-blue-600" />
-                  <h2 className="text-lg font-bold text-gray-800">University Settings</h2>
-                </div>
-                <form
-                  onSubmit={submitUniversityIdentity}
-                  className="space-y-4 rounded-xl border border-blue-200 bg-white p-4"
-                >
-                  {universityFieldsLocked ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                      Your saved university details are locked until you click edit.
-                    </div>
-                  ) : null}
+                <div className="mb-6 flex gap-3 overflow-x-auto pb-1">
+                  {SELLER_PROFILE_TABS.map((tab) => {
+                    const isActive = activeSellerTab === tab.id;
+                    const TabIcon = tab.Icon;
 
-                  <SearchablePickerField
-                    id="profile-university-name"
-                    label="University name"
-                    value={universityForm.university_name}
-                    onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
-                    placeholder="Search or choose your university"
-                    helperText="Pick a suggested school when it appears. If it is missing, use Other and keep your typed university name."
-                    disabled={universityFieldsLocked}
-                    loading={isSearchingUniversities}
-                    options={universitySuggestions}
-                    onSelectOption={handleUniversitySuggestionSelect}
-                    getOptionKey={(university) => university.id}
-                    getOptionPrimaryText={(university) => university.name}
-                    getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
-                    allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
-                    showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
-                    customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other university`}
-                    onCustomAction={useCustomUniversityName}
-                    selectedBadgeText={universityForm.university_id ? 'Catalog match' : universityForm.university_name ? 'Other' : ''}
-                    tone="orange"
-                  />
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <SelectField
-                      id="profile-university-state"
-                      label="University state"
-                      value={universityForm.university_state}
-                      onChange={(nextValue) => handleUniversityFieldChange('university_state', nextValue)}
-                      options={NIGERIAN_STATES}
-                      placeholder="Select state"
-                      disabled={universityFieldsLocked}
-                      tone="orange"
-                    />
-
-                    <SelectField
-                      id="profile-university-role"
-                      label="University role"
-                      value={universityForm.university_role}
-                      onChange={(nextValue) => handleUniversityFieldChange('university_role', nextValue)}
-                      options={[
-                        { value: 'student', label: 'Student' },
-                        { value: 'staff', label: 'Staff' },
-                        { value: 'other', label: 'Other' },
-                      ]}
-                      placeholder="Select role"
-                      disabled={universityFieldsLocked}
-                      tone="orange"
-                    />
-                  </div>
-
-                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                    <span className="font-semibold">University zone:</span>{' '}
-                    {universityForm.university_zone || 'Select a university state to auto-fill the zone'}
-                  </div>
-
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Changing your university identity after a submission or approval resets seller verification so the new campus details can be reviewed again.
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    {universityFieldsLocked ? (
+                    return (
                       <button
+                        key={tab.id}
                         type="button"
-                        onClick={openUniversityEdit}
-                        className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+                        onClick={() => setActiveSellerTab(tab.id)}
+                        className={`inline-flex min-w-fit items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${isActive
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'}`}
                       >
-                        Edit University Details
+                        <TabIcon className="h-4 w-4" />
+                        {tab.label}
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          type="submit"
-                          disabled={isSavingUniversity}
-                          className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          {isSavingUniversity ? 'Saving...' : 'Save University Details'}
-                        </button>
-                        {profile?.university_name ? (
-                          <button
-                            type="button"
-                            onClick={cancelUniversityEdit}
-                            className="rounded bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-300"
-                          >
-                            Cancel
-                          </button>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-
-                  <InlineMessage message={universityMessage} />
-                </form>
-              </div>
-            ) : null}
-
-            {isSeller ? (
-              <div className="mb-8">
-                <div className="mb-3 flex items-center gap-2">
-                  <Shield size={20} className="text-orange-500" />
-                  <h2 className="text-lg font-bold text-gray-800">Verification Status</h2>
+                    );
+                  })}
                 </div>
-                {isVerified ? (
-                  <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle size={18} className="text-green-600" />
-                      <p className="font-semibold text-green-700">Verified Seller</p>
-                    </div>
-                    <p className="mt-1 text-sm text-green-600">
-                      Your university verification is approved. Your Verified Seller badge now appears across buyer-facing product and seller surfaces.
-                    </p>
-                    {profile.verification_approved_at ? (
-                      <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
-                        <Calendar size={12} />
-                        Approved on {new Date(profile.verification_approved_at).toLocaleDateString()}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={18} className="text-orange-600" />
-                      <p className="font-semibold text-orange-700">{verificationLabel}</p>
-                    </div>
-                    <p className="mt-1 text-sm text-orange-600">
-                      {verificationLabel === 'Pending review'
-                        ? 'Your university verification is waiting for admin review.'
-                        : verificationLabel === 'Rejected'
-                          ? 'Your last university verification was rejected. Update the details if needed and submit again.'
-                          : 'Get verified to build trust and earn better visibility in recommendation sections.'}
-                    </p>
+
+                {sellerTabContent}
+              </div>
+            ) : (
+              <>
+                <div className="mb-8">{overviewCards}</div>
+
+                <div className="mb-8">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold text-gray-800">Address Book</h2>
                     <button
                       type="button"
-                      onClick={() => navigate('/seller/verification')}
-                      className="mt-3 rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+                      onClick={() => navigate('/account/addresses')}
+                      className="text-sm font-semibold text-orange-600 hover:text-orange-700"
                     >
-                      {verificationLabel === 'Pending review' ? 'Open Verification Page' : 'Get Verified Now'}
+                      Manage addresses {'->'}
                     </button>
                   </div>
-                )}
-              </div>
-            ) : null}
 
-            {isSeller ? (
-              <div className="mb-8">
-                <div className="mb-3 flex items-center gap-2">
-                  <CreditCard size={20} className="text-blue-600" />
-                  <h2 className="text-lg font-bold text-gray-800">Business &amp; Bank Details</h2>
-                </div>
-                <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4">
-                  {!hasActiveDetails && !hasPendingRequest ? (
-                    <>
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                        <p className="text-sm font-semibold text-blue-800">
-                          Set up your payout details
-                        </p>
-                        <p className="text-sm text-blue-700">
-                          Your first bank setup is saved immediately and becomes your active payout account.
-                        </p>
-                      </div>
-                      <BankDetailsForm
-                        values={pendingDetails}
-                        onChange={handlePendingDetailsChange}
-                        onSubmit={submitChangeRequest}
-                        saving={saving}
-                        title="Active payout details"
-                        submitLabel="Save Bank Details"
-                      />
-                    </>
-                  ) : null}
-
-                  {hasActiveDetails && !hasPendingRequest ? (
-                    <>
-                      <div className="border-b border-gray-100 pb-4">
-                        <p className="mb-3 text-sm font-semibold text-gray-700">
-                          Current Active Details
-                        </p>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {activeDetails.map((item) => (
-                            <DetailItem key={item.label} label={item.label} value={item.value} />
-                          ))}
+                  {addressPreviewLoading ? (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+                      Loading your saved addresses...
+                    </div>
+                  ) : defaultAddress ? (
+                    <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-5 w-5 text-orange-600" />
+                          <p className="font-semibold text-gray-900">{defaultAddress.label}</p>
                         </div>
-                      </div>
-
-                      {!showChangeForm ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBankMessage(null);
-                            setPendingDetails(
-                              sanitizeBankDetailsRequest({
-                                bank_name: profile.bank_name,
-                                account_number: profile.account_number,
-                                account_name: profile.account_name,
-                                business_address: profile.business_address,
-                                bvn: profile.bvn,
-                                tax_id: profile.tax_id,
-                              })
-                            );
-                            setShowChangeForm(true);
-                          }}
-                          className="rounded bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
-                        >
-                          Edit Bank Details
-                        </button>
-                      ) : (
-                        <div className="border-t pt-4">
-                          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            <p className="font-semibold">Admin review is required for bank changes.</p>
-                            <p className="mt-1">
-                              Your current approved payout account remains active until this request is approved.
-                            </p>
-                            <p className="mt-1">
-                              Orders that were already completed keep paying to the bank snapshot captured at completion time.
-                            </p>
-                          </div>
-                          <BankDetailsForm
-                            values={pendingDetails}
-                            onChange={handlePendingDetailsChange}
-                            onSubmit={submitChangeRequest}
-                            onCancel={() => {
-                              setPendingDetails(
-                                sanitizeBankDetailsRequest({
-                                  bank_name: profile.bank_name,
-                                  account_number: profile.account_number,
-                                  account_name: profile.account_name,
-                                  business_address: profile.business_address,
-                                  bvn: profile.bvn,
-                                  tax_id: profile.tax_id,
-                                })
-                              );
-                              setShowChangeForm(false);
-                            }}
-                            saving={saving}
-                            title="Request change"
-                            submitLabel="Submit Change Request"
-                          />
-                        </div>
-                      )}
-                    </>
-                  ) : null}
-
-                  {hasPendingRequest ? (
-                    <div className="rounded-2xl border border-yellow-200 border-l-4 border-l-yellow-400 bg-yellow-50 p-4">
-                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-yellow-800">Pending Approval</p>
-                          <p className="mt-1 text-sm text-yellow-700">
-                            Your bank-details change request is under admin review. Your current approved payout account stays active until a decision is made.
-                          </p>
-                          <p className="mt-1 text-sm text-yellow-700">
-                            Completed orders that already captured a payout snapshot will continue paying to that older snapshot.
-                          </p>
-                        </div>
-                        <span className="inline-flex items-center rounded-full bg-yellow-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-800">
-                          Under Review
+                        <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                          Default
                         </span>
                       </div>
-                      <div className="grid gap-4 lg:grid-cols-2">
-                        <div>
-                          <p className="mb-3 text-sm font-semibold text-gray-700">Current active details</p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {activeDetails.map((item) => (
-                              <DetailItem key={`active-${item.label}`} label={item.label} value={item.value} />
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="mb-3 text-sm font-semibold text-yellow-800">Requested changes</p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {pendingRequestDetails.map((item) => (
-                              <DetailItem
-                                key={`pending-${item.label}`}
-                                label={item.label}
-                                value={item.value}
-                                accent="yellow"
-                              />
-                            ))}
-                          </div>
-                        </div>
+                      <div className="mt-3 space-y-1 text-sm text-gray-700">
+                        <p className="font-semibold text-gray-900">{defaultAddress.full_name}</p>
+                        <p>{defaultAddress.phone_number}</p>
+                        <p>{formatSavedAddressStreet(defaultAddress)}</p>
+                        {formatSavedAddressLandmark(defaultAddress) ? (
+                          <p>{formatSavedAddressLandmark(defaultAddress)}</p>
+                        ) : null}
+                        <p>{formatSavedAddressLocation(defaultAddress)}</p>
                       </div>
                     </div>
-                  ) : null}
-
-                  <InlineMessage message={bankMessage} />
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-700">
+                      No saved addresses. Add one for faster checkout.
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : null}
-
-            {!isPasswordFormOpen ? (
-              <>
-                <p className="mt-8 mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Account Settings</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPasswordMessage(null);
-                    setIsPasswordFormOpen(true);
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700"
-                >
-                  <Lock size={18} />
-                  <span>Change Password</span>
-                </button>
               </>
-            ) : (
-              <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-6">
-                <h3 className="mb-4 text-lg font-bold text-blue-900">Change Password</h3>
-                <form onSubmit={handlePasswordChange} className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-blue-700">
-                      Current Password
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordData.currentPassword}
-                      onChange={(event) =>
-                        handlePasswordFieldChange('currentPassword', event.target.value)
-                      }
-                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
-                      placeholder="Enter current password"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-blue-700">
-                      New Password
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordData.newPassword}
-                      onChange={(event) =>
-                        handlePasswordFieldChange('newPassword', event.target.value)
-                      }
-                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
-                      placeholder="Enter new password"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-blue-700">
-                      Confirm Password
-                    </label>
-                    <input
-                      type="password"
-                      value={passwordData.confirmPassword}
-                      onChange={(event) =>
-                        handlePasswordFieldChange('confirmPassword', event.target.value)
-                      }
-                      className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
-                      placeholder="Confirm new password"
-                      required
-                    />
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      className="flex-1 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-700"
-                    >
-                      Update Password
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsPasswordFormOpen(false);
-                        setPasswordMessage(null);
-                        setPasswordData({
-                          currentPassword: '',
-                          newPassword: '',
-                          confirmPassword: '',
-                        });
-                      }}
-                      className="flex-1 rounded-lg border border-blue-300 bg-white px-4 py-2 font-semibold text-blue-700 transition-colors hover:bg-blue-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-                <InlineMessage message={passwordMessage} />
-              </div>
             )}
 
             <button
