@@ -165,14 +165,14 @@ function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
     fireEvent.change(screen.getByPlaceholderText('Your store name'), {
       target: { value: 'Jane Store' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
       target: { value: 'Mafdesh University' },
     });
     fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
       target: { value: 'Kaduna' },
     });
   } else {
-    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
       target: { value: 'Mafdesh University' },
     });
   }
@@ -227,7 +227,7 @@ describe('SignUp', () => {
 
     expect(await screen.findByText(/step 3 of 3/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
-    expect(screen.getByPlaceholderText('Search your university')).toHaveValue('Mafdesh University');
+    expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
     expect(screen.getByRole('combobox', { name: /university state/i })).toHaveValue('Kaduna');
     expect(screen.getByRole('checkbox')).toBeChecked();
 
@@ -277,7 +277,7 @@ describe('SignUp', () => {
     renderSignUpRoute();
 
     fillSignUpForm();
-    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
       target: { value: 'Mafdesh University' },
     });
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
@@ -314,7 +314,7 @@ describe('SignUp', () => {
     fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
     fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
-    expect(screen.getByPlaceholderText('Search your university')).toHaveValue('Mafdesh University');
+    expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
   });
 
   it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {

@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Minus, Plus, ShoppingBag } from "lucide-react";
+import { Trash2, Minus, Plus, ShoppingBag, Star } from "lucide-react";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
-import VerificationBadge from "../components/VerificationBadge";
 import { supabase } from "../supabaseClient";
 import { getSessionWithRetry } from '../utils/authResilience';
 import {
@@ -17,8 +16,6 @@ import { cartService } from "../services/cartService";
 import { getProductPricing } from "../utils/flashSale";
 import {
   enrichProductsWithPublicSellerData,
-  getPublicSellerCampusLabel,
-  getPublicSellerDisplayName,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
 import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
@@ -35,10 +32,33 @@ function isMissingDeletedAtColumn(error) {
   );
 }
 
+function ProductRatingStars({ rating }) {
+  const normalizedRating = Number(rating || 0);
+
+  if (!Number.isFinite(normalizedRating) || normalizedRating <= 0) {
+    return null;
+  }
+
+  const filledStars = Math.max(0, Math.min(5, Math.round(normalizedRating)));
+
+  return (
+    <div
+      className="flex items-center gap-0.5 text-amber-400"
+      aria-label={`Seller rating ${normalizedRating.toFixed(1)} out of 5`}
+    >
+      {Array.from({ length: 5 }).map((_, index) => (
+        <Star
+          key={index}
+          className={`h-3 w-3 ${index < filledStars ? "fill-current" : "text-slate-200"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function CartRecommendationCard({ product, onOpen }) {
   const pricing = getProductPricing(product);
-  const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
-  const campusLabel = getPublicSellerCampusLabel(product?.seller);
+  const sellerRating = Number(product?.seller?.average_rating || 0);
   const hasDiscount =
     pricing.originalPrice != null &&
     Number(pricing.originalPrice) > Number(pricing.displayPrice);
@@ -57,12 +77,13 @@ function CartRecommendationCard({ product, onOpen }) {
         />
       </div>
 
-      <div className="space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
+      <div className="space-y-2.5 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
           <span>{product.category}</span>
+          <ProductRatingStars rating={sellerRating} />
         </div>
 
-        <p className="line-clamp-2 min-h-[2.8rem] text-sm font-semibold leading-5 text-slate-900">
+        <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
           {product.name}
         </p>
 
@@ -76,14 +97,6 @@ function CartRecommendationCard({ product, onOpen }) {
             </span>
           ) : null}
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span className="font-medium text-slate-700">{sellerName}</span>
-          {product?.seller?.is_verified ? <VerificationBadge /> : null}
-        </div>
-        {campusLabel ? (
-          <p className="text-xs text-slate-500">{campusLabel}</p>
-        ) : null}
       </div>
     </button>
   );

@@ -344,10 +344,10 @@ function BankDetailsForm({
   }).slice(0, 8);
   const exactBankMatch = findMatchingNigerianBankName(bankQuery);
   const bankHelperText = exactBankMatch
-    ? 'Supported bank selected.'
+    ? ''
     : shouldShowBankSuggestions
-      ? 'Select a valid Nigerian bank from the suggestions.'
-      : 'Type at least 2 characters to search supported Nigerian banks.';
+      ? 'Choose a listed bank.'
+      : 'Type 2+ characters to search.';
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
@@ -1207,24 +1207,24 @@ export default function Profile() {
               <p className="mt-2 text-lg font-bold text-slate-900">
                 {isVerified ? 'Verified Seller' : verificationLabel}
               </p>
-              <p className="mt-2 text-sm text-slate-600">
-                {isVerified
-                  ? 'Your campus identity is approved and visible across buyer-facing surfaces.'
-                  : 'Finish your university and payout setup without working through a long stacked page.'}
-              </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {isVerified
+                    ? 'Your badge is live.'
+                    : 'Finish university and payout setup.'}
+                </p>
             </div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
                 Payout
               </p>
               <p className="mt-2 text-lg font-bold text-slate-900">{payoutStatus}</p>
-              <p className="mt-2 text-sm text-slate-600">
-                {hasPendingRequest
-                  ? 'Your current approved account stays active while the requested change is reviewed.'
-                  : hasActiveDetails
-                    ? 'Your active payout details are saved. Open the payout tab for changes.'
-                    : 'Add your bank details once and they become your active payout account immediately.'}
-              </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {hasPendingRequest
+                    ? 'Current account stays active during review.'
+                    : hasActiveDetails
+                      ? 'Open Payout to make changes.'
+                      : 'Add bank details to get paid.'}
+                </p>
             </div>
           </div>
           {overviewCards}
@@ -1247,7 +1247,7 @@ export default function Profile() {
                   <p className="font-semibold text-green-700">Verified Seller</p>
                 </div>
                 <p className="mt-1 text-sm text-green-600">
-                  Your university verification is approved. Your Verified Seller badge now appears across buyer-facing product and seller surfaces.
+                  Your Verified Seller badge is active.
                 </p>
                 {profile.verification_approved_at ? (
                   <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
@@ -1264,10 +1264,10 @@ export default function Profile() {
                 </div>
                 <p className="mt-1 text-sm text-orange-600">
                   {verificationLabel === 'Pending review'
-                    ? 'Your university verification is waiting for admin review.'
+                    ? 'Awaiting admin review.'
                     : verificationLabel === 'Rejected'
-                      ? 'Your last university verification was rejected. Update the details if needed and submit again.'
-                      : 'Get verified to build trust and earn better visibility in recommendation sections.'}
+                      ? 'Update details and resubmit.'
+                      : 'Get verified for more visibility.'}
                 </p>
                 <button
                   type="button"
@@ -1289,15 +1289,15 @@ export default function Profile() {
               onSubmit={submitUniversityIdentity}
               className="space-y-4"
             >
-              {universityFieldsLocked ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  Your saved university details are locked until you click edit.
-                </div>
-              ) : (
-                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  Update your campus identity here. If the identity changes after submission or approval, verification resets so the new details can be reviewed again.
-                </div>
-              )}
+                {universityFieldsLocked ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    Click Edit to update these details.
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                    Changes reset verification review.
+                  </div>
+                )}
 
               <SearchablePickerField
                 id="profile-university-name"
@@ -1306,7 +1306,7 @@ export default function Profile() {
                 value={universityForm.university_name}
                 onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
                 placeholder="Search or choose your university"
-                helperText="Pick a suggested school when it appears. If it is missing, use Other and keep your typed university name."
+                helperText="Select from list, or choose Other."
                 disabled={universityFieldsLocked}
                 loading={isSearchingUniversities}
                 options={universitySuggestions}
@@ -1352,7 +1352,7 @@ export default function Profile() {
 
               <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                 <span className="font-semibold">University zone:</span>{' '}
-                {universityForm.university_zone || 'Select a university state to auto-fill the zone'}
+                {universityForm.university_zone || 'Auto-fills from state.'}
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -1407,7 +1407,7 @@ export default function Profile() {
                   {profile.business_name || 'Business name not set'}
                 </p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Your bank selection stays strict, but the list now appears only after you search so the form stays lighter.
+                  Search to find your bank.
                 </p>
               </div>
             </div>
@@ -1426,7 +1426,7 @@ export default function Profile() {
                     Set up your payout details
                   </p>
                   <p className="text-sm text-blue-700">
-                    Your first bank setup is saved immediately and becomes your active payout account.
+                    Your first bank becomes active.
                   </p>
                 </div>
                 <BankDetailsForm

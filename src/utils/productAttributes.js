@@ -60,14 +60,12 @@ export const ATTRIBUTE_GROUPS = {
       label: 'Storage',
       type: 'text',
       placeholder: 'e.g. 128GB',
-      hint: 'Leave blank if not applicable',
     }),
     createAttribute({
       key: 'ram',
       label: 'RAM',
       type: 'text',
       placeholder: 'e.g. 8GB',
-      hint: 'Leave blank if not applicable',
     }),
     createAttribute({
       key: 'screen_size',
@@ -102,7 +100,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'List the most important features and details, one per line',
-      hint: 'At least 3 lines required, minimum 40 characters',
+      hint: '3 lines, 40+ characters.',
     }),
   ],
   fashion: [
@@ -132,7 +130,7 @@ export const ATTRIBUTE_GROUPS = {
       label: 'Available Sizes',
       type: 'multiselect',
       options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', 'One Size'],
-      hint: 'Select all sizes in stock',
+      hint: 'Select all in stock.',
     }),
     createAttribute({
       key: 'available_colors',
@@ -158,7 +156,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe fit, feel, occasion',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   home: [
@@ -207,7 +205,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe the look, use case, and important details',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   food: [
@@ -256,7 +254,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe taste, usage, and what buyers should know',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   beauty: [
@@ -304,7 +302,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe benefits, feel, and expected results',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   books: [
@@ -353,7 +351,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe the content, who it is for',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   sports: [
@@ -393,7 +391,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe how it fits, performs, or can be used',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
   default: [
@@ -441,7 +439,7 @@ export const ATTRIBUTE_GROUPS = {
       type: 'textarea',
       required: true,
       placeholder: 'Describe the product clearly for buyers',
-      hint: 'Minimum 40 characters',
+      hint: '40+ characters.',
     }),
   ],
 };

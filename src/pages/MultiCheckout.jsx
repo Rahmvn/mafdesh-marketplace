@@ -787,7 +787,7 @@ export default function MultiCheckout() {
 
         <h1 className="mb-2 text-2xl font-bold text-blue-900">Checkout</h1>
         <p className="mb-6 text-sm text-blue-700">
-          Review each seller group below. Any group that chooses delivery will use the same buyer address.
+          Delivery groups share one address.
         </p>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -798,7 +798,7 @@ export default function MultiCheckout() {
                 <div>
                   <h2 className="font-semibold text-blue-900">Delivery Address</h2>
                   <p className="text-sm text-blue-700">
-                    This matches the single-product checkout flow. Saved addresses work here too, and one delivery address is shared across every seller group that chooses delivery.
+                    One address for all delivery groups.
                   </p>
                 </div>
               </div>
@@ -813,13 +813,13 @@ export default function MultiCheckout() {
 
               {!hasAnyDeliverySelection ? (
                 <p className="mt-4 text-sm text-blue-600">
-                  Choose delivery for any seller group below and we will calculate that seller&apos;s fee automatically.
+                  Choose delivery to calculate fees.
                 </p>
               ) : null}
 
               {hasAnyDeliverySelection && !selectedDeliveryAddress?.state ? (
                 <p className="mt-4 text-sm text-blue-600">
-                  Select your delivery state and we will calculate the delivery fee for each delivery seller group automatically.
+                  Select your state to calculate fees.
                 </p>
               ) : null}
 
@@ -828,7 +828,7 @@ export default function MultiCheckout() {
               !deliveryLoading &&
               unavailableDeliveryGroupCount === 0 ? (
                 <p className="mt-4 text-sm text-green-700">
-                  Delivery quotes calculated successfully for every seller group using delivery.
+                  Delivery fees are ready.
                 </p>
               ) : null}
 
@@ -837,7 +837,7 @@ export default function MultiCheckout() {
               !deliveryLoading &&
               unavailableDeliveryGroupCount > 0 ? (
                 <p className="mt-4 text-sm text-red-600">
-                  {unavailableDeliveryGroupCount} seller group{unavailableDeliveryGroupCount === 1 ? '' : 's'} cannot deliver to this state. Switch those groups to pickup to continue.
+                  {unavailableDeliveryGroupCount} seller group{unavailableDeliveryGroupCount === 1 ? '' : 's'} cannot deliver here.
                 </p>
               ) : null}
             </section>
@@ -922,11 +922,11 @@ export default function MultiCheckout() {
                           <Truck size={18} />
                           Delivery
                         </div>
-                        <p className="text-xs mt-1">
-                          {group.deliveryQuote?.available
-                            ? `Delivery to ${selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`
-                            : 'Choose delivery to send this seller to your address'}
-                        </p>
+                          <p className="text-xs mt-1">
+                            {group.deliveryQuote?.available
+                              ? `Delivery to ${selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`
+                              : 'Deliver to your address.'}
+                          </p>
                       </button>
 
                       <button
@@ -968,13 +968,13 @@ export default function MultiCheckout() {
                     <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
                       {!selectedDeliveryAddress?.state ? (
                         <p className="text-sm text-blue-700">
-                          Select your delivery state above to quote this seller.
+                          Select your state to quote delivery.
                         </p>
                       ) : deliveryUnavailable ? (
                         <div className="flex items-start gap-2 text-sm text-red-700">
                           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                           <p>
-                            Delivery not available from this seller to your state. Please choose pickup.
+                            This seller cannot deliver to your state.
                           </p>
                         </div>
                       ) : group.deliveryQuote?.available ? (
@@ -984,7 +984,7 @@ export default function MultiCheckout() {
                         </p>
                       ) : (
                         <p className="text-sm text-blue-700">
-                          Delivery quote will appear once your state is available for this group.
+                          Delivery quote pending.
                         </p>
                       )}
                     </div>

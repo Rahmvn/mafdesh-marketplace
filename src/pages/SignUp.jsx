@@ -26,17 +26,17 @@ const SIGNUP_STEPS = [
   {
     id: 1,
     label: 'Account',
-    description: 'Choose your role and core account identity.',
+    description: 'Choose your role and username.',
   },
   {
     id: 2,
     label: 'Contact & Security',
-    description: 'Add your location and secure the account.',
+    description: 'Add contact details and password.',
   },
   {
     id: 3,
     label: 'Details',
-    description: 'Finish the role-specific details and submit.',
+    description: 'Finish university and account details.',
   },
 ];
 const EMPTY_SIGNUP_FORM = {
@@ -51,6 +51,7 @@ const EMPTY_SIGNUP_FORM = {
   location: '',
   university_id: '',
   university_name: '',
+  custom_university_name: '',
   university_state: '',
   university_zone: '',
 };
@@ -181,6 +182,7 @@ export default function SignUp() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [universitySuggestions, setUniversitySuggestions] = useState([]);
   const [isLoadingUniversities, setIsLoadingUniversities] = useState(false);
+  const [universitySearchQuery, setUniversitySearchQuery] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
   const { showError, showWarning, ModalComponent } = useModal();
@@ -222,7 +224,7 @@ export default function SignUp() {
   }, [agreedToTerms, currentStep, formData, hasHydratedDraft, userType]);
 
   useEffect(() => {
-    const query = String(formData.university_name || '').trim();
+    const query = String(universitySearchQuery || '').trim();
 
     if (query.length < 2) {
       setUniversitySuggestions([]);
@@ -262,7 +264,18 @@ export default function SignUp() {
     return () => {
       cancelled = true;
     };
-  }, [formData.university_name, formData.university_state, isSeller]);
+  }, [formData.university_state, isSeller, universitySearchQuery]);
+
+  useEffect(() => {
+    if (formData.university_id) {
+      setUniversitySearchQuery(formData.university_name || '');
+      return;
+    }
+
+    if (!formData.custom_university_name) {
+      setUniversitySearchQuery('');
+    }
+  }, [formData.custom_university_name, formData.university_id, formData.university_name]);
 
   const validateUsername = (username) => {
     if (username.length < 3) {
@@ -392,12 +405,43 @@ export default function SignUp() {
     }));
   };
 
-  const handleUniversityNameChange = (value) => {
+  const handleUniversitySearchChange = (value) => {
+    setUniversitySearchQuery(value);
+
+    if (!formData.university_id) {
+      return;
+    }
+
+    const normalizedValue = String(value || '').trim();
+    const selectedUniversityName = String(formData.university_name || '').trim();
+
+    if (normalizedValue === selectedUniversityName) {
+      return;
+    }
+
+    updateUniversityDraft({
+      university_id: '',
+      university_name: formData.custom_university_name || '',
+      university_state: '',
+      university_zone: '',
+    });
+  };
+
+  const handleCustomUniversityNameChange = (value) => {
+    const wasUsingCatalogUniversity = Boolean(formData.university_id);
+    setUniversitySearchQuery('');
+    setUniversitySuggestions([]);
     updateUniversityDraft({
       university_id: '',
       university_name: value,
+      custom_university_name: value,
       ...(isSeller
-        ? {}
+        ? wasUsingCatalogUniversity
+          ? {
+              university_state: '',
+              university_zone: '',
+            }
+          : {}
         : {
             university_state: '',
             university_zone: '',
@@ -414,19 +458,13 @@ export default function SignUp() {
   };
 
   const selectUniversity = (university) => {
+    setUniversitySearchQuery(university?.name || '');
     updateUniversityDraft({
       university_id: university?.id || '',
       university_name: university?.name || '',
+      custom_university_name: '',
       university_state: university?.state || '',
       university_zone: university?.zone || getNigeriaGeoZoneForState(university?.state) || '',
-    });
-    setUniversitySuggestions([]);
-  };
-
-  const useCustomUniversityName = () => {
-    updateUniversityDraft({
-      university_id: '',
-      university_name: String(formData.university_name || '').trim(),
     });
     setUniversitySuggestions([]);
   };
@@ -441,6 +479,7 @@ export default function SignUp() {
       businessName: formData.business_name?.trim() || '',
       location: formData.location?.trim() || '',
       universityName: formData.university_name?.trim() || '',
+      customUniversityName: formData.custom_university_name?.trim() || '',
       universityState: formData.university_state?.trim() || '',
       universityZone: formData.university_zone?.trim() || '',
     };
@@ -455,6 +494,7 @@ export default function SignUp() {
       business_name: trimmed.businessName,
       location: trimmed.location,
       university_name: trimmed.universityName,
+      custom_university_name: trimmed.customUniversityName,
       university_state: trimmed.universityState,
       university_zone: trimmed.universityZone,
     };
@@ -819,7 +859,7 @@ export default function SignUp() {
                         />
                         {!usernameError && !isCheckingUsername ? (
                           <p className="mt-2 text-xs font-medium text-slate-500">
-                            3-30 characters, letters, numbers, and underscores only.
+                            Letters, numbers, and underscores only.
                           </p>
                         ) : null}
                         {isCheckingUsername ? (
@@ -872,9 +912,6 @@ export default function SignUp() {
                           onChange={(event) => setFieldValue('phone_number', event.target.value)}
                           className={`${inputClass} ${inputFocusClass}`}
                         />
-                        <p className="mt-2 text-xs font-medium text-slate-500">
-                          Required for delivery coordination. Must be 11 digits starting with 0.
-                        </p>
                       </div>
                     </div>
 
@@ -924,12 +961,6 @@ export default function SignUp() {
 
                 {currentStep === 3 ? (
                   <div className="space-y-6">
-                    <div className={`rounded-2xl border px-4 py-4 text-sm ${isSeller ? 'border-orange-100 bg-orange-50/70 text-orange-900' : 'border-blue-100 bg-blue-50/70 text-blue-900'}`}>
-                      {isSeller
-                        ? 'Your university details shape your campus zone now, and you can finish verification after signup.'
-                        : 'Mafdesh is a university marketplace. Please add your university to continue.'}
-                    </div>
-
                     {isSeller ? (
                       <div>
                         <FieldLabel>Business name</FieldLabel>
@@ -945,30 +976,36 @@ export default function SignUp() {
                     ) : null}
 
                     <SearchablePickerField
-                      id="signup-university-name"
-                      label="UNIVERSITY"
-                      value={formData.university_name}
-                      onChange={handleUniversityNameChange}
+                      id="signup-university-search"
+                      label="SEARCH UNIVERSITY"
+                      value={universitySearchQuery}
+                      onChange={handleUniversitySearchChange}
                       placeholder="Search your university"
                       maxLength={120}
-                      helperText={
-                        isSeller
-                          ? 'Type your university name and select from the list. Cannot find it? Type the full name and tap Other.'
-                          : 'You can pick a suggested school or use Other if your university is not listed.'
-                      }
                       loading={isLoadingUniversities}
                       options={universitySuggestions}
                       onSelectOption={selectUniversity}
                       getOptionKey={(university) => university.id}
                       getOptionPrimaryText={(university) => university.name}
                       getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
-                      allowCustomAction={Boolean(String(formData.university_name || '').trim())}
-                      showCustomAction={Boolean(String(formData.university_name || '').trim())}
-                      customActionLabel={`Use "${String(formData.university_name || '').trim()}" as Other university`}
-                      onCustomAction={useCustomUniversityName}
-                      selectedBadgeText={formData.university_id ? 'Catalog match' : formData.university_name ? 'Other' : ''}
+                      selectedBadgeText={formData.university_id ? 'Selected' : ''}
+                      minQueryLength={2}
+                      hidePanelUntilMinQueryLength
+                      showEmptyState={Boolean(String(universitySearchQuery || '').trim())}
                       tone={isSeller ? 'orange' : 'blue'}
                     />
+
+                    <div>
+                      <FieldLabel>Other university</FieldLabel>
+                      <input
+                        type="text"
+                        placeholder="Type if not listed"
+                        value={formData.custom_university_name}
+                        maxLength={120}
+                        onChange={(event) => handleCustomUniversityNameChange(event.target.value)}
+                        className={`${inputClass} ${inputFocusClass}`}
+                      />
+                    </div>
 
                     {isSeller ? (
                       <>
@@ -976,7 +1013,7 @@ export default function SignUp() {
                           <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
                             <span className="font-semibold">University State:</span>{' '}
                             {formData.university_state}
-                            <span className="ml-2 text-xs text-orange-600">(auto-filled from catalog)</span>
+                            <span className="ml-2 text-xs text-orange-600">(Auto-filled)</span>
                           </div>
                         ) : (
                           <SelectField
@@ -993,14 +1030,9 @@ export default function SignUp() {
 
                         <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
                           <span className="font-semibold">University zone:</span>{' '}
-                          {formData.university_zone || 'Select the university state to auto-fill the zone'}
+                          {formData.university_zone || 'Auto-fills from state.'}
                         </div>
                       </>
-                    ) : formData.university_name ? (
-                      <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
-                        <span className="font-semibold">Campus details:</span>{' '}
-                        {[formData.university_state, formData.university_zone].filter(Boolean).join(' • ') || 'You can leave it as a custom university name if no exact match appears.'}
-                      </div>
                     ) : null}
 
                     <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">

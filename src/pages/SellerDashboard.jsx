@@ -352,7 +352,7 @@ export default function SellerDashboard() {
       themeState={themeState}
       showHeader
       title="Seller Dashboard"
-      subtitle="Orders, products, and payouts at a glance."
+      subtitle="Orders, products, and payouts."
       actions={
         <button
           type="button"

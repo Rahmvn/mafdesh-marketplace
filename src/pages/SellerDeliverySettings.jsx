@@ -320,9 +320,6 @@ export default function SellerDeliverySettings() {
         <form onSubmit={handleSaveFulfillment} className="space-y-6">
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="font-semibold">Delivery is enabled automatically</p>
-            <p className={`mt-1 text-sm ${theme.mutedText}`}>
-              Set your ship-from location below.
-            </p>
           </div>
 
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>

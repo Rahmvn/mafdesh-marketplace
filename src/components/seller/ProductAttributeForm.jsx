@@ -22,7 +22,7 @@ export default function ProductAttributeForm({
   if (!category) {
     return (
       <p className={`text-sm leading-6 ${theme.mutedText}`}>
-        Select a category in Step 1 to see the relevant fields.
+        Pick a category first.
       </p>
     );
   }

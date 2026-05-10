@@ -391,14 +391,14 @@ export default function AdminBankApprovals() {
                       title="Current active details"
                       helperText={
                         activeDetailsLive
-                          ? 'These are the payout details still being used right now.'
-                          : 'This seller does not have active payout details yet.'
+                          ? 'Currently active payout details.'
+                          : 'No active payout details yet.'
                       }
                       user={user}
                     />
                     <BankComparisonCard
                       title="Requested changes"
-                      helperText="These values will replace the active payout details if approved."
+                      helperText="Replaces active payout details if approved."
                       tone="pending"
                       user={user}
                       usePendingValues

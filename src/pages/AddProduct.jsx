@@ -49,8 +49,7 @@ function BankDetailsRequiredPanel({ theme, navigate }) {
         </div>
         <h2 className="mb-2 text-2xl font-bold">Bank Details Required</h2>
         <p className={`mb-6 text-sm leading-7 ${theme.mutedText}`}>
-          Add bank details before listing products. Your first bank setup becomes active
-          immediately, while later bank-detail changes go through admin review.
+          Add bank details before listing products.
         </p>
         <button
           type="button"
@@ -559,10 +558,6 @@ export default function AddProduct() {
                   </span>
                   <div>
                     <p className="font-semibold">Delivery is included automatically</p>
-                    <p className={`mt-1 text-sm leading-6 ${theme.mutedText}`}>
-                      Delivery fee is auto-calculated from your ship-from state to the buyer's
-                      state.
-                    </p>
                   </div>
                 </div>
 
@@ -618,7 +613,7 @@ export default function AddProduct() {
             </p>
             <h2 className="mt-2 text-2xl font-bold">Images</h2>
             <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-              First 3 images required. First image is the main photo.
+              First 3 required. First is main.
             </p>
           </div>
 
@@ -632,10 +627,7 @@ export default function AddProduct() {
 
           <div className={`mt-5 rounded-xl border p-4 ${theme.panelMuted}`}>
             <p className="text-sm font-semibold">Image requirements</p>
-            <ul className={`mt-2 space-y-2 text-sm ${theme.mutedText}`}>
-              <li>Minimum 3 images required</li>
-              <li>Max 3MB per image</li>
-            </ul>
+            <p className={`mt-2 text-sm ${theme.mutedText}`}>First 3 required. Max 3MB each.</p>
           </div>
         </section>
       );
@@ -648,8 +640,8 @@ export default function AddProduct() {
           <h2 className="mt-2 text-2xl font-bold">Product Details</h2>
           <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
             {formData.category
-              ? `Fill in your ${formData.category} product details.`
-              : 'Select a category in Step 1 to see product fields.'}
+              ? 'Add the product details.'
+              : 'Pick a category first.'}
           </p>
         </div>
 
@@ -727,7 +719,7 @@ export default function AddProduct() {
                   <div>
                     <p className="text-sm font-semibold">You have an unsaved draft. Resume?</p>
                     <p className="mt-1 text-sm">
-                      Restore your saved product details and continue where you left off.
+                      Resume where you left off.
                     </p>
                   </div>
                   <div className="flex gap-3">
@@ -758,7 +750,7 @@ export default function AddProduct() {
                   </p>
                   <h1 className="mt-2 text-3xl font-bold tracking-tight">Add New Product</h1>
                   <p className={`mt-3 max-w-2xl text-sm leading-7 ${theme.mutedText}`}>
-                    Build your listing and preview it before submission.
+                    Build and preview your listing.
                   </p>
                 </div>
                 <div className={`rounded-xl px-4 py-3 text-sm ${theme.panelMuted}`}>

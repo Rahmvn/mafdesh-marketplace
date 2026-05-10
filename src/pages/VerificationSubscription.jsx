@@ -50,25 +50,25 @@ const MAX_PROOF_SIZE_BYTES = 10 * 1024 * 1024;
 const STATUS_META = {
   [SELLER_VERIFICATION_STATUSES.NOT_SUBMITTED]: {
     label: 'Not submitted',
-    description: 'Your seller verification has not been submitted yet.',
+    description: 'Not submitted yet.',
     accent: 'bg-slate-100 text-slate-700',
     icon: FileText,
   },
   [SELLER_VERIFICATION_STATUSES.PENDING]: {
     label: 'Pending review',
-    description: 'Your documents have been received and are waiting for review.',
+    description: 'Waiting for review.',
     accent: 'bg-amber-100 text-amber-800',
     icon: Clock3,
   },
   [SELLER_VERIFICATION_STATUSES.APPROVED]: {
     label: 'Approved',
-    description: 'Your seller verification has been approved.',
+    description: 'Verification approved.',
     accent: 'bg-emerald-100 text-emerald-700',
     icon: CheckCircle2,
   },
   [SELLER_VERIFICATION_STATUSES.REJECTED]: {
     label: 'Rejected',
-    description: 'Your last submission was rejected. Update the details and submit again.',
+    description: 'Update details and resubmit.',
     accent: 'bg-red-100 text-red-700',
     icon: XCircle,
   },
@@ -435,7 +435,7 @@ export default function SellerVerificationPage() {
       themeState={themeState}
       showHeader
       title="Seller Verification"
-      subtitle="Submit your university details for early-access seller verification. Approved sellers get the Verified Seller badge and better visibility in recommendation surfaces."
+      subtitle="Submit your university details for verification."
       actions={(
         <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${theme.badge}`}>
           <Shield className="h-4 w-4" />
@@ -467,7 +467,7 @@ export default function SellerVerificationPage() {
           </p>
           <h2 className="mt-2 text-2xl font-bold">₦{EARLY_VERIFICATION_FEE.toLocaleString('en-NG')}</h2>
           <p className={`mt-3 text-sm leading-6 ${theme.mutedText}`}>
-            Early verification fee. Payment is marked as pending for now while manual review is in place.
+            Payment stays manual for now.
           </p>
         </article>
 
@@ -477,7 +477,7 @@ export default function SellerVerificationPage() {
           </p>
           <h2 className="mt-2 text-2xl font-bold">Badge + boost</h2>
           <p className={`mt-3 text-sm leading-6 ${theme.mutedText}`}>
-            Approved sellers get the Verified Seller badge and stronger visibility in recommendation sections.
+            Approved sellers get badge visibility.
           </p>
         </article>
       </section>
@@ -487,7 +487,7 @@ export default function SellerVerificationPage() {
           theme={theme}
           eyebrow="Verification journey"
           title="Track your current review state"
-          description="Your latest submission and the seller verification fields on your account stay aligned here."
+          description="Latest submission and status."
         >
           {loadError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -589,7 +589,7 @@ export default function SellerVerificationPage() {
           theme={theme}
           eyebrow="Submit details"
           title={verificationStatus === SELLER_VERIFICATION_STATUSES.REJECTED ? 'Update and resubmit' : 'University verification form'}
-          description="This phase collects your school details, optional ID or reference, and proof document. Real payment integration is not enabled yet, so your fee state stays pending for manual follow-up."
+          description="Submit school details and proof."
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -601,7 +601,7 @@ export default function SellerVerificationPage() {
                   onChange={(nextValue) => handleFieldChange('universityName', nextValue)}
                   placeholder="Search or choose your university"
                   disabled={!canSubmit}
-                  helperText="Pick a suggested school when it appears. If it is not listed, use Other and keep your typed university name."
+                  helperText="Select from list, or choose Other."
                   loading={isSearchingUniversities}
                   options={universitySuggestions}
                   onSelectOption={handleUniversitySuggestionSelect}
@@ -695,7 +695,7 @@ export default function SellerVerificationPage() {
                 <div>
                   <p className="font-semibold">Proof upload</p>
                   <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                    Upload a recent school-fees receipt, course form, student ID card, staff ID card, portal evidence, admission proof, or similar school document in image or PDF format.
+                    Upload school proof in image or PDF.
                   </p>
                 </div>
                 <label

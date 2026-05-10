@@ -6,13 +6,10 @@ import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
 import SafeImage from '../components/SafeImage';
-import VerificationBadge from '../components/VerificationBadge';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { supabase } from '../supabaseClient';
 import {
   enrichProductsWithPublicSellerData,
-  getPublicSellerCampusLabel,
-  getPublicSellerDisplayName,
   isSellerMarketplaceActive,
 } from '../services/publicSellerService';
 import {
@@ -66,9 +63,6 @@ function ProductCard({ product, onOpen, featured = false }) {
     product.original_price != null &&
     product.price != null &&
     Number(product.original_price) !== Number(product.price);
-  const sellerName = getPublicSellerDisplayName(product?.seller, product?.seller?.profiles);
-  const campusLabel = getPublicSellerCampusLabel(product?.seller);
-  const isVerifiedUniversitySeller = Boolean(product?.seller?.is_verified);
 
   return (
     <button
@@ -93,7 +87,7 @@ function ProductCard({ product, onOpen, featured = false }) {
         )}
       </div>
       <div className="p-1.5 md:px-2 md:pb-1.5 md:pt-1.5">
-        <h3 className="line-clamp-2 min-h-[30px] text-[11px] font-semibold leading-4 text-blue-900 xs:text-xs md:text-xs lg:text-sm">
+        <h3 className="line-clamp-2 text-[11px] font-semibold leading-4 text-blue-900 xs:text-xs md:text-xs lg:text-sm">
           {product.name}
         </h3>
         <div className="mt-0.5 space-y-0.5">
@@ -105,17 +99,6 @@ function ProductCard({ product, onOpen, featured = false }) {
           <p className="text-[11px] font-bold text-orange-600 xs:text-xs md:text-sm lg:text-base">
             {formatPrice(product.price)}
           </p>
-        </div>
-        <div className="mt-1.5 min-h-[30px] space-y-1">
-          <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium text-slate-600 md:text-[11px]">
-            <span className="truncate">{sellerName}</span>
-            {isVerifiedUniversitySeller ? <VerificationBadge /> : null}
-          </div>
-          {campusLabel ? (
-            <p className="line-clamp-1 text-[10px] text-slate-500 md:text-[11px]">
-              {campusLabel}
-            </p>
-          ) : null}
         </div>
       </div>
     </button>

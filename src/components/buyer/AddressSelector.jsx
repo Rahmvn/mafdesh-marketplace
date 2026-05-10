@@ -245,7 +245,7 @@ export default function AddressSelector({
         <div>
           <h2 className="text-lg font-semibold text-blue-900">Delivery Details</h2>
           <p className="text-sm text-gray-500">
-            Choose a saved address or enter a different one for this order.
+            Choose a saved address or add one.
           </p>
         </div>
         <Link
