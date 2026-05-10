@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
@@ -154,6 +154,14 @@ function getProfileDisplayName(profile) {
       String(profile?.email || '').split('@')[0]
     ) || 'Account'
   );
+}
+
+function normalizeCoreProfileDetails(values = {}) {
+  return {
+    full_name: String(values.full_name || '').trim(),
+    phone_number: String(values.phone_number || '').trim(),
+    date_of_birth: String(values.date_of_birth || '').trim(),
+  };
 }
 
 function mergeProfileData(userData = {}, profileData = {}, authUser = null) {
@@ -492,9 +500,16 @@ export default function Profile() {
   const [passwordMessage, setPasswordMessage] = useState(null);
   const [bankMessage, setBankMessage] = useState(null);
   const [universityMessage, setUniversityMessage] = useState(null);
+  const [coreDetailsMessage, setCoreDetailsMessage] = useState(null);
   const [universitySuggestions, setUniversitySuggestions] = useState([]);
   const [isSearchingUniversities, setIsSearchingUniversities] = useState(false);
   const [isSavingUniversity, setIsSavingUniversity] = useState(false);
+  const [isSavingCoreDetails, setIsSavingCoreDetails] = useState(false);
+  const [coreDetailsForm, setCoreDetailsForm] = useState({
+    full_name: '',
+    phone_number: '',
+    date_of_birth: '',
+  });
   const [universityForm, setUniversityForm] = useState({
     university_id: '',
     university_name: '',
@@ -550,6 +565,14 @@ export default function Profile() {
       setProfile(merged);
       setDefaultAddress(null);
       setAddressPreviewLoading(merged.role === 'buyer');
+      setCoreDetailsForm(
+        normalizeCoreProfileDetails({
+          full_name: merged.full_name,
+          phone_number: merged.phone_number,
+          date_of_birth: merged.date_of_birth,
+        })
+      );
+      setCoreDetailsMessage(null);
 
       if (merged.role === 'seller') {
         setPendingDetails({
@@ -705,6 +728,19 @@ export default function Profile() {
     setPasswordMessage(null);
   };
 
+  const handleCoreDetailsFieldChange = (field, value) => {
+    const nextValue =
+      field === 'phone_number'
+        ? String(value || '').replace(/\D/g, '').slice(0, 11)
+        : value;
+
+    setCoreDetailsForm((current) => ({
+      ...current,
+      [field]: nextValue,
+    }));
+    setCoreDetailsMessage(null);
+  };
+
   const handleUniversityFieldChange = (field, value) => {
     setUniversityMessage(null);
     setUniversityForm((current) => {
@@ -776,6 +812,89 @@ export default function Profile() {
     setUniversityMessage(null);
     resetUniversityFormToProfile();
     setIsEditingUniversity(false);
+  };
+
+  const submitCoreDetails = async (event) => {
+    event.preventDefault();
+
+    const normalizedCoreDetails = normalizeCoreProfileDetails(coreDetailsForm);
+
+    if (!normalizedCoreDetails.full_name) {
+      const message = 'Please enter your full name.';
+      setCoreDetailsMessage({ type: 'error', text: message });
+      showError('Full Name Required', message);
+      return;
+    }
+
+    if (!normalizedCoreDetails.phone_number || normalizedCoreDetails.phone_number.length !== 11) {
+      const message = 'Please enter a valid 11-digit Nigerian phone number.';
+      setCoreDetailsMessage({ type: 'error', text: message });
+      showError('Phone Number Required', message);
+      return;
+    }
+
+    if (!normalizedCoreDetails.date_of_birth) {
+      const message = 'Please enter your date of birth.';
+      setCoreDetailsMessage({ type: 'error', text: message });
+      showError('Date of Birth Required', message);
+      return;
+    }
+
+    const birthDate = new Date(normalizedCoreDetails.date_of_birth);
+    const age = Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+
+    if (Number.isNaN(birthDate.getTime()) || age < 16) {
+      const message = 'You must be at least 16 years old.';
+      setCoreDetailsMessage({ type: 'error', text: message });
+      showError('Age Requirement', message);
+      return;
+    }
+
+    setIsSavingCoreDetails(true);
+
+    try {
+      const userPayload = {
+        full_name: normalizedCoreDetails.full_name,
+        phone_number: normalizedCoreDetails.phone_number,
+        date_of_birth: normalizedCoreDetails.date_of_birth,
+      };
+
+      const { error: userError } = await supabase
+        .from('users')
+        .update(userPayload)
+        .eq('id', profile.id);
+
+      if (userError) {
+        throw userError;
+      }
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: profile.id,
+            full_name: normalizedCoreDetails.full_name,
+          },
+          { onConflict: 'id' }
+        );
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      await loadUserProfile();
+      setCoreDetailsMessage({
+        type: 'success',
+        text: 'Your profile details were saved.',
+      });
+      showSuccess('Profile Updated', 'Your profile details were saved.');
+    } catch (error) {
+      const message = error?.message || 'We could not save your profile details.';
+      setCoreDetailsMessage({ type: 'error', text: message });
+      showError('Profile Update Failed', message);
+    } finally {
+      setIsSavingCoreDetails(false);
+    }
   };
 
   const submitUniversityIdentity = async (event) => {
@@ -1065,6 +1184,12 @@ export default function Profile() {
   const universityFieldsLocked = Boolean(profile.university_name) && !isEditingUniversity;
   const profileDisplayName = getProfileDisplayName(profile);
   const profileAge = getProfileAge(profile?.date_of_birth);
+  const missingCoreDetails = {
+    full_name: !String(profile?.full_name || '').trim(),
+    phone_number: !String(profile?.phone_number || '').trim(),
+    date_of_birth: !String(profile?.date_of_birth || '').trim(),
+  };
+  const hasMissingCoreDetails = Object.values(missingCoreDetails).some(Boolean);
   const avatarGradientClass = isSeller
     ? 'bg-gradient-to-br from-orange-500 to-orange-600'
     : 'bg-gradient-to-br from-blue-800 to-blue-500';
@@ -1164,27 +1289,101 @@ export default function Profile() {
       </div>
 
       {isSeller ? (
-        <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
-          <Briefcase className="mt-0.5 text-orange-600" size={20} />
-          <div className="flex-1">
-            <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
-              Business Name
+        <>
+          <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
+            <Briefcase className="mt-0.5 text-orange-600" size={20} />
+            <div className="flex-1">
+              <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
+                Business Name
+              </div>
+              <div className="font-medium text-orange-900">{profile?.business_name || 'Not set'}</div>
             </div>
-            <div className="font-medium text-orange-900">{profile?.business_name || 'Not set'}</div>
           </div>
-        </div>
 
-      <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
-          <Calendar className={`mt-0.5 ${isSeller ? 'text-orange-600' : 'text-blue-600'}`} size={20} />
-          <div className="flex-1">
-            <div className={`mb-1 text-xs font-semibold uppercase ${isSeller ? 'text-orange-600' : 'text-blue-600'}`}>
-              {isSeller ? 'University Identity' : 'University'}
-            </div>
-            <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile?.university_name || 'Not set'}</div>
-            <div className={`mt-1 text-sm ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}>
-              {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
+          <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
+            <Calendar className="mt-0.5 text-orange-600" size={20} />
+            <div className="flex-1">
+              <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
+                University Identity
+              </div>
+              <div className="font-medium text-orange-900">{profile?.university_name || 'Not set'}</div>
+              <div className="mt-1 text-sm text-orange-700">
+                {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
+              </div>
             </div>
           </div>
+        </>
+      ) : null}
+
+      {hasMissingCoreDetails ? (
+        <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+          <div className="mb-3">
+            <h2 className="text-sm font-bold text-slate-900">Complete your profile</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Add your missing account details.
+            </p>
+          </div>
+
+          <form onSubmit={submitCoreDetails} className="space-y-4">
+            {missingCoreDetails.full_name ? (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={coreDetailsForm.full_name}
+                  onChange={(event) => handleCoreDetailsFieldChange('full_name', event.target.value)}
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  placeholder="Enter full name"
+                  required
+                />
+              </div>
+            ) : null}
+
+            {missingCoreDetails.phone_number ? (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={coreDetailsForm.phone_number}
+                  onChange={(event) => handleCoreDetailsFieldChange('phone_number', event.target.value)}
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  placeholder="Enter 11-digit phone number"
+                  required
+                />
+              </div>
+            ) : null}
+
+            {missingCoreDetails.date_of_birth ? (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                  Date of Birth
+                </label>
+                <input
+                  type="date"
+                  value={coreDetailsForm.date_of_birth}
+                  onChange={(event) => handleCoreDetailsFieldChange('date_of_birth', event.target.value)}
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-2 focus:border-blue-600 focus:outline-none"
+                  min="1940-01-01"
+                  max={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={isSavingCoreDetails}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isSavingCoreDetails ? 'Saving...' : 'Save Details'}
+            </button>
+
+            <InlineMessage message={coreDetailsMessage} />
+          </form>
         </div>
       ) : null}
     </div>
@@ -1313,7 +1512,7 @@ export default function Profile() {
                 onSelectOption={handleUniversitySuggestionSelect}
                 getOptionKey={(university) => university.id}
                 getOptionPrimaryText={(university) => university.name}
-                getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' â€¢ ')}
                 allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
                 showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
                 customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other university`}
@@ -1682,18 +1881,15 @@ export default function Profile() {
             <div
               className={`-mt-12 mb-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-white text-3xl font-bold text-white shadow-lg ${avatarGradientClass}`}
             >
-              {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+              {profileDisplayName.charAt(0).toUpperCase() || 'U'}
             </div>
 
             <div className="mb-2 flex items-center gap-2">
               <h1 className="text-3xl font-extrabold text-blue-900">
-                {profile?.full_name || 'User'}
+                {profileDisplayName}
               </h1>
               {isSeller && isVerified ? <VerificationBadge /> : null}
             </div>
-            <p className="mb-8 font-semibold capitalize text-blue-600">
-              {isSeller ? 'Seller' : 'Buyer'}
-            </p>
 
             {isSeller ? (
               <div className="mb-8">

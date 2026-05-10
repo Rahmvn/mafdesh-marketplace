@@ -460,7 +460,7 @@ export default function Marketplace() {
     if (!selectedUniversityHasState) {
       return {
         tone: 'warning',
-        message: 'Nearby campuses are unavailable because this campus has no state yet.',
+        message: 'Nearby campuses need a campus with state data.',
       };
     }
 
@@ -636,7 +636,7 @@ export default function Marketplace() {
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Nearby campuses include other catalog campuses in the same state.
+                          Nearby shows same-state catalog campuses only.
                         </p>
                       </div>
                       {selectedUniversity ? (

@@ -325,6 +325,49 @@ describe('Marketplace quick campus filters', () => {
     });
   });
 
+  it('disables nearby campuses when the selected campus has no state data', async () => {
+    mockProductRows.push({
+      id: 'product-mystery-campus',
+      name: 'Mystery Campus Shirt',
+      description: 'Campus shirt from a school without state data',
+      category: 'Fashion',
+      stock_quantity: 5,
+      price: 6500,
+      original_price: 6500,
+      images: [],
+      seller: {
+        display_name: 'Mystery Seller',
+        university_id: 'uni-4',
+        university_name: 'Mystery Campus',
+        university_state: '',
+        is_verified: false,
+      },
+    });
+
+    mockSearchUniversities.mockResolvedValueOnce([
+      { id: 'uni-4', name: 'Mystery Campus', state: '', zone: '' },
+      { id: 'uni-3', name: 'Ahmadu Bello University', state: 'Kaduna', zone: 'North West' },
+      { id: 'uni-2', name: 'Lagos State University', state: 'Lagos', zone: 'South West' },
+      { id: 'uni-1', name: 'University of Lagos', state: 'Lagos', zone: 'South West' },
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('Mystery Campus Shirt');
+    await selectCampus('Mystery Campus', 'mystery');
+
+    await waitFor(() => {
+      expect(screen.getByText('Mystery Campus Shirt')).toBeInTheDocument();
+      expect(screen.queryByText('UNILAG Hoodie')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Nearby campuses need a campus with state data.')
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: 'Nearby campuses' })).toBeDisabled();
+    expect(mockFetchNearbyUniversitiesByState).not.toHaveBeenCalled();
+  });
+
   it('disables campus selection when the university catalog is unavailable', async () => {
     mockSearchUniversities.mockRejectedValueOnce(new Error('catalog unavailable'));
 
