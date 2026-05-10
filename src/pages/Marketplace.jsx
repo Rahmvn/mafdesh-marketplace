@@ -149,6 +149,10 @@ export default function Marketplace() {
   const [products, setProducts] = useState(() => readCachedProducts());
   const [universities, setUniversities] = useState([]);
   const [nearbyUniversities, setNearbyUniversities] = useState([]);
+  const [isLoadingUniversities, setIsLoadingUniversities] = useState(true);
+  const [universityLoadError, setUniversityLoadError] = useState('');
+  const [isLoadingNearbyUniversities, setIsLoadingNearbyUniversities] = useState(false);
+  const [nearbyUniversitiesError, setNearbyUniversitiesError] = useState('');
   const [selectedUniversityId, setSelectedUniversityId] = useState('');
   const [includeNearbyUniversities, setIncludeNearbyUniversities] = useState(false);
   const [isCampusPickerOpen, setIsCampusPickerOpen] = useState(false);
@@ -204,6 +208,11 @@ export default function Marketplace() {
     let cancelled = false;
 
     const loadUniversities = async () => {
+      if (!cancelled) {
+        setIsLoadingUniversities(true);
+        setUniversityLoadError('');
+      }
+
       try {
         const data = await searchUniversities({ limit: 200 });
         if (!cancelled) {
@@ -213,6 +222,11 @@ export default function Marketplace() {
         console.error('Error loading universities:', error);
         if (!cancelled) {
           setUniversities([]);
+          setUniversityLoadError('Campus filters are temporarily unavailable.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingUniversities(false);
         }
       }
     };
@@ -244,18 +258,27 @@ export default function Marketplace() {
     () => universities.find((university) => university.id === selectedUniversityId) || null,
     [selectedUniversityId, universities]
   );
-  const normalizedSelectedUniversityState = normalizeText(selectedUniversity?.state);
+  const normalizedSelectedUniversityName = normalizeText(selectedUniversity?.name);
+  const selectedUniversityHasState = Boolean(normalizeText(selectedUniversity?.state));
   const hasActiveCampusFilter = Boolean(selectedUniversity || includeNearbyUniversities);
+  const areCampusFiltersUnavailable = Boolean(universityLoadError) && universities.length === 0;
 
   useEffect(() => {
-    if (!selectedUniversity || !includeNearbyUniversities) {
+    if (!selectedUniversity || !includeNearbyUniversities || !selectedUniversityHasState) {
       setNearbyUniversities([]);
+      setNearbyUniversitiesError('');
+      setIsLoadingNearbyUniversities(false);
       return;
     }
 
     let cancelled = false;
 
     const loadNearbyUniversities = async () => {
+      if (!cancelled) {
+        setIsLoadingNearbyUniversities(true);
+        setNearbyUniversitiesError('');
+      }
+
       try {
         const data = await fetchNearbyUniversitiesByState(selectedUniversity.state, {
           excludeId: selectedUniversity.id,
@@ -268,6 +291,11 @@ export default function Marketplace() {
         console.error('Error loading nearby universities:', error);
         if (!cancelled) {
           setNearbyUniversities([]);
+          setNearbyUniversitiesError('Could not load nearby campuses. Showing only the selected campus.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingNearbyUniversities(false);
         }
       }
     };
@@ -277,7 +305,7 @@ export default function Marketplace() {
     return () => {
       cancelled = true;
     };
-  }, [includeNearbyUniversities, selectedUniversity]);
+  }, [includeNearbyUniversities, selectedUniversity, selectedUniversityHasState]);
 
   useEffect(() => {
     if (!isCampusPickerOpen) {
@@ -329,41 +357,37 @@ export default function Marketplace() {
   }, [fuse, marketplaceProducts, searchQuery]);
 
   const campusFilteredProducts = useMemo(() => {
+    const selectedUniversityIdValue = String(selectedUniversity?.id || '');
     const allowedNearbyUniversityIds = new Set(
       nearbyUniversities.map((university) => String(university.id))
     );
 
     return fuzzyFilteredProducts.filter((product) => {
-      const sellerState = normalizeText(product?.seller?.university_state);
       const sellerUniversityName = normalizeText(product?.seller?.university_name);
       const sellerUniversityId = String(product?.seller?.university_id || '');
+      const matchesSelectedCampus = sellerUniversityId
+        ? sellerUniversityId === selectedUniversityIdValue
+        : sellerUniversityName === normalizedSelectedUniversityName;
 
       if (!selectedUniversity) {
         return true;
       }
 
-      if (includeNearbyUniversities) {
-        if (sellerUniversityId && (
-          sellerUniversityId === String(selectedUniversity.id)
-          || allowedNearbyUniversityIds.has(sellerUniversityId)
-        )) {
-          return true;
-        }
-
-        return sellerState === normalizedSelectedUniversityState;
+      if (matchesSelectedCampus) {
+        return true;
       }
 
-      if (sellerUniversityId) {
-        return sellerUniversityId === String(selectedUniversity.id);
+      if (!includeNearbyUniversities || !sellerUniversityId) {
+        return false;
       }
 
-      return sellerUniversityName === normalizeText(selectedUniversity.name);
+      return allowedNearbyUniversityIds.has(sellerUniversityId);
     });
   }, [
     fuzzyFilteredProducts,
     includeNearbyUniversities,
     nearbyUniversities,
-    normalizedSelectedUniversityState,
+    normalizedSelectedUniversityName,
     selectedUniversity,
   ]);
 
@@ -436,10 +460,100 @@ export default function Marketplace() {
     return prioritizedUniversities.slice(0, CAMPUS_OPTION_LIMIT);
   }, [campusQuery, selectedUniversity, universities]);
 
+  const nearbyToggleDisabled = !selectedUniversity || !selectedUniversityHasState;
+
+  const campusFilterStatus = useMemo(() => {
+    if (areCampusFiltersUnavailable) {
+      return {
+        tone: 'warning',
+        message: universityLoadError,
+      };
+    }
+
+    if (!selectedUniversity) {
+      return null;
+    }
+
+    if (!selectedUniversityHasState) {
+      return {
+        tone: 'warning',
+        message: 'Nearby campuses are unavailable because this campus has no state yet.',
+      };
+    }
+
+    if (!includeNearbyUniversities) {
+      return null;
+    }
+
+    if (isLoadingNearbyUniversities) {
+      return {
+        tone: 'neutral',
+        message: 'Loading nearby campuses...',
+      };
+    }
+
+    if (nearbyUniversitiesError) {
+      return {
+        tone: 'warning',
+        message: nearbyUniversitiesError,
+      };
+    }
+
+    if (nearbyUniversities.length === 0) {
+      return {
+        tone: 'neutral',
+        message: 'No nearby campuses found for this state. Showing only the selected campus.',
+      };
+    }
+
+    return {
+      tone: 'neutral',
+      message: `Showing ${nearbyUniversities.length} nearby campus${
+        nearbyUniversities.length === 1 ? '' : 'es'
+      } with ${selectedUniversity.name}.`,
+    };
+  }, [
+    areCampusFiltersUnavailable,
+    includeNearbyUniversities,
+    isLoadingNearbyUniversities,
+    nearbyUniversities.length,
+    nearbyUniversitiesError,
+    selectedUniversity,
+    selectedUniversityHasState,
+    universityLoadError,
+  ]);
+
+  const emptyStateMessage = useMemo(() => {
+    const messageParts = [];
+
+    if (selectedUniversity) {
+      messageParts.push(
+        includeNearbyUniversities
+          ? `for ${selectedUniversity.name} and nearby campuses`
+          : `for ${selectedUniversity.name}`
+      );
+    }
+
+    if (selectedCategory !== 'All') {
+      messageParts.push(`in ${selectedCategory}`);
+    }
+
+    if (searchQuery.trim()) {
+      messageParts.push(`matching "${searchQuery}"`);
+    }
+
+    if (messageParts.length === 0) {
+      return 'No products found.';
+    }
+
+    return `No products found ${messageParts.join(' ')}.`;
+  }, [includeNearbyUniversities, searchQuery, selectedCategory, selectedUniversity]);
+
   const handleUniversitySelect = (university) => {
     setSelectedUniversityId(String(university?.id || ''));
     setIncludeNearbyUniversities(false);
     setNearbyUniversities([]);
+    setNearbyUniversitiesError('');
     setCampusQuery('');
     setIsCampusPickerOpen(false);
   };
@@ -448,6 +562,7 @@ export default function Marketplace() {
     setSelectedUniversityId('');
     setIncludeNearbyUniversities(false);
     setNearbyUniversities([]);
+    setNearbyUniversitiesError('');
     setCampusQuery('');
     setIsCampusPickerOpen(false);
   };
@@ -504,13 +619,19 @@ export default function Marketplace() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (areCampusFiltersUnavailable) {
+                      return;
+                    }
                     setCampusQuery('');
                     setIsCampusPickerOpen((current) => !current);
                   }}
+                  disabled={areCampusFiltersUnavailable}
                   aria-expanded={isCampusPickerOpen}
                   aria-haspopup="dialog"
                   className={`inline-flex items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                    selectedUniversity
+                    areCampusFiltersUnavailable
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
+                      : selectedUniversity
                       ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
                       : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
                   }`}
@@ -532,7 +653,7 @@ export default function Marketplace() {
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Nearby expands to same-state campuses after you choose one.
+                          Nearby campuses include other catalog campuses in the same state.
                         </p>
                       </div>
                       {selectedUniversity ? (
@@ -555,6 +676,7 @@ export default function Marketplace() {
                         placeholder="Search campuses"
                         aria-label="Search campuses"
                         autoFocus
+                        disabled={areCampusFiltersUnavailable}
                         className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                       />
                       {campusQuery ? (
@@ -600,7 +722,19 @@ export default function Marketplace() {
                       })}
                     </div>
 
-                    {filteredUniversities.length === 0 ? (
+                    {isLoadingUniversities ? (
+                      <p className="mt-3 px-1 text-sm text-slate-500">
+                        Loading campuses...
+                      </p>
+                    ) : null}
+
+                    {areCampusFiltersUnavailable ? (
+                      <p className="mt-3 px-1 text-sm text-orange-700">
+                        {universityLoadError}
+                      </p>
+                    ) : null}
+
+                    {!isLoadingUniversities && !areCampusFiltersUnavailable && filteredUniversities.length === 0 ? (
                       <p className="mt-3 px-1 text-sm text-slate-500">
                         No campuses match that search yet.
                       </p>
@@ -612,10 +746,10 @@ export default function Marketplace() {
               <button
                 type="button"
                 onClick={() => setIncludeNearbyUniversities((current) => !current)}
-                disabled={!selectedUniversity}
+                disabled={nearbyToggleDisabled}
                 aria-pressed={Boolean(selectedUniversity && includeNearbyUniversities)}
                 className={`inline-flex shrink-0 items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                  selectedUniversity
+                  !nearbyToggleDisabled
                     ? includeNearbyUniversities
                       ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
                       : 'border-slate-200 text-slate-700 hover:border-orange-200 hover:text-orange-700'
@@ -624,10 +758,10 @@ export default function Marketplace() {
               >
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    includeNearbyUniversities && selectedUniversity ? 'bg-orange-500' : 'bg-slate-300'
+                    includeNearbyUniversities && !nearbyToggleDisabled ? 'bg-orange-500' : 'bg-slate-300'
                   }`}
                 />
-                Nearby
+                Nearby campuses
               </button>
 
               {hasActiveCampusFilter ? (
@@ -641,6 +775,16 @@ export default function Marketplace() {
                 </button>
               ) : null}
             </div>
+
+            {campusFilterStatus ? (
+              <p
+                className={`mt-2 text-xs ${
+                  campusFilterStatus.tone === 'warning' ? 'text-orange-700' : 'text-slate-500'
+                }`}
+              >
+                {campusFilterStatus.message}
+              </p>
+            ) : null}
           </section>
         </div>
 
@@ -676,8 +820,17 @@ export default function Marketplace() {
         ) : visibleProducts.length === 0 ? (
           <div className="py-14 text-center">
             <p className="text-lg font-medium text-blue-800">
-              No products found{searchQuery ? ` matching "${searchQuery}"` : ''}
+              {emptyStateMessage}
             </p>
+            {hasActiveCampusFilter ? (
+              <button
+                type="button"
+                onClick={handleClearCampusFilters}
+                className="mt-4 inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Clear campus filters
+              </button>
+            ) : null}
           </div>
         ) : isDefaultCategoryView ? (
           <div className="space-y-3">

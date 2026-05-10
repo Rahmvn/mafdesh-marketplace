@@ -101,6 +101,118 @@ function formatProfileDate(value) {
   });
 }
 
+function getProfileAge(value) {
+  if (!value) {
+    return '';
+  }
+
+  const birthDate = new Date(value);
+
+  if (Number.isNaN(birthDate.getTime())) {
+    return '';
+  }
+
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const monthDifference = now.getMonth() - birthDate.getMonth();
+
+  if (
+    monthDifference < 0 ||
+    (monthDifference === 0 && now.getDate() < birthDate.getDate())
+  ) {
+    age -= 1;
+  }
+
+  return age >= 0 ? `${age} year${age === 1 ? '' : 's'} old` : '';
+}
+
+function readFirstFilledValue(...values) {
+  for (const value of values) {
+    if (value == null) {
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (normalized) {
+        return normalized;
+      }
+      continue;
+    }
+
+    return value;
+  }
+
+  return '';
+}
+
+function getProfileDisplayName(profile) {
+  return (
+    readFirstFilledValue(
+      profile?.full_name,
+      profile?.username,
+      String(profile?.email || '').split('@')[0]
+    ) || 'Account'
+  );
+}
+
+function mergeProfileData(userData = {}, profileData = {}, authUser = null) {
+  const authMetadata = authUser?.user_metadata || authUser?.raw_user_meta_data || {};
+
+  return {
+    ...userData,
+    ...(profileData || {}),
+    email: readFirstFilledValue(userData?.email, authUser?.email, profileData?.email),
+    role: readFirstFilledValue(userData?.role, profileData?.role, authMetadata?.role),
+    full_name: readFirstFilledValue(
+      profileData?.full_name,
+      userData?.full_name,
+      authMetadata?.full_name
+    ),
+    username: readFirstFilledValue(
+      profileData?.username,
+      userData?.username,
+      authMetadata?.username
+    ),
+    phone_number: readFirstFilledValue(
+      userData?.phone_number,
+      profileData?.phone_number,
+      authMetadata?.phone_number
+    ),
+    date_of_birth: readFirstFilledValue(
+      userData?.date_of_birth,
+      profileData?.date_of_birth,
+      authMetadata?.date_of_birth
+    ),
+    business_name: readFirstFilledValue(userData?.business_name, profileData?.business_name),
+    university_id: readFirstFilledValue(
+      userData?.university_id,
+      profileData?.university_id,
+      authMetadata?.university_id
+    ),
+    university_name: readFirstFilledValue(
+      userData?.university_name,
+      profileData?.university_name,
+      authMetadata?.university_name
+    ),
+    university_state: readFirstFilledValue(
+      userData?.university_state,
+      profileData?.university_state,
+      authMetadata?.university_state
+    ),
+    university_zone: readFirstFilledValue(
+      userData?.university_zone,
+      profileData?.university_zone,
+      authMetadata?.university_zone
+    ),
+    university_role: readFirstFilledValue(
+      userData?.university_role,
+      profileData?.university_role,
+      authMetadata?.university_role
+    ),
+  };
+}
+
 function InlineMessage({ message }) {
   if (!message?.text) {
     return null;
@@ -433,7 +545,7 @@ export default function Profile() {
         throw profileError;
       }
 
-      const merged = { ...userData, ...profileData };
+      const merged = mergeProfileData(userData, profileData, data.session.user);
 
       setProfile(merged);
       setDefaultAddress(null);
@@ -951,6 +1063,8 @@ export default function Profile() {
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
   const universityFieldsLocked = Boolean(profile.university_name) && !isEditingUniversity;
+  const profileDisplayName = getProfileDisplayName(profile);
+  const profileAge = getProfileAge(profile?.date_of_birth);
   const avatarGradientClass = isSeller
     ? 'bg-gradient-to-br from-orange-500 to-orange-600'
     : 'bg-gradient-to-br from-blue-800 to-blue-500';
@@ -1001,33 +1115,43 @@ export default function Profile() {
           <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
             Username
           </div>
-          <div className="font-medium text-blue-900">@{profile?.username || 'N/A'}</div>
+          <div className="font-medium text-blue-900">
+            {profile?.username ? `@${profile.username}` : 'Not set'}
+          </div>
         </div>
       </div>
 
-      {profile?.phone_number ? (
-        <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-          <Phone className="mt-0.5 text-blue-600" size={20} />
-          <div className="flex-1">
-            <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-              Phone Number
-            </div>
-            <div className="font-medium text-blue-900">{profile?.phone_number}</div>
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <Phone className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Phone Number
           </div>
+          <div className="font-medium text-blue-900">{profile?.phone_number || 'Not set'}</div>
         </div>
-      ) : null}
+      </div>
 
-      {profile?.date_of_birth ? (
-        <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-          <Calendar className="mt-0.5 text-blue-600" size={20} />
-          <div className="flex-1">
-            <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-              Date of Birth
-            </div>
-            <div className="font-medium text-blue-900">{formatProfileDate(profile?.date_of_birth)}</div>
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <Calendar className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Date of Birth
+          </div>
+          <div className="font-medium text-blue-900">
+            {profile?.date_of_birth ? formatProfileDate(profile?.date_of_birth) : 'Not set'}
           </div>
         </div>
-      ) : null}
+      </div>
+
+      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+        <Calendar className="mt-0.5 text-blue-600" size={20} />
+        <div className="flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
+            Age
+          </div>
+          <div className="font-medium text-blue-900">{profileAge || 'Not set'}</div>
+        </div>
+      </div>
 
       <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
         <Shield className="mt-0.5 text-blue-600" size={20} />
@@ -1039,26 +1163,24 @@ export default function Profile() {
         </div>
       </div>
 
-      {profile?.business_name ? (
+      {isSeller ? (
         <div className="flex items-start gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
           <Briefcase className="mt-0.5 text-orange-600" size={20} />
           <div className="flex-1">
             <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
               Business Name
             </div>
-            <div className="font-medium text-orange-900">{profile?.business_name}</div>
+            <div className="font-medium text-orange-900">{profile?.business_name || 'Not set'}</div>
           </div>
         </div>
-      ) : null}
 
-      {profile?.university_name ? (
-        <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
+      <div className={`flex items-start gap-4 rounded-xl p-4 ${isSeller ? 'border border-orange-100 bg-orange-50' : 'border border-blue-100 bg-blue-50'}`}>
           <Calendar className={`mt-0.5 ${isSeller ? 'text-orange-600' : 'text-blue-600'}`} size={20} />
           <div className="flex-1">
             <div className={`mb-1 text-xs font-semibold uppercase ${isSeller ? 'text-orange-600' : 'text-blue-600'}`}>
               {isSeller ? 'University Identity' : 'University'}
             </div>
-            <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile.university_name}</div>
+            <div className={`font-medium ${isSeller ? 'text-orange-900' : 'text-blue-900'}`}>{profile?.university_name || 'Not set'}</div>
             <div className={`mt-1 text-sm ${isSeller ? 'text-orange-700' : 'text-blue-700'}`}>
               {[profile.university_state, profile.university_zone].filter(Boolean).join(' • ') || 'Campus details pending'}
             </div>

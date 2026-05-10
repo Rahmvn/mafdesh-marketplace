@@ -171,6 +171,10 @@ function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
     fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
       target: { value: 'Kaduna' },
     });
+  } else {
+    fireEvent.change(screen.getByPlaceholderText('Search your university'), {
+      target: { value: 'Mafdesh University' },
+    });
   }
 
   if (agreeToTerms) {

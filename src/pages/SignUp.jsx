@@ -482,6 +482,20 @@ export default function SignUp() {
       return false;
     }
 
+    if (!normalizedFormData.phone_number || normalizedFormData.phone_number.length !== 11) {
+      showWarning('Phone Number Required', 'Please enter a valid 11-digit Nigerian phone number. This is needed for delivery coordination.');
+      return false;
+    }
+
+    if (normalizedFormData.date_of_birth) {
+      const dob = new Date(normalizedFormData.date_of_birth);
+      const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (age < 16) {
+        showWarning('Age Requirement', 'You must be at least 16 years old to create a Mafdesh account.');
+        return false;
+      }
+    }
+
     if (normalizedFormData.password.length < 6) {
       showWarning('Password Too Short', 'Password must be at least 6 characters.');
       return false;
@@ -505,6 +519,14 @@ export default function SignUp() {
       showWarning(
         'University Required',
         'Choose your university and its state before creating a seller account.'
+      );
+      return false;
+    }
+
+    if (!isSeller && !normalizedFormData.university_name) {
+      showWarning(
+        'University Required',
+        'Please enter your university. Mafdesh is a university marketplace — all members must be affiliated with a university.'
       );
       return false;
     }
@@ -697,8 +719,19 @@ export default function SignUp() {
                     <h1 className="mt-2 text-2xl font-bold text-slate-900">{progressCopy.label}</h1>
                     <p className="mt-1 text-sm text-slate-500">{progressCopy.description}</p>
                   </div>
-                  <div className={`rounded-full px-3 py-1 text-xs font-semibold ${isSeller ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
-                    {isSeller ? 'Seller path' : 'Buyer path'}
+                  <div>
+                    <div className={`rounded-full px-3 py-1 text-xs font-semibold ${isSeller ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
+                      {isSeller ? 'Seller path' : 'Buyer path'}
+                    </div>
+                    {currentStep > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(1)}
+                        className="mt-1 text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2"
+                      >
+                        Wrong account type?
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -810,6 +843,8 @@ export default function SignUp() {
                           aria-label="Date of birth"
                           value={formData.date_of_birth}
                           onChange={(event) => setFieldValue('date_of_birth', event.target.value)}
+                          max={new Date().toISOString().split('T')[0]}
+                          min="1940-01-01"
                           className={`${inputClass} ${inputFocusClass}`}
                         />
                       </div>
@@ -838,7 +873,7 @@ export default function SignUp() {
                           className={`${inputClass} ${inputFocusClass}`}
                         />
                         <p className="mt-2 text-xs font-medium text-slate-500">
-                          Optional, but helpful for delivery coordination.
+                          Required for delivery coordination. Must be 11 digits starting with 0.
                         </p>
                       </div>
                     </div>
@@ -892,7 +927,7 @@ export default function SignUp() {
                     <div className={`rounded-2xl border px-4 py-4 text-sm ${isSeller ? 'border-orange-100 bg-orange-50/70 text-orange-900' : 'border-blue-100 bg-blue-50/70 text-blue-900'}`}>
                       {isSeller
                         ? 'Your university details shape your campus zone now, and you can finish verification after signup.'
-                        : 'You can add your university now or leave it blank and still create your buyer account.'}
+                        : 'Mafdesh is a university marketplace. Please add your university to continue.'}
                     </div>
 
                     {isSeller ? (
@@ -911,14 +946,14 @@ export default function SignUp() {
 
                     <SearchablePickerField
                       id="signup-university-name"
-                      label={isSeller ? 'UNIVERSITY' : 'UNIVERSITY (OPTIONAL)'}
+                      label="UNIVERSITY"
                       value={formData.university_name}
                       onChange={handleUniversityNameChange}
                       placeholder="Search your university"
                       maxLength={120}
                       helperText={
                         isSeller
-                          ? 'Choose a suggested school when it appears. If your campus is missing, use Other and keep typing it as a custom university.'
+                          ? 'Type your university name and select from the list. Cannot find it? Type the full name and tap Other.'
                           : 'You can pick a suggested school or use Other if your university is not listed.'
                       }
                       loading={isLoadingUniversities}
@@ -937,16 +972,24 @@ export default function SignUp() {
 
                     {isSeller ? (
                       <>
-                        <SelectField
-                          id="signup-university-state"
-                          label="UNIVERSITY STATE"
-                          value={formData.university_state}
-                          onChange={handleUniversityStateChange}
-                          ariaLabel="University state"
-                          options={NIGERIAN_STATES}
-                          placeholder="Select university state"
-                          tone="orange"
-                        />
+                        {formData.university_id ? (
+                          <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
+                            <span className="font-semibold">University State:</span>{' '}
+                            {formData.university_state}
+                            <span className="ml-2 text-xs text-orange-600">(auto-filled from catalog)</span>
+                          </div>
+                        ) : (
+                          <SelectField
+                            id="signup-university-state"
+                            label="UNIVERSITY STATE"
+                            value={formData.university_state}
+                            onChange={handleUniversityStateChange}
+                            ariaLabel="University state"
+                            options={NIGERIAN_STATES}
+                            placeholder="Select university state"
+                            tone="orange"
+                          />
+                        )}
 
                         <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
                           <span className="font-semibold">University zone:</span>{' '}
