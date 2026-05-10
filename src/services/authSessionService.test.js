@@ -171,4 +171,22 @@ describe('authSessionService.signOutAndClearAuthState', () => {
 
     expect(result.role).toBe('seller');
   });
+
+  it('treats missing auth sessions as expected navbar fallback cases', async () => {
+    const { isMissingAuthSessionError } = await import('./authSessionService');
+
+    expect(
+      isMissingAuthSessionError({
+        name: 'AuthSessionMissingError',
+        message: 'Auth session missing!',
+      })
+    ).toBe(true);
+
+    expect(
+      isMissingAuthSessionError({
+        name: 'SomeOtherError',
+        message: 'Something else broke',
+      })
+    ).toBe(false);
+  });
 });

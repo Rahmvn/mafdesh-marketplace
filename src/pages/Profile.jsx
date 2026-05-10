@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
-  AtSign,
   Briefcase,
   Calendar,
   CheckCircle,
@@ -150,7 +149,7 @@ function getProfileDisplayName(profile) {
   return (
     readFirstFilledValue(
       profile?.full_name,
-      profile?.username,
+      profile?.id,
       String(profile?.email || '').split('@')[0]
     ) || 'Account'
   );
@@ -854,7 +853,6 @@ export default function Profile() {
 
     try {
       const userPayload = {
-        full_name: normalizedCoreDetails.full_name,
         phone_number: normalizedCoreDetails.phone_number,
         date_of_birth: normalizedCoreDetails.date_of_birth,
       };
@@ -1235,18 +1233,6 @@ export default function Profile() {
       </div>
 
       <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-        <AtSign className="mt-0.5 text-blue-600" size={20} />
-        <div className="flex-1">
-          <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
-            Username
-          </div>
-          <div className="font-medium text-blue-900">
-            {profile?.username ? `@${profile.username}` : 'Not set'}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-start gap-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
         <Phone className="mt-0.5 text-blue-600" size={20} />
         <div className="flex-1">
           <div className="mb-1 text-xs font-semibold uppercase text-blue-600">
@@ -1327,10 +1313,11 @@ export default function Profile() {
           <form onSubmit={submitCoreDetails} className="space-y-4">
             {missingCoreDetails.full_name ? (
               <div>
-                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                <label htmlFor="profile-core-full-name" className="mb-2 block text-sm font-semibold text-blue-700">
                   Full Name
                 </label>
                 <input
+                  id="profile-core-full-name"
                   type="text"
                   value={coreDetailsForm.full_name}
                   onChange={(event) => handleCoreDetailsFieldChange('full_name', event.target.value)}
@@ -1343,10 +1330,11 @@ export default function Profile() {
 
             {missingCoreDetails.phone_number ? (
               <div>
-                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                <label htmlFor="profile-core-phone-number" className="mb-2 block text-sm font-semibold text-blue-700">
                   Phone Number
                 </label>
                 <input
+                  id="profile-core-phone-number"
                   type="tel"
                   value={coreDetailsForm.phone_number}
                   onChange={(event) => handleCoreDetailsFieldChange('phone_number', event.target.value)}
@@ -1359,10 +1347,11 @@ export default function Profile() {
 
             {missingCoreDetails.date_of_birth ? (
               <div>
-                <label className="mb-2 block text-sm font-semibold text-blue-700">
+                <label htmlFor="profile-core-date-of-birth" className="mb-2 block text-sm font-semibold text-blue-700">
                   Date of Birth
                 </label>
                 <input
+                  id="profile-core-date-of-birth"
                   type="date"
                   value={coreDetailsForm.date_of_birth}
                   onChange={(event) => handleCoreDetailsFieldChange('date_of_birth', event.target.value)}

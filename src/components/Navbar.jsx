@@ -30,6 +30,7 @@ import { supabase } from '../supabaseClient';
 import { readCachedCartCount } from '../utils/cartStorage';
 import {
   getActiveAuthUser,
+  isMissingAuthSessionError,
   subscribeToAuthStateChanges,
 } from '../services/authSessionService';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
@@ -272,7 +273,9 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
           setAuthUserId(authUser?.id || null);
         }
       } catch (error) {
-        console.error('Navbar auth user load failed:', error);
+        if (!isMissingAuthSessionError(error)) {
+          console.error('Navbar auth user load failed:', error);
+        }
         if (isMounted) {
           setAuthUserId(null);
         }

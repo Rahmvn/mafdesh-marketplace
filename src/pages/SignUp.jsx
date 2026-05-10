@@ -26,7 +26,7 @@ const SIGNUP_STEPS = [
   {
     id: 1,
     label: 'Account',
-    description: 'Choose your role and username.',
+    description: 'Choose your role and account details.',
   },
   {
     id: 2,
@@ -169,14 +169,30 @@ function FieldLabel({ children }) {
   );
 }
 
+function sanitizeUsernameSeed(value) {
+  const normalizedValue = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  if (!normalizedValue) {
+    return 'mafdesh_user';
+  }
+
+  if (normalizedValue.length >= 3) {
+    return normalizedValue.slice(0, 24);
+  }
+
+  return `mafdesh_${normalizedValue}`.slice(0, 24);
+}
+
 export default function SignUp() {
   const [userType, setUserType] = useState('buyer');
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_SIGNUP_FORM);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
-  const [usernameError, setUsernameError] = useState('');
-  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -277,19 +293,6 @@ export default function SignUp() {
     }
   }, [formData.custom_university_name, formData.university_id, formData.university_name]);
 
-  const validateUsername = (username) => {
-    if (username.length < 3) {
-      return 'Username must be at least 3 characters';
-    }
-    if (username.length > 30) {
-      return 'Username must not exceed 30 characters';
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return 'Username can only contain letters, numbers, and underscores';
-    }
-    return '';
-  };
-
   const readUsernameRecord = async (username) => {
     const normalizedUsername = String(username || '').trim().toLowerCase();
 
@@ -312,40 +315,29 @@ export default function SignUp() {
     return data || null;
   };
 
-  const checkUsernameUnique = async (username) => {
-    if (!username) {
-      return true;
-    }
+  const resolveGeneratedUsername = async (normalizedFormData) => {
+    const preferredUsername = String(normalizedFormData.username || '').trim().toLowerCase();
+    const baseUsername = sanitizeUsernameSeed(
+      preferredUsername || normalizedFormData.full_name || normalizedFormData.email?.split('@')[0] || ''
+    );
 
-    const validationError = validateUsername(username);
-    if (validationError) {
-      setUsernameError(validationError);
-      return false;
-    }
+    const candidateSuffixes = ['', ...Array.from({ length: 6 }, () => `${Math.floor(1000 + Math.random() * 9000)}`)];
 
-    setIsCheckingUsername(true);
+    for (const suffix of candidateSuffixes) {
+      const candidate = suffix
+        ? `${baseUsername.slice(0, Math.max(3, 29 - suffix.length))}_${suffix}`.slice(0, 30)
+        : baseUsername;
 
-    try {
-      const data = await readUsernameRecord(username);
-
-      if (data) {
-        setUsernameError('Username already taken');
-        return false;
+      const existingUsername = await readUsernameRecord(candidate);
+      if (!existingUsername) {
+        return candidate;
       }
-
-      setUsernameError('');
-      return true;
-    } catch (error) {
-      console.error('Username availability check failed:', error);
-      const feedback = getAuthFeedback('continue sign up', error);
-      showError(feedback.title, feedback.message);
-      return null;
-    } finally {
-      setIsCheckingUsername(false);
     }
+
+    throw new Error('We could not prepare your account details right now.');
   };
 
-  const resolveSignupFailureFeedback = async (error, attemptedUsername) => {
+  const resolveSignupFailureFeedback = async (error) => {
     const message = String(error?.message || '').trim();
     const normalizedMessage = message.toLowerCase();
 
@@ -353,25 +345,10 @@ export default function SignUp() {
       normalizedMessage.includes('unexpected failure')
       || normalizedMessage.includes('database error saving new user')
     ) {
-      try {
-        const usernameRecord = await readUsernameRecord(attemptedUsername);
-
-        if (usernameRecord) {
-          setUsernameError('This username is already taken. Please choose another one.');
-          return {
-            title: 'Username Already Taken',
-            message:
-              'That username was claimed before we could finish creating your account. Please choose another one and try again.',
-          };
-        }
-      } catch (diagnosticError) {
-        console.warn('Signup failure diagnosis could not confirm the username state:', diagnosticError);
-      }
-
       return {
         title: 'Signup Temporarily Unavailable',
         message:
-          'We could not create your account because secure signup hit a server-side problem. Please try again in a moment. If it keeps happening, try a different username or contact support.',
+          'We could not create your account because secure signup hit a server-side problem. Please try again in a moment or contact support.',
       };
     }
 
@@ -501,15 +478,8 @@ export default function SignUp() {
   };
 
   const validateAccountStep = (normalizedFormData) => {
-    if (!normalizedFormData.full_name || !normalizedFormData.email || !normalizedFormData.username) {
-      showWarning('Missing Details', 'Please fill in your full name, email, and username.');
-      return false;
-    }
-
-    const nextUsernameError = validateUsername(normalizedFormData.username);
-    if (nextUsernameError) {
-      setUsernameError(nextUsernameError);
-      showWarning('Username Invalid', nextUsernameError);
+    if (!normalizedFormData.full_name || !normalizedFormData.email) {
+      showWarning('Missing Details', 'Please fill in your full name and email.');
       return false;
     }
 
@@ -653,7 +623,7 @@ export default function SignUp() {
         return false;
       }
 
-      const feedback = await resolveSignupFailureFeedback(error, nextFormData.username);
+      const feedback = await resolveSignupFailureFeedback(error);
       showError(feedback.title, feedback.message);
       return false;
     }
@@ -704,18 +674,22 @@ export default function SignUp() {
       return;
     }
 
-    const isUnique = await checkUsernameUnique(normalizedFormData.username);
-    if (isUnique !== true) {
-      if (isUnique === false) {
-        setUsernameError('This username is already taken. Please choose another one.');
-        setCurrentStep(1);
-      }
+    let preparedFormData = normalizedFormData;
+
+    try {
+      preparedFormData = {
+        ...normalizedFormData,
+        username: await resolveGeneratedUsername(normalizedFormData),
+      };
+    } catch (error) {
+      const message = error?.message || 'We could not prepare your account details right now.';
+      showError('Signup Temporarily Unavailable', message);
       return;
     }
 
-    setFormData(normalizedFormData);
+    setFormData(preparedFormData);
     setIsSubmitting(true);
-    const success = await handleSignUp(normalizedFormData);
+    const success = await handleSignUp(preparedFormData);
     setIsSubmitting(false);
 
     if (success) {
@@ -837,37 +811,6 @@ export default function SignUp() {
                           onChange={(event) => setFieldValue('email', event.target.value)}
                           className={`${inputClass} ${inputFocusClass}`}
                         />
-                      </div>
-
-                      <div>
-                        <FieldLabel>Username</FieldLabel>
-                        <input
-                          type="text"
-                          placeholder="johndoe123"
-                          value={formData.username}
-                          maxLength={30}
-                          onChange={(event) => {
-                            setFieldValue('username', event.target.value);
-                            setUsernameError('');
-                          }}
-                          onBlur={() => {
-                            if (formData.username?.trim()) {
-                              checkUsernameUnique(formData.username);
-                            }
-                          }}
-                          className={`${inputClass} ${usernameError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/15' : inputFocusClass}`}
-                        />
-                        {!usernameError && !isCheckingUsername ? (
-                          <p className="mt-2 text-xs font-medium text-slate-500">
-                            Letters, numbers, and underscores only.
-                          </p>
-                        ) : null}
-                        {isCheckingUsername ? (
-                          <p className="mt-2 text-xs font-semibold text-blue-600">Checking availability...</p>
-                        ) : null}
-                        {usernameError ? (
-                          <p className="mt-2 text-xs font-semibold text-red-600">{usernameError}</p>
-                        ) : null}
                       </div>
                     </div>
                   </div>

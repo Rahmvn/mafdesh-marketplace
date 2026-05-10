@@ -4,13 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Marketplace from './Marketplace';
 
-const {
-  mockProductRows,
-  mockFrom,
-  mockSearchUniversities,
-  mockFetchNearbyUniversitiesByState,
-  mockEnrichProducts,
-} = vi.hoisted(() => {
+const { mockProductRows, mockFrom, mockEnrichProducts } = vi.hoisted(() => {
   const mockProductRows = [];
   const queryBuilder = {
     select: vi.fn(() => queryBuilder),
@@ -23,8 +17,6 @@ const {
   return {
     mockProductRows,
     mockFrom: vi.fn(() => queryBuilder),
-    mockSearchUniversities: vi.fn(),
-    mockFetchNearbyUniversitiesByState: vi.fn(),
     mockEnrichProducts: vi.fn(async (products) => products),
   };
 });
@@ -51,22 +43,9 @@ vi.mock('../components/SafeImage', () => ({
   default: () => <div data-testid="safe-image" />,
 }));
 
-vi.mock('../components/VerificationBadge', () => ({
-  default: () => <div data-testid="verification-badge" />,
-}));
-
 vi.mock('../services/publicSellerService', () => ({
   enrichProductsWithPublicSellerData: mockEnrichProducts,
-  getPublicSellerCampusLabel: vi.fn((seller) =>
-    [seller?.university_name, seller?.university_state].filter(Boolean).join(', ')
-  ),
-  getPublicSellerDisplayName: vi.fn((seller) => seller?.display_name || 'Seller'),
   isSellerMarketplaceActive: vi.fn(() => true),
-}));
-
-vi.mock('../services/universityService', () => ({
-  searchUniversities: mockSearchUniversities,
-  fetchNearbyUniversitiesByState: mockFetchNearbyUniversitiesByState,
 }));
 
 vi.mock('../utils/flashSale', () => ({
@@ -83,70 +62,35 @@ function renderMarketplace() {
   );
 }
 
-function seedDefaultProducts() {
-  mockProductRows.splice(
-    0,
-    mockProductRows.length,
-    {
-      id: 'product-unilag',
-      name: 'UNILAG Hoodie',
-      description: 'University of Lagos hoodie',
-      category: 'Fashion',
-      stock_quantity: 8,
-      price: 12000,
-      original_price: 12000,
-      images: [],
-      seller: {
-        display_name: 'Campus Hub',
-        university_id: 'uni-1',
-        university_name: 'University of Lagos',
-        university_state: 'Lagos',
-        is_verified: true,
-      },
+function buildProduct({
+  id,
+  name,
+  description,
+  category = 'Fashion',
+  universityId = '',
+  universityName = '',
+  universityState = '',
+}) {
+  return {
+    id,
+    name,
+    description,
+    category,
+    stock_quantity: 8,
+    price: 12000,
+    original_price: 12000,
+    images: [],
+    seller: {
+      display_name: `${name} Seller`,
+      university_id: universityId,
+      university_name: universityName,
+      university_state: universityState,
     },
-    {
-      id: 'product-lasu',
-      name: 'LASU Notebook',
-      description: 'Lagos State University notebook',
-      category: 'Books',
-      stock_quantity: 10,
-      price: 4500,
-      original_price: 4500,
-      images: [],
-      seller: {
-        display_name: 'Study Spot',
-        university_id: 'uni-2',
-        university_name: 'Lagos State University',
-        university_state: 'Lagos',
-        is_verified: false,
-      },
-    },
-    {
-      id: 'product-abu',
-      name: 'ABU Lab Coat',
-      description: 'Ahmadu Bello University lab coat',
-      category: 'Fashion',
-      stock_quantity: 6,
-      price: 9000,
-      original_price: 9000,
-      images: [],
-      seller: {
-        display_name: 'North Campus',
-        university_id: 'uni-3',
-        university_name: 'Ahmadu Bello University',
-        university_state: 'Kaduna',
-        is_verified: false,
-      },
-    }
-  );
+  };
 }
 
-function seedDefaultUniversities() {
-  mockSearchUniversities.mockResolvedValue([
-    { id: 'uni-3', name: 'Ahmadu Bello University', state: 'Kaduna', zone: 'North West' },
-    { id: 'uni-2', name: 'Lagos State University', state: 'Lagos', zone: 'South West' },
-    { id: 'uni-1', name: 'University of Lagos', state: 'Lagos', zone: 'South West' },
-  ]);
+function seedProducts(products) {
+  mockProductRows.splice(0, mockProductRows.length, ...products);
 }
 
 async function openCampusDialog() {
@@ -154,24 +98,40 @@ async function openCampusDialog() {
   return screen.findByRole('dialog', { name: 'Campus filter' });
 }
 
-async function selectCampus(campusName, searchValue = '') {
-  const campusDialog = await openCampusDialog();
-
-  if (searchValue) {
-    fireEvent.change(within(campusDialog).getByLabelText('Search campuses'), {
-      target: { value: searchValue },
-    });
-  }
-
-  fireEvent.click(within(campusDialog).getByRole('button', { name: new RegExp(campusName, 'i') }));
+function findCampusButtons(dialog, pattern) {
+  return within(dialog)
+    .getAllByRole('button')
+    .filter((button) => pattern.test(button.textContent || ''));
 }
 
-describe('Marketplace quick campus filters', () => {
+describe('Marketplace seller-derived campus filters', () => {
   beforeEach(() => {
-    seedDefaultProducts();
-    seedDefaultUniversities();
-    mockFetchNearbyUniversitiesByState.mockResolvedValue([
-      { id: 'uni-2', name: 'Lagos State University', state: 'Lagos', zone: 'South West' },
+    seedProducts([
+      buildProduct({
+        id: 'product-unilag',
+        name: 'UNILAG Hoodie',
+        description: 'University of Lagos hoodie',
+        universityId: 'uni-1',
+        universityName: 'University of Lagos',
+        universityState: 'Lagos',
+      }),
+      buildProduct({
+        id: 'product-lasu',
+        name: 'LASU Notebook',
+        description: 'Lagos State University notebook',
+        category: 'Books',
+        universityId: 'uni-2',
+        universityName: 'Lagos State University',
+        universityState: 'Lagos',
+      }),
+      buildProduct({
+        id: 'product-abu',
+        name: 'ABU Lab Coat',
+        description: 'Ahmadu Bello University lab coat',
+        universityId: 'uni-3',
+        universityName: 'Ahmadu Bello University',
+        universityState: 'Kaduna',
+      }),
     ]);
   });
 
@@ -180,208 +140,214 @@ describe('Marketplace quick campus filters', () => {
     localStorage.clear();
   });
 
-  it('supports compact campus, nearby campuses, and clear filtering', async () => {
+  it('defaults to All campuses and removes the nearby control', async () => {
     renderMarketplace();
 
     await screen.findByText('UNILAG Hoodie');
-    expect(screen.getByRole('button', { name: 'Nearby campuses' })).toBeDisabled();
+
+    expect(screen.getByRole('button', { name: /all campuses/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
     expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
     expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
 
-    await selectCampus('University of Lagos', 'lagos');
+    const dialog = await openCampusDialog();
+    expect(within(dialog).getByRole('button', { name: /university of lagos/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /lagos state university/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /ahmadu bello university/i })).toBeInTheDocument();
+  });
+
+  it('merges obvious seller campus variants into one option and filters all matching sellers', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-alhikma-1',
+        name: 'Alhikma Backpack',
+        description: 'Campus backpack',
+        universityId: 'uni-a',
+        universityName: 'Alhikma University',
+        universityState: 'Kwara',
+      }),
+      buildProduct({
+        id: 'product-alhikma-2',
+        name: 'Alhikma Notebook',
+        description: 'Campus notebook',
+        category: 'Books',
+        universityName: 'ALHIKMA',
+        universityState: 'Kwara',
+      }),
+      buildProduct({
+        id: 'product-alhikma-3',
+        name: 'Alhikma Tee',
+        description: 'Campus tee',
+        universityId: 'uni-b',
+        universityName: 'Alhikma University Kwara',
+        universityState: 'Kwara',
+      }),
+      buildProduct({
+        id: 'product-abu',
+        name: 'ABU Lab Coat',
+        description: 'Ahmadu Bello University lab coat',
+        universityId: 'uni-3',
+        universityName: 'Ahmadu Bello University',
+        universityState: 'Kaduna',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('Alhikma Backpack');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'alhikma' },
+    });
+
+    const alhikmaButtons = findCampusButtons(dialog, /alhikma/i);
+    expect(alhikmaButtons).toHaveLength(1);
+
+    fireEvent.click(alhikmaButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alhikma Backpack')).toBeInTheDocument();
+      expect(screen.getByText('Alhikma Notebook')).toBeInTheDocument();
+      expect(screen.getByText('Alhikma Tee')).toBeInTheDocument();
+      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps same-name campuses in different states separate', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-alhikma-kwara',
+        name: 'Alhikma Kwara Bag',
+        description: 'Kwara campus bag',
+        universityId: 'uni-a',
+        universityName: 'Alhikma University',
+        universityState: 'Kwara',
+      }),
+      buildProduct({
+        id: 'product-alhikma-lagos',
+        name: 'Alhikma Lagos Tee',
+        description: 'Lagos campus tee',
+        universityName: 'ALHIKMA',
+        universityState: 'Lagos',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('Alhikma Kwara Bag');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'alhikma' },
+    });
+
+    const alhikmaButtons = findCampusButtons(dialog, /alhikma/i);
+    expect(alhikmaButtons).toHaveLength(2);
+
+    fireEvent.click(alhikmaButtons.find((button) => /kwara/i.test(button.textContent || '')));
+
+    await waitFor(() => {
+      expect(screen.getByText('Alhikma Kwara Bag')).toBeInTheDocument();
+      expect(screen.queryByText('Alhikma Lagos Tee')).not.toBeInTheDocument();
+    });
+  });
+
+  it('merges missing-state sellers by cleaned campus name', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-alhikma-1',
+        name: 'Alhikma Apron',
+        description: 'Campus apron',
+        universityName: 'Alhikma University',
+      }),
+      buildProduct({
+        id: 'product-alhikma-2',
+        name: 'Alhikma Folder',
+        description: 'Campus folder',
+        category: 'Books',
+        universityName: 'ALHIKMA',
+      }),
+      buildProduct({
+        id: 'product-abu',
+        name: 'ABU Lab Coat',
+        description: 'Ahmadu Bello University lab coat',
+        universityId: 'uni-3',
+        universityName: 'Ahmadu Bello University',
+        universityState: 'Kaduna',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('Alhikma Apron');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'alhikma' },
+    });
+
+    const alhikmaButtons = findCampusButtons(dialog, /alhikma/i);
+    expect(alhikmaButtons).toHaveLength(1);
+
+    fireEvent.click(alhikmaButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Alhikma Apron')).toBeInTheDocument();
+      expect(screen.getByText('Alhikma Folder')).toBeInTheDocument();
+      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not create campus options for sellers without a university name', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-plain-1',
+        name: 'Campus Flask',
+        description: 'Seller without campus name',
+      }),
+      buildProduct({
+        id: 'product-plain-2',
+        name: 'Campus Socks',
+        description: 'Another seller without campus name',
+        category: 'Books',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('Campus Flask');
+
+    expect(screen.getByText('Campus Socks')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /all campuses/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
+  });
+
+  it('clears the selected seller-derived campus filter back to All campuses', async () => {
+    renderMarketplace();
+
+    await screen.findByText('UNILAG Hoodie');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'lagos' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /university of lagos/i }));
 
     await waitFor(() => {
       expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
       expect(screen.queryByText('LASU Notebook')).not.toBeInTheDocument();
       expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
-    });
-
-    const nearbyButton = screen.getByRole('button', { name: 'Nearby campuses' });
-    expect(nearbyButton).not.toBeDisabled();
-
-    fireEvent.click(nearbyButton);
-
-    await waitFor(() => {
-      expect(mockFetchNearbyUniversitiesByState).toHaveBeenCalledWith('Lagos', {
-        excludeId: 'uni-1',
-      });
-      expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
-      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
-      expect(screen.getByText('Showing 1 nearby campus with University of Lagos.')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
 
     await waitFor(() => {
+      expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
       expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
       expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
       expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
     });
-
-    expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Nearby campuses' })).toBeDisabled();
-  });
-
-  it('matches the selected campus by university name when seller university id is missing', async () => {
-    mockProductRows.push({
-      id: 'product-custom-unilag',
-      name: 'Custom UNILAG Tee',
-      description: 'Handmade campus tee',
-      category: 'Fashion',
-      stock_quantity: 4,
-      price: 7000,
-      original_price: 7000,
-      images: [],
-      seller: {
-        display_name: 'Other Seller',
-        university_id: '',
-        university_name: 'University of Lagos',
-        university_state: 'Lagos',
-        is_verified: false,
-      },
-    });
-
-    renderMarketplace();
-
-    await screen.findByText('Custom UNILAG Tee');
-    await selectCampus('University of Lagos', 'lagos');
-
-    await waitFor(() => {
-      expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
-      expect(screen.getByText('Custom UNILAG Tee')).toBeInTheDocument();
-      expect(screen.queryByText('LASU Notebook')).not.toBeInTheDocument();
-      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
-    });
-  });
-
-  it('does not include same-state sellers without matching nearby campus ids when nearby campuses is active', async () => {
-    mockProductRows.push({
-      id: 'product-same-state-custom',
-      name: 'Lagoon Drafting Set',
-      description: 'Same-state custom seller with no catalog id',
-      category: 'Books',
-      stock_quantity: 3,
-      price: 5100,
-      original_price: 5100,
-      images: [],
-      seller: {
-        display_name: 'Independent Seller',
-        university_id: '',
-        university_name: 'Made Up Lagos Campus',
-        university_state: 'Lagos',
-        is_verified: false,
-      },
-    });
-
-    renderMarketplace();
-
-    await screen.findByText('Lagoon Drafting Set');
-    await selectCampus('University of Lagos', 'lagos');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nearby campuses' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
-      expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
-      expect(screen.queryByText('Lagoon Drafting Set')).not.toBeInTheDocument();
-    });
-  });
-
-  it('falls back to the selected campus when nearby campuses fail to load', async () => {
-    mockFetchNearbyUniversitiesByState.mockRejectedValueOnce(new Error('network down'));
-
-    renderMarketplace();
-
-    await screen.findByText('UNILAG Hoodie');
-    await selectCampus('University of Lagos', 'lagos');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nearby campuses' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
-      expect(screen.queryByText('LASU Notebook')).not.toBeInTheDocument();
-      expect(
-        screen.getByText('Could not load nearby campuses. Showing only the selected campus.')
-      ).toBeInTheDocument();
-    });
-  });
-
-  it('shows a fallback message when no nearby campuses are available', async () => {
-    mockFetchNearbyUniversitiesByState.mockResolvedValueOnce([]);
-
-    renderMarketplace();
-
-    await screen.findByText('UNILAG Hoodie');
-    await selectCampus('University of Lagos', 'lagos');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nearby campuses' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
-      expect(screen.queryByText('LASU Notebook')).not.toBeInTheDocument();
-      expect(
-        screen.getByText('No nearby campuses found for this state. Showing only the selected campus.')
-      ).toBeInTheDocument();
-    });
-  });
-
-  it('disables nearby campuses when the selected campus has no state data', async () => {
-    mockProductRows.push({
-      id: 'product-mystery-campus',
-      name: 'Mystery Campus Shirt',
-      description: 'Campus shirt from a school without state data',
-      category: 'Fashion',
-      stock_quantity: 5,
-      price: 6500,
-      original_price: 6500,
-      images: [],
-      seller: {
-        display_name: 'Mystery Seller',
-        university_id: 'uni-4',
-        university_name: 'Mystery Campus',
-        university_state: '',
-        is_verified: false,
-      },
-    });
-
-    mockSearchUniversities.mockResolvedValueOnce([
-      { id: 'uni-4', name: 'Mystery Campus', state: '', zone: '' },
-      { id: 'uni-3', name: 'Ahmadu Bello University', state: 'Kaduna', zone: 'North West' },
-      { id: 'uni-2', name: 'Lagos State University', state: 'Lagos', zone: 'South West' },
-      { id: 'uni-1', name: 'University of Lagos', state: 'Lagos', zone: 'South West' },
-    ]);
-
-    renderMarketplace();
-
-    await screen.findByText('Mystery Campus Shirt');
-    await selectCampus('Mystery Campus', 'mystery');
-
-    await waitFor(() => {
-      expect(screen.getByText('Mystery Campus Shirt')).toBeInTheDocument();
-      expect(screen.queryByText('UNILAG Hoodie')).not.toBeInTheDocument();
-      expect(
-        screen.getByText('Nearby campuses need a campus with state data.')
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('button', { name: 'Nearby campuses' })).toBeDisabled();
-    expect(mockFetchNearbyUniversitiesByState).not.toHaveBeenCalled();
-  });
-
-  it('disables campus selection when the university catalog is unavailable', async () => {
-    mockSearchUniversities.mockRejectedValueOnce(new Error('catalog unavailable'));
-
-    renderMarketplace();
-
-    await screen.findByText('UNILAG Hoodie');
-
-    await waitFor(() => {
-      expect(
-        screen.getByText('Campus filters are temporarily unavailable.')
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('button', { name: /all campuses/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Nearby campuses' })).toBeDisabled();
   });
 });

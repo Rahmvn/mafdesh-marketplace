@@ -132,7 +132,7 @@ export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
             <div key={msg.id} className="border-l-4 border-gray-200 pl-3">
               <div className="flex justify-between items-center text-sm">
                 <span className="font-medium">
-                  {msg.sender?.profiles?.full_name || msg.sender?.profiles?.username || 'User'} ({msg.sender_role})
+                  {msg.sender?.profiles?.full_name || msg.sender_id || 'User'} ({msg.sender_role})
                 </span>
                 <span className="text-xs text-gray-500">
                   {new Date(msg.created_at).toLocaleString()}

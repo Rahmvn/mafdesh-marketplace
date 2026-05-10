@@ -7,15 +7,12 @@ import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
 import SafeImage from '../components/SafeImage';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
+import { getCanonicalStateName } from '../utils/nigeriaStates';
 import { supabase } from '../supabaseClient';
 import {
   enrichProductsWithPublicSellerData,
   isSellerMarketplaceActive,
 } from '../services/publicSellerService';
-import {
-  fetchNearbyUniversitiesByState,
-  searchUniversities,
-} from '../services/universityService';
 import {
   excludeActiveFlashSaleProducts,
   getActiveFlashSaleProducts,
@@ -55,6 +52,248 @@ function readCachedProducts() {
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function normalizeCampusText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeCampusState(value) {
+  return getCanonicalStateName(value) || String(value || '').trim().replace(/\s+/g, ' ') || '';
+}
+
+function trimTrailingStateToken(value, state) {
+  const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ');
+  const normalizedState = String(state || '').trim().replace(/\s+/g, ' ');
+
+  if (!normalizedValue || !normalizedState) {
+    return normalizedValue;
+  }
+
+  return normalizedValue.replace(
+    new RegExp(`[\\s,/-]+${escapeRegExp(normalizedState)}$`, 'i'),
+    ''
+  ).trim();
+}
+
+function stripTrailingCampusWords(value) {
+  const campusWords = new Set(['university', 'uni']);
+  const words = normalizeCampusText(value).split(' ').filter(Boolean);
+
+  while (words.length > 1 && campusWords.has(words[words.length - 1])) {
+    words.pop();
+  }
+
+  return words.join(' ').trim();
+}
+
+function titleCaseCampusName(value) {
+  return String(value || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatCampusDisplayName(name, state) {
+  let displayName = trimTrailingStateToken(
+    String(name || '').trim().replace(/\s+/g, ' '),
+    state
+  );
+
+  if (!displayName) {
+    displayName = String(name || '').trim().replace(/\s+/g, ' ');
+  }
+
+  if (!displayName) {
+    return '';
+  }
+
+  if (
+    displayName === displayName.toUpperCase() ||
+    displayName === displayName.toLowerCase()
+  ) {
+    return titleCaseCampusName(displayName);
+  }
+
+  return displayName;
+}
+
+function buildCampusAliasKeys(name, state) {
+  const rawKey = normalizeCampusText(name);
+
+  if (!rawKey) {
+    return [];
+  }
+
+  const aliasKeys = new Set([rawKey]);
+  const normalizedState = normalizeCampusText(state);
+  const withoutState = normalizedState && rawKey.endsWith(` ${normalizedState}`)
+    ? rawKey.slice(0, -(normalizedState.length + 1)).trim()
+    : rawKey;
+
+  if (withoutState) {
+    aliasKeys.add(withoutState);
+  }
+
+  const baseKey = stripTrailingCampusWords(rawKey);
+  if (baseKey) {
+    aliasKeys.add(baseKey);
+  }
+
+  const baseWithoutState = stripTrailingCampusWords(withoutState);
+  if (baseWithoutState) {
+    aliasKeys.add(baseWithoutState);
+  }
+
+  return [...aliasKeys].filter(Boolean);
+}
+
+function aliasSetsIntersect(left = new Set(), right = new Set()) {
+  for (const aliasKey of left) {
+    if (right.has(aliasKey)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildSellerCampusRecord(seller) {
+  const universityName = String(seller?.university_name || '').trim();
+
+  if (!universityName) {
+    return null;
+  }
+
+  const state = normalizeCampusState(seller?.university_state);
+  const aliasKeys = buildCampusAliasKeys(universityName, state);
+
+  if (!aliasKeys.length) {
+    return null;
+  }
+
+  return {
+    universityId: String(seller?.university_id || '').trim(),
+    displayName: formatCampusDisplayName(universityName, state),
+    state,
+    stateBucket: normalizeText(state),
+    aliasKeys: new Set(aliasKeys),
+  };
+}
+
+function pickCampusDisplayName(variantCounts = new Map()) {
+  const variants = [...variantCounts.entries()];
+
+  if (!variants.length) {
+    return '';
+  }
+
+  variants.sort((left, right) => {
+    if (right[1] !== left[1]) {
+      return right[1] - left[1];
+    }
+
+    if (right[0].length !== left[0].length) {
+      return right[0].length - left[0].length;
+    }
+
+    return left[0].localeCompare(right[0]);
+  });
+
+  return variants[0][0];
+}
+
+function buildCampusGroups(products = []) {
+  const groups = [];
+
+  products.forEach((product) => {
+    const sellerCampus = buildSellerCampusRecord(product?.seller);
+
+    if (!sellerCampus) {
+      return;
+    }
+
+    const matchingGroup = groups.find((group) => {
+      const sameStateBucket = group.state
+        ? sellerCampus.state && group.stateBucket === sellerCampus.stateBucket
+        : !sellerCampus.state;
+
+      return sameStateBucket && aliasSetsIntersect(group.aliasKeys, sellerCampus.aliasKeys);
+    });
+
+    const nextGroup = matchingGroup || {
+      state: sellerCampus.state,
+      stateBucket: sellerCampus.stateBucket,
+      aliasKeys: new Set(),
+      universityIds: new Set(),
+      variantCounts: new Map(),
+    };
+
+    sellerCampus.aliasKeys.forEach((aliasKey) => nextGroup.aliasKeys.add(aliasKey));
+
+    if (sellerCampus.universityId) {
+      nextGroup.universityIds.add(sellerCampus.universityId);
+    }
+
+    const nextVariantCount = nextGroup.variantCounts.get(sellerCampus.displayName) || 0;
+    nextGroup.variantCounts.set(sellerCampus.displayName, nextVariantCount + 1);
+
+    if (!matchingGroup) {
+      groups.push(nextGroup);
+    }
+  });
+
+  return groups
+    .map((group) => {
+      const sortedAliasKeys = [...group.aliasKeys].sort((left, right) => left.localeCompare(right));
+      const displayName = pickCampusDisplayName(group.variantCounts);
+
+      return {
+        id: `campus:${group.stateBucket || 'unknown'}:${sortedAliasKeys[0] || displayName}`,
+        displayName,
+        state: group.state,
+        stateBucket: group.stateBucket,
+        aliasKeys: new Set(group.aliasKeys),
+        universityIds: new Set(group.universityIds),
+      };
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+}
+
+function sellerMatchesCampusGroup(seller, campusGroup) {
+  if (!campusGroup) {
+    return true;
+  }
+
+  const sellerCampus = buildSellerCampusRecord(seller);
+
+  if (!sellerCampus) {
+    return false;
+  }
+
+  if (sellerCampus.universityId) {
+    return campusGroup.universityIds.has(sellerCampus.universityId);
+  }
+
+  if (campusGroup.state) {
+    if (!sellerCampus.state || campusGroup.stateBucket !== sellerCampus.stateBucket) {
+      return false;
+    }
+  } else if (sellerCampus.state) {
+    return false;
+  }
+
+  return aliasSetsIntersect(campusGroup.aliasKeys, sellerCampus.aliasKeys);
 }
 
 function ProductCard({ product, onOpen, featured = false }) {
@@ -130,14 +369,7 @@ export default function Marketplace() {
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [products, setProducts] = useState(() => readCachedProducts());
-  const [universities, setUniversities] = useState([]);
-  const [nearbyUniversities, setNearbyUniversities] = useState([]);
-  const [isLoadingUniversities, setIsLoadingUniversities] = useState(true);
-  const [universityLoadError, setUniversityLoadError] = useState('');
-  const [isLoadingNearbyUniversities, setIsLoadingNearbyUniversities] = useState(false);
-  const [nearbyUniversitiesError, setNearbyUniversitiesError] = useState('');
-  const [selectedUniversityId, setSelectedUniversityId] = useState('');
-  const [includeNearbyUniversities, setIncludeNearbyUniversities] = useState(false);
+  const [selectedCampusGroupId, setSelectedCampusGroupId] = useState('');
   const [isCampusPickerOpen, setIsCampusPickerOpen] = useState(false);
   const [campusQuery, setCampusQuery] = useState('');
   const [now, setNow] = useState(() => new Date());
@@ -188,40 +420,6 @@ export default function Marketplace() {
   }, [loadProducts]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadUniversities = async () => {
-      if (!cancelled) {
-        setIsLoadingUniversities(true);
-        setUniversityLoadError('');
-      }
-
-      try {
-        const data = await searchUniversities({ limit: 200 });
-        if (!cancelled) {
-          setUniversities(data);
-        }
-      } catch (error) {
-        console.error('Error loading universities:', error);
-        if (!cancelled) {
-          setUniversities([]);
-          setUniversityLoadError('Campus filters are temporarily unavailable.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingUniversities(false);
-        }
-      }
-    };
-
-    loadUniversities();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -236,59 +434,6 @@ export default function Marketplace() {
       window.clearInterval(intervalId);
     };
   }, []);
-
-  const selectedUniversity = useMemo(
-    () => universities.find((university) => university.id === selectedUniversityId) || null,
-    [selectedUniversityId, universities]
-  );
-  const normalizedSelectedUniversityName = normalizeText(selectedUniversity?.name);
-  const selectedUniversityHasState = Boolean(normalizeText(selectedUniversity?.state));
-  const hasActiveCampusFilter = Boolean(selectedUniversity || includeNearbyUniversities);
-  const areCampusFiltersUnavailable = Boolean(universityLoadError) && universities.length === 0;
-
-  useEffect(() => {
-    if (!selectedUniversity || !includeNearbyUniversities || !selectedUniversityHasState) {
-      setNearbyUniversities([]);
-      setNearbyUniversitiesError('');
-      setIsLoadingNearbyUniversities(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadNearbyUniversities = async () => {
-      if (!cancelled) {
-        setIsLoadingNearbyUniversities(true);
-        setNearbyUniversitiesError('');
-      }
-
-      try {
-        const data = await fetchNearbyUniversitiesByState(selectedUniversity.state, {
-          excludeId: selectedUniversity.id,
-        });
-
-        if (!cancelled) {
-          setNearbyUniversities(data);
-        }
-      } catch (error) {
-        console.error('Error loading nearby universities:', error);
-        if (!cancelled) {
-          setNearbyUniversities([]);
-          setNearbyUniversitiesError('Could not load nearby campuses. Showing only the selected campus.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingNearbyUniversities(false);
-        }
-      }
-    };
-
-    loadNearbyUniversities();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [includeNearbyUniversities, selectedUniversity, selectedUniversityHasState]);
 
   useEffect(() => {
     if (!isCampusPickerOpen) {
@@ -318,10 +463,17 @@ export default function Marketplace() {
 
   const flashSaleProducts = useMemo(() => getActiveFlashSaleProducts(products, now), [now, products]);
   const marketplaceProducts = useMemo(() => excludeActiveFlashSaleProducts(products, now), [now, products]);
+  const campusGroups = useMemo(() => buildCampusGroups(marketplaceProducts), [marketplaceProducts]);
   const nearestFlashSaleExpiry = useMemo(
     () => getNearestFlashSaleExpiry(products, now),
     [now, products]
   );
+  const selectedCampusGroup = useMemo(
+    () => campusGroups.find((campusGroup) => campusGroup.id === selectedCampusGroupId) || null,
+    [campusGroups, selectedCampusGroupId]
+  );
+  const hasActiveCampusFilter = Boolean(selectedCampusGroup);
+  const hasCampusOptions = campusGroups.length > 0;
 
   const fuse = useMemo(
     () =>
@@ -340,39 +492,14 @@ export default function Marketplace() {
   }, [fuse, marketplaceProducts, searchQuery]);
 
   const campusFilteredProducts = useMemo(() => {
-    const selectedUniversityIdValue = String(selectedUniversity?.id || '');
-    const allowedNearbyUniversityIds = new Set(
-      nearbyUniversities.map((university) => String(university.id))
-    );
-
     return fuzzyFilteredProducts.filter((product) => {
-      const sellerUniversityName = normalizeText(product?.seller?.university_name);
-      const sellerUniversityId = String(product?.seller?.university_id || '');
-      const matchesSelectedCampus = sellerUniversityId
-        ? sellerUniversityId === selectedUniversityIdValue
-        : sellerUniversityName === normalizedSelectedUniversityName;
-
-      if (!selectedUniversity) {
+      if (!selectedCampusGroup) {
         return true;
       }
 
-      if (matchesSelectedCampus) {
-        return true;
-      }
-
-      if (!includeNearbyUniversities || !sellerUniversityId) {
-        return false;
-      }
-
-      return allowedNearbyUniversityIds.has(sellerUniversityId);
+      return sellerMatchesCampusGroup(product?.seller, selectedCampusGroup);
     });
-  }, [
-    fuzzyFilteredProducts,
-    includeNearbyUniversities,
-    nearbyUniversities,
-    normalizedSelectedUniversityName,
-    selectedUniversity,
-  ]);
+  }, [fuzzyFilteredProducts, selectedCampusGroup]);
 
   const visibleProducts = useMemo(() => {
     if (selectedCategory === 'All') {
@@ -417,104 +544,33 @@ export default function Marketplace() {
       }));
   }, [campusFilteredProducts, categoryPreviewLimit, isDefaultCategoryView]);
 
-  const filteredUniversities = useMemo(() => {
+  const filteredCampusGroups = useMemo(() => {
     const normalizedQuery = normalizeText(campusQuery);
-    const sortedUniversities = [...universities].sort((left, right) =>
-      String(left?.name || '').localeCompare(String(right?.name || ''))
-    );
-
-    const matchingUniversities = normalizedQuery
-      ? sortedUniversities.filter((university) =>
-          normalizeText(university?.name).includes(normalizedQuery)
-          || normalizeText(university?.state).includes(normalizedQuery)
+    const matchingCampusGroups = normalizedQuery
+      ? campusGroups.filter((campusGroup) =>
+          normalizeText(campusGroup?.displayName).includes(normalizedQuery)
+          || normalizeText(campusGroup?.state).includes(normalizedQuery)
         )
-      : sortedUniversities;
+      : campusGroups;
 
-    if (!selectedUniversity) {
-      return matchingUniversities.slice(0, CAMPUS_OPTION_LIMIT);
+    if (!selectedCampusGroup) {
+      return matchingCampusGroups.slice(0, CAMPUS_OPTION_LIMIT);
     }
 
-    const selectedId = String(selectedUniversity.id);
-    const prioritizedUniversities = [
-      ...matchingUniversities.filter((university) => String(university.id) === selectedId),
-      ...matchingUniversities.filter((university) => String(university.id) !== selectedId),
+    const selectedId = String(selectedCampusGroup.id);
+    const prioritizedCampusGroups = [
+      ...matchingCampusGroups.filter((campusGroup) => String(campusGroup.id) === selectedId),
+      ...matchingCampusGroups.filter((campusGroup) => String(campusGroup.id) !== selectedId),
     ];
 
-    return prioritizedUniversities.slice(0, CAMPUS_OPTION_LIMIT);
-  }, [campusQuery, selectedUniversity, universities]);
-
-  const nearbyToggleDisabled = !selectedUniversity || !selectedUniversityHasState;
-
-  const campusFilterStatus = useMemo(() => {
-    if (areCampusFiltersUnavailable) {
-      return {
-        tone: 'warning',
-        message: universityLoadError,
-      };
-    }
-
-    if (!selectedUniversity) {
-      return null;
-    }
-
-    if (!selectedUniversityHasState) {
-      return {
-        tone: 'warning',
-        message: 'Nearby campuses need a campus with state data.',
-      };
-    }
-
-    if (!includeNearbyUniversities) {
-      return null;
-    }
-
-    if (isLoadingNearbyUniversities) {
-      return {
-        tone: 'neutral',
-        message: 'Loading nearby campuses...',
-      };
-    }
-
-    if (nearbyUniversitiesError) {
-      return {
-        tone: 'warning',
-        message: nearbyUniversitiesError,
-      };
-    }
-
-    if (nearbyUniversities.length === 0) {
-      return {
-        tone: 'neutral',
-        message: 'No nearby campuses found for this state. Showing only the selected campus.',
-      };
-    }
-
-    return {
-      tone: 'neutral',
-      message: `Showing ${nearbyUniversities.length} nearby campus${
-        nearbyUniversities.length === 1 ? '' : 'es'
-      } with ${selectedUniversity.name}.`,
-    };
-  }, [
-    areCampusFiltersUnavailable,
-    includeNearbyUniversities,
-    isLoadingNearbyUniversities,
-    nearbyUniversities.length,
-    nearbyUniversitiesError,
-    selectedUniversity,
-    selectedUniversityHasState,
-    universityLoadError,
-  ]);
+    return prioritizedCampusGroups.slice(0, CAMPUS_OPTION_LIMIT);
+  }, [campusGroups, campusQuery, selectedCampusGroup]);
 
   const emptyStateMessage = useMemo(() => {
     const messageParts = [];
 
-    if (selectedUniversity) {
-      messageParts.push(
-        includeNearbyUniversities
-          ? `for ${selectedUniversity.name} and nearby campuses`
-          : `for ${selectedUniversity.name}`
-      );
+    if (selectedCampusGroup) {
+      messageParts.push(`for ${selectedCampusGroup.displayName}`);
     }
 
     if (selectedCategory !== 'All') {
@@ -530,22 +586,16 @@ export default function Marketplace() {
     }
 
     return `No products found ${messageParts.join(' ')}.`;
-  }, [includeNearbyUniversities, searchQuery, selectedCategory, selectedUniversity]);
+  }, [searchQuery, selectedCampusGroup, selectedCategory]);
 
-  const handleUniversitySelect = (university) => {
-    setSelectedUniversityId(String(university?.id || ''));
-    setIncludeNearbyUniversities(false);
-    setNearbyUniversities([]);
-    setNearbyUniversitiesError('');
+  const handleCampusGroupSelect = (campusGroup) => {
+    setSelectedCampusGroupId(String(campusGroup?.id || ''));
     setCampusQuery('');
     setIsCampusPickerOpen(false);
   };
 
   const handleClearCampusFilters = () => {
-    setSelectedUniversityId('');
-    setIncludeNearbyUniversities(false);
-    setNearbyUniversities([]);
-    setNearbyUniversitiesError('');
+    setSelectedCampusGroupId('');
     setCampusQuery('');
     setIsCampusPickerOpen(false);
   };
@@ -602,26 +652,26 @@ export default function Marketplace() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (areCampusFiltersUnavailable) {
+                    if (!hasCampusOptions) {
                       return;
                     }
                     setCampusQuery('');
                     setIsCampusPickerOpen((current) => !current);
                   }}
-                  disabled={areCampusFiltersUnavailable}
+                  disabled={!hasCampusOptions}
                   aria-expanded={isCampusPickerOpen}
                   aria-haspopup="dialog"
                   className={`inline-flex items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                    areCampusFiltersUnavailable
+                    !hasCampusOptions
                       ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
-                      : selectedUniversity
+                      : selectedCampusGroup
                       ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
                       : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
                   }`}
                 >
                   <MapPin className="h-4 w-4 shrink-0" />
                   <span className="max-w-[11rem] truncate sm:max-w-[14rem]">
-                    {selectedUniversity?.name || 'All campuses'}
+                    {selectedCampusGroup?.displayName || 'All campuses'}
                   </span>
                   <ChevronDown className={`h-4 w-4 shrink-0 transition ${isCampusPickerOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -633,13 +683,8 @@ export default function Marketplace() {
                     className="absolute left-0 top-full z-20 mt-2 w-[min(26rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)]"
                   >
                     <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Nearby shows same-state catalog campuses only.
-                        </p>
-                      </div>
-                      {selectedUniversity ? (
+                      <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
+                      {selectedCampusGroup ? (
                         <button
                           type="button"
                           onClick={handleClearCampusFilters}
@@ -659,7 +704,6 @@ export default function Marketplace() {
                         placeholder="Search campuses"
                         aria-label="Search campuses"
                         autoFocus
-                        disabled={areCampusFiltersUnavailable}
                         className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                       />
                       {campusQuery ? (
@@ -675,14 +719,14 @@ export default function Marketplace() {
                     </div>
 
                     <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {filteredUniversities.map((university) => {
-                        const isSelected = String(university.id) === String(selectedUniversity?.id || '');
+                      {filteredCampusGroups.map((campusGroup) => {
+                        const isSelected = String(campusGroup.id) === String(selectedCampusGroup?.id || '');
 
                         return (
                           <button
-                            key={university.id}
+                            key={campusGroup.id}
                             type="button"
-                            onClick={() => handleUniversitySelect(university)}
+                            onClick={() => handleCampusGroupSelect(campusGroup)}
                             className={`w-full rounded-xl border px-3 py-3 text-left text-sm transition ${
                               isSelected
                                 ? 'border-orange-200 bg-orange-50 text-orange-700 ring-1 ring-orange-100'
@@ -690,7 +734,7 @@ export default function Marketplace() {
                             }`}
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <span className="block font-semibold">{university.name}</span>
+                              <span className="block font-semibold">{campusGroup.displayName}</span>
                               {isSelected ? (
                                 <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700">
                                   Active
@@ -698,26 +742,14 @@ export default function Marketplace() {
                               ) : null}
                             </div>
                             <span className="mt-1 block text-xs text-slate-500">
-                              {[university.state, university.zone].filter(Boolean).join(' • ') || 'Campus'}
+                              {campusGroup.state || 'Seller campus'}
                             </span>
                           </button>
                         );
                       })}
                     </div>
 
-                    {isLoadingUniversities ? (
-                      <p className="mt-3 px-1 text-sm text-slate-500">
-                        Loading campuses...
-                      </p>
-                    ) : null}
-
-                    {areCampusFiltersUnavailable ? (
-                      <p className="mt-3 px-1 text-sm text-orange-700">
-                        {universityLoadError}
-                      </p>
-                    ) : null}
-
-                    {!isLoadingUniversities && !areCampusFiltersUnavailable && filteredUniversities.length === 0 ? (
+                    {filteredCampusGroups.length === 0 ? (
                       <p className="mt-3 px-1 text-sm text-slate-500">
                         No campuses match that search yet.
                       </p>
@@ -725,27 +757,6 @@ export default function Marketplace() {
                   </div>
                 ) : null}
               </div>
-
-              <button
-                type="button"
-                onClick={() => setIncludeNearbyUniversities((current) => !current)}
-                disabled={nearbyToggleDisabled}
-                aria-pressed={Boolean(selectedUniversity && includeNearbyUniversities)}
-                className={`inline-flex shrink-0 items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                  !nearbyToggleDisabled
-                    ? includeNearbyUniversities
-                      ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
-                      : 'border-slate-200 text-slate-700 hover:border-orange-200 hover:text-orange-700'
-                    : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
-                }`}
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    includeNearbyUniversities && !nearbyToggleDisabled ? 'bg-orange-500' : 'bg-slate-300'
-                  }`}
-                />
-                Nearby campuses
-              </button>
 
               {hasActiveCampusFilter ? (
                 <button
@@ -759,15 +770,6 @@ export default function Marketplace() {
               ) : null}
             </div>
 
-            {campusFilterStatus ? (
-              <p
-                className={`mt-2 text-xs ${
-                  campusFilterStatus.tone === 'warning' ? 'text-orange-700' : 'text-slate-500'
-                }`}
-              >
-                {campusFilterStatus.message}
-              </p>
-            ) : null}
           </section>
         </div>
 

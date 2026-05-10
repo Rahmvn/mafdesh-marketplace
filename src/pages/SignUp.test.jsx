@@ -130,9 +130,6 @@ function moveToContactStep({ asSeller = false } = {}) {
   fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
     target: { value: 'jane@example.com' },
   });
-  fireEvent.change(screen.getByPlaceholderText('johndoe123'), {
-    target: { value: 'janedoe123' },
-  });
   fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
 }
 
@@ -239,7 +236,6 @@ describe('SignUp', () => {
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
-    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
   });
 
   it('restores the signup draft after viewing policies and returning to signup', async () => {
@@ -259,7 +255,6 @@ describe('SignUp', () => {
 
     expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
-    expect(screen.getByPlaceholderText('johndoe123')).toHaveValue('janedoe123');
   });
 
   it('redirects to login with the normal success message after a successful signup', async () => {
@@ -293,6 +288,7 @@ describe('SignUp', () => {
             role: 'buyer',
             date_of_birth: '1999-04-10',
             university_name: 'Mafdesh University',
+            username: expect.any(String),
           }),
         }),
       })
@@ -401,16 +397,7 @@ describe('SignUp', () => {
     expect(screen.queryByText(/Account created successfully!/i)).not.toBeInTheDocument();
   });
 
-  it('surfaces a username-specific message when signup fails after the username is claimed', async () => {
-    mockProfilesMaybeSingle
-      .mockResolvedValueOnce({
-        data: null,
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: { id: 'other-user' },
-        error: null,
-      });
+  it('shows the generic signup message when secure signup fails server-side', async () => {
     mockSignUp.mockRejectedValue(new Error('Unexpected failure, please check server logs for more information'));
 
     renderSignUpRoute();
@@ -418,8 +405,8 @@ describe('SignUp', () => {
 
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith(
-        'Username Already Taken',
-        'That username was claimed before we could finish creating your account. Please choose another one and try again.'
+        'Signup Temporarily Unavailable',
+        'We could not create your account because secure signup hit a server-side problem. Please try again in a moment or contact support.'
       );
     });
   });
@@ -433,7 +420,7 @@ describe('SignUp', () => {
     await waitFor(() => {
       expect(mockShowError).toHaveBeenCalledWith(
         'Signup Temporarily Unavailable',
-        'We could not create your account because secure signup hit a server-side problem. Please try again in a moment. If it keeps happening, try a different username or contact support.'
+        'We could not create your account because secure signup hit a server-side problem. Please try again in a moment or contact support.'
       );
     });
   });

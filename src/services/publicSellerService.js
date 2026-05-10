@@ -36,7 +36,7 @@ export function getPublicSellerDisplayName(seller, profile = null) {
   return (
     String(seller?.business_name || "").trim() ||
     String(profile?.full_name || "").trim() ||
-    String(profile?.username || "").trim() ||
+    String(profile?.id || seller?.id || "").trim() ||
     "Seller"
   );
 }

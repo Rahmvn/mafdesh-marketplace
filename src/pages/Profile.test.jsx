@@ -8,12 +8,14 @@ const {
   mockGetSessionWithRetry,
   mockUsersSingle,
   mockProfilesMaybeSingle,
+  mockProfilesUpsert,
   mockSearchUniversities,
   mockUpdateEq,
 } = vi.hoisted(() => {
   const mockGetSessionWithRetry = vi.fn();
   const mockUsersSingle = vi.fn();
   const mockProfilesMaybeSingle = vi.fn();
+  const mockProfilesUpsert = vi.fn();
   const mockSearchUniversities = vi.fn();
   const mockUpdateEq = vi.fn();
 
@@ -21,6 +23,7 @@ const {
     mockGetSessionWithRetry,
     mockUsersSingle,
     mockProfilesMaybeSingle,
+    mockProfilesUpsert,
     mockSearchUniversities,
     mockUpdateEq,
   };
@@ -56,6 +59,7 @@ vi.mock('../supabaseClient', () => {
                 maybeSingle: mockProfilesMaybeSingle,
               }),
             }),
+            upsert: mockProfilesUpsert,
           };
         }
 
@@ -167,6 +171,9 @@ describe('Profile', () => {
       data: null,
       error: null,
     });
+    mockProfilesUpsert.mockResolvedValue({
+      error: null,
+    });
     mockSearchUniversities.mockResolvedValue([]);
     mockUpdateEq.mockResolvedValue({ error: null });
   });
@@ -221,5 +228,43 @@ describe('Profile', () => {
     });
 
     expect(await screen.findByText('Access Bank')).toBeInTheDocument();
+  });
+
+  it('saves missing core profile details to the correct tables', async () => {
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        full_name: '',
+        phone_number: '',
+        date_of_birth: '',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Complete your profile')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/full name/i), {
+      target: { value: 'Jane Seller' },
+    });
+    fireEvent.change(screen.getByLabelText(/phone number/i), {
+      target: { value: '08012345678' },
+    });
+    fireEvent.change(screen.getByLabelText(/date of birth/i), {
+      target: { value: '1999-04-10' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save details/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateEq).toHaveBeenCalledWith('id', 'seller-1');
+      expect(mockProfilesUpsert).toHaveBeenCalledWith(
+        {
+          id: 'seller-1',
+          full_name: 'Jane Seller',
+        },
+        { onConflict: 'id' }
+      );
+    });
   });
 });

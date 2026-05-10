@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Navbar from "./Navbar";
 import {
   getActiveSession,
+  isMissingAuthSessionError,
   subscribeToAuthStateChanges,
 } from "../services/authSessionService";
 import { getStoredUser } from "../utils/storage";
@@ -23,7 +24,9 @@ export default function AuthNavbarWrapper() {
 
         setUser(nextUser);
       } catch (error) {
-        console.error('Navbar auth session load failed:', error);
+        if (!isMissingAuthSessionError(error)) {
+          console.error('Navbar auth session load failed:', error);
+        }
         setUser(getStoredUser());
       }
     };

@@ -382,7 +382,8 @@ export default function BuyerOrderDetails() {
 
     setOrder(orderData);
     setSeller({
-      name: businessName || contactName || username || "Seller",
+      id: String(publicSeller?.id || orderData.seller_id || "").trim(),
+      name: businessName || contactName || String(publicSeller?.id || orderData.seller_id || "").trim() || "Seller",
       businessName,
       contactName,
       username,
@@ -1180,7 +1181,7 @@ export default function BuyerOrderDetails() {
     <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
     <div className="flex flex-wrap items-center gap-2">
       <p className="text-gray-900 font-medium">
-        {seller.businessName || seller.contactName || seller.username || "Seller"}
+        {seller.businessName || seller.contactName || seller.id || "Seller"}
       </p>
       {seller.is_verified && <VerificationBadge />}
     </div>

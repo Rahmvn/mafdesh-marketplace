@@ -296,8 +296,7 @@ export default function SellerOrderDetails() {
       buyerDetails?.fullName ||
       mergedBuyer.full_name ||
       buyerDetails?.displayName ||
-      buyerDetails?.username ||
-      mergedBuyer.username ||
+      orderData.buyer_id ||
       getEmailFallbackDisplayName(mergedBuyer.email)
     ).trim();
 

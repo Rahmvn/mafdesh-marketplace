@@ -94,6 +94,18 @@ function getAuthMetadata(authUser = null) {
   return authUser.user_metadata || authUser.raw_user_meta_data || {};
 }
 
+export function isMissingAuthSessionError(error) {
+  const normalizedName = String(error?.name || "").trim();
+  const normalizedCode = String(error?.code || "").trim();
+  const normalizedMessage = String(error?.message || "").trim().toLowerCase();
+
+  return (
+    normalizedName === "AuthSessionMissingError" ||
+    normalizedCode === "session_not_found" ||
+    normalizedMessage === "auth session missing!"
+  );
+}
+
 export function getAuthSelfServiceRoleHint(authUser = null) {
   const metadata = getAuthMetadata(authUser);
   const hintedRole = String(metadata?.role || "").trim().toLowerCase();
