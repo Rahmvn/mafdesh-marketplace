@@ -313,6 +313,54 @@ describe('SignUp', () => {
     expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
   });
 
+  it('treats step two next as navigation instead of signup submission', async () => {
+    renderSignUpRoute();
+
+    moveToDetailsStep();
+
+    expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(mockSignUp).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
+  });
+
+  it('does not submit signup early when enter is pressed on step two', async () => {
+    renderSignUpRoute();
+
+    fireEvent.change(screen.getByPlaceholderText('John Doe'), {
+      target: { value: 'Jane Doe' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
+      target: { value: 'jane@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+
+    fireEvent.change(screen.getByLabelText(/date of birth/i), {
+      target: { value: '1999-04-10' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i }), {
+      target: { value: 'Lagos' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('08012345678'), {
+      target: { value: '08012345678' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
+      target: { value: 'password123' },
+    });
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Confirm your password'), {
+      key: 'Enter',
+      code: 'Enter',
+      charCode: 13,
+    });
+
+    expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(mockSignUp).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
+  });
+
   it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {
     mockSignUp.mockResolvedValue({
       data: {

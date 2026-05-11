@@ -572,6 +572,26 @@ export default function SignUp() {
     setCurrentStep((current) => Math.min(SIGNUP_STEPS.length, current + 1));
   };
 
+  const handleNextStepClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    goToNextStep();
+  };
+
+  const handleFormKeyDown = (event) => {
+    if (event.key !== 'Enter' || currentStep >= SIGNUP_STEPS.length) {
+      return;
+    }
+
+    const targetTagName = String(event.target?.tagName || '').toLowerCase();
+    if (targetTagName === 'textarea') {
+      return;
+    }
+
+    event.preventDefault();
+    goToNextStep();
+  };
+
   const handleSignUp = async (nextFormData) => {
     const { email, password } = nextFormData;
     let authUser = null;
@@ -756,7 +776,7 @@ export default function SignUp() {
                 </div>
               </div>
 
-              <form className="space-y-8" onSubmit={handleSubmit}>
+              <form className="space-y-8" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
                 {currentStep === 1 ? (
                   <div className="space-y-6">
                     <div>
@@ -1026,7 +1046,7 @@ export default function SignUp() {
                     {currentStep < SIGNUP_STEPS.length ? (
                       <button
                         type="button"
-                        onClick={goToNextStep}
+                        onClick={handleNextStepClick}
                         className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-4 ${primaryButtonClass}`}
                       >
                         Next: {SIGNUP_STEPS[currentStep].label}
