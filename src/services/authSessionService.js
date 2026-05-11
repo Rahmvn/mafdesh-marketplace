@@ -254,6 +254,21 @@ export async function ensureCurrentUserContext({
   }
 
   const normalizedRole = normalizeSelfServiceRole(desiredRole);
+  let publicUser = null;
+
+  try {
+    publicUser = await readPublicUserRecord(currentAuthUser.id);
+  } catch (readError) {
+    console.warn("[auth-context] public user read failed", {
+      userId: currentAuthUser.id,
+      error: readError,
+    });
+  }
+
+  if (publicUser?.role) {
+    return publicUser;
+  }
+
   let invokedUser = null;
   let invokeError = null;
 
@@ -275,24 +290,6 @@ export async function ensureCurrentUserContext({
     invokedUser = data.user;
   } catch (error) {
     invokeError = error;
-  }
-
-  let publicUser = null;
-
-  try {
-    publicUser = await readPublicUserRecord(currentAuthUser.id);
-  } catch (readError) {
-    console.warn("[auth-context] public user read failed", {
-      userId: currentAuthUser.id,
-      error: readError,
-    });
-    if (!invokedUser?.role) {
-      throw readError;
-    }
-  }
-
-  if (publicUser?.role) {
-    return publicUser;
   }
 
   if (invokedUser?.role) {

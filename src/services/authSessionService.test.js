@@ -139,6 +139,7 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     });
 
     expect(result.role).toBe('buyer');
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
   });
 
   it('prefers the public users table when it disagrees with the bootstrap response', async () => {
@@ -170,6 +171,35 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     });
 
     expect(result.role).toBe('seller');
+    expect(mockFunctionsInvoke).not.toHaveBeenCalled();
+  });
+
+  it('falls back to bootstrap when the public users row is missing', async () => {
+    mockUsersMaybeSingle.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    mockFunctionsInvoke.mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 'buyer-1',
+          role: 'buyer',
+          account_status: 'active',
+        },
+      },
+      error: null,
+    });
+
+    const { ensureCurrentUserContext } = await import('./authSessionService');
+    const result = await ensureCurrentUserContext({
+      authUser: {
+        id: 'buyer-1',
+      },
+    });
+
+    expect(result.role).toBe('buyer');
+    expect(mockFunctionsInvoke).toHaveBeenCalledTimes(1);
   });
 
   it('treats missing auth sessions as expected navbar fallback cases', async () => {
