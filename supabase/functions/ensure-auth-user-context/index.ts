@@ -108,17 +108,29 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: existingUser, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("*")
-      .eq("id", authUser.id)
-      .maybeSingle();
+    const metadata = authUser.user_metadata || authUser.raw_user_meta_data || {};
+    const [{ data: existingUser, error: userError }, { data: existingProfile, error: existingProfileError }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("users")
+          .select("*")
+          .eq("id", authUser.id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("profiles")
+          .select("id, full_name, username, location")
+          .eq("id", authUser.id)
+          .maybeSingle(),
+      ]);
 
     if (userError) {
       return jsonResponse({ error: errorMessage(userError) }, 500);
     }
 
-    const metadata = authUser.user_metadata || authUser.raw_user_meta_data || {};
+    if (existingProfileError) {
+      return jsonResponse({ error: errorMessage(existingProfileError) }, 500);
+    }
+
     const trustedRole = normalizeMarketplaceRole(existingUser?.role || "");
     const existingSelfServiceRole = readSelfServiceRole(existingUser?.role || "");
     const requestedRole = readSelfServiceRole(body?.role);
@@ -183,9 +195,12 @@ serve(async (req) => {
       .upsert(
         {
           id: authUser.id,
-          full_name: normalizeText(metadata?.full_name) || null,
-          username: normalizeText(metadata?.username).toLowerCase() || null,
-          location: normalizeText(metadata?.location) || null,
+          full_name: existingProfile?.full_name || normalizeText(metadata?.full_name) || null,
+          username:
+            existingProfile?.username ||
+            normalizeText(metadata?.username).toLowerCase() ||
+            null,
+          location: existingProfile?.location || normalizeText(metadata?.location) || null,
         },
         { onConflict: "id" }
       );

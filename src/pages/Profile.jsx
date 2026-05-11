@@ -880,6 +880,18 @@ export default function Profile() {
         throw profileError;
       }
 
+      const { error: authUpdateError } = await supabase.auth.updateUser({
+        data: {
+          full_name: normalizedCoreDetails.full_name,
+          phone_number: normalizedCoreDetails.phone_number,
+          date_of_birth: normalizedCoreDetails.date_of_birth,
+        },
+      });
+
+      if (authUpdateError) {
+        console.warn('Failed to sync auth metadata after profile save:', authUpdateError);
+      }
+
       await loadUserProfile();
       setCoreDetailsMessage({
         type: 'success',

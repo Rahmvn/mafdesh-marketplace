@@ -11,6 +11,7 @@ const {
   mockProfilesUpsert,
   mockSearchUniversities,
   mockUpdateEq,
+  mockAuthUpdateUser,
 } = vi.hoisted(() => {
   const mockGetSessionWithRetry = vi.fn();
   const mockUsersSingle = vi.fn();
@@ -18,6 +19,7 @@ const {
   const mockProfilesUpsert = vi.fn();
   const mockSearchUniversities = vi.fn();
   const mockUpdateEq = vi.fn();
+  const mockAuthUpdateUser = vi.fn();
 
   return {
     mockGetSessionWithRetry,
@@ -26,6 +28,7 @@ const {
     mockProfilesUpsert,
     mockSearchUniversities,
     mockUpdateEq,
+    mockAuthUpdateUser,
   };
 });
 
@@ -37,7 +40,9 @@ vi.mock('../supabaseClient', () => {
 
   return {
     supabase: {
-      auth: {},
+      auth: {
+        updateUser: mockAuthUpdateUser,
+      },
       from: vi.fn((table) => {
         if (table === 'users') {
           return {
@@ -176,6 +181,7 @@ describe('Profile', () => {
     });
     mockSearchUniversities.mockResolvedValue([]);
     mockUpdateEq.mockResolvedValue({ error: null });
+    mockAuthUpdateUser.mockResolvedValue({ error: null });
   });
 
   it('unlocks and focuses the university form when edit is clicked', async () => {
@@ -265,6 +271,13 @@ describe('Profile', () => {
         },
         { onConflict: 'id' }
       );
+      expect(mockAuthUpdateUser).toHaveBeenCalledWith({
+        data: {
+          full_name: 'Jane Seller',
+          phone_number: '08012345678',
+          date_of_birth: '1999-04-10',
+        },
+      });
     });
   });
 });

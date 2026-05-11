@@ -117,14 +117,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: existingUser, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("id, role, email, phone_number, date_of_birth, business_name, university_id, university_name, university_state, university_zone")
-      .eq("id", authUser.id)
-      .maybeSingle();
+    const [{ data: existingUser, error: userError }, { data: existingProfile, error: existingProfileError }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("users")
+          .select("id, role, email, phone_number, date_of_birth, business_name, university_id, university_name, university_state, university_zone")
+          .eq("id", authUser.id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("profiles")
+          .select("id, full_name, username, location")
+          .eq("id", authUser.id)
+          .maybeSingle(),
+      ]);
 
     if (userError) {
       return jsonResponse({ error: errorMessage(userError) }, 500);
+    }
+
+    if (existingProfileError) {
+      return jsonResponse({ error: errorMessage(existingProfileError) }, 500);
     }
 
     if (existingUser?.role === "admin") {
@@ -186,9 +198,12 @@ serve(async (req) => {
 
     const profilePayload = {
       id: authUser.id,
-      full_name: normalizeText(authUser.user_metadata?.full_name) || null,
-      username: normalizeText(authUser.user_metadata?.username) || null,
-      location: normalizeText(authUser.user_metadata?.location) || null,
+      full_name:
+        existingProfile?.full_name || normalizeText(authUser.user_metadata?.full_name) || null,
+      username:
+        existingProfile?.username || normalizeText(authUser.user_metadata?.username) || null,
+      location:
+        existingProfile?.location || normalizeText(authUser.user_metadata?.location) || null,
     };
 
     const { error: profileError } = await supabaseAdmin
