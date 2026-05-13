@@ -75,6 +75,18 @@ describe('productService archive helpers', () => {
     });
   });
 
+  it('returns null when the flash-sale eligibility RPC is not available yet', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'function public.get_flash_sale_eligibility(uuid) does not exist',
+      },
+    });
+
+    await expect(productService.getFlashSaleEligibility('product-1')).resolves.toBeNull();
+  });
+
   it('builds completed-sales and open-order insights per product', () => {
     const insights = buildSellerProductInsights(
       [

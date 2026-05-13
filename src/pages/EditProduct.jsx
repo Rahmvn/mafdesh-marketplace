@@ -415,6 +415,7 @@ export default function EditProduct() {
   const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
   const [productRecord, setProductRecord] = useState(null);
   const [flashSaleEligibility, setFlashSaleEligibility] = useState(null);
+  const [flashSaleEligibilityUnavailable, setFlashSaleEligibilityUnavailable] = useState(false);
   const [activeOrderCount, setActiveOrderCount] = useState(0);
   const [restockAmount, setRestockAmount] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
@@ -455,6 +456,9 @@ export default function EditProduct() {
   const flashSaleBlockingMessages = useMemo(
     () => getFlashSaleBlockingMessages(normalizedFlashSaleEligibility),
     [normalizedFlashSaleEligibility]
+  );
+  const isFlashSaleEligibilityTemporarilyUnavailable = Boolean(
+    flashSaleEligibilityUnavailable && !normalizedFlashSaleEligibility
   );
   const activeFlashSale = currentPricing.isFlashSaleActive;
   const hasActiveOrders = activeOrderCount > 0;
@@ -497,13 +501,18 @@ export default function EditProduct() {
   const loadProduct = useCallback(async () => {
     try {
       setIsLoading(true);
+      setFlashSaleEligibilityUnavailable(false);
       const [data, orderSummary, eligibility] = await Promise.all([
         productService.getProductById(id),
         productService.getProductActiveOrderSummary(id).catch(() => ({
           activeOrderCount: 0,
           hasActiveOrders: false,
         })),
-        productService.getFlashSaleEligibility(id),
+        productService.getFlashSaleEligibility(id).catch((error) => {
+          console.warn('Flash sale eligibility unavailable during product load:', error);
+          setFlashSaleEligibilityUnavailable(true);
+          return null;
+        }),
       ]);
 
       setProductRecord(data);
@@ -1513,7 +1522,11 @@ export default function EditProduct() {
               </div>
             ) : (
               <div className={`rounded-xl border border-dashed p-4 text-sm ${theme.mutedText}`}>
-                <p className="font-semibold">Flash sales are locked for this product right now.</p>
+                <p className="font-semibold">
+                  {isFlashSaleEligibilityTemporarilyUnavailable
+                    ? 'Flash-sale eligibility is temporarily unavailable.'
+                    : 'Flash sales are locked for this product right now.'}
+                </p>
 
                 {flashSaleBlockingMessages.length > 0 ? (
                   <ul className="mt-3 space-y-2">
@@ -1539,9 +1552,10 @@ export default function EditProduct() {
                   </div>
                 ) : null}
 
-                {flashSaleBlockingMessages.length === 0 ? (
+                {isFlashSaleEligibilityTemporarilyUnavailable ? (
                   <p className="mt-3">
-                    Flash-sale eligibility is still loading. Refresh the page if this does not update.
+                    You can keep editing this product. Refresh the page in a moment to re-check
+                    flash-sale access.
                   </p>
                 ) : null}
               </div>

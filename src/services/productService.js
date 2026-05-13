@@ -21,6 +21,18 @@ function normalizeRpcRows(data) {
   return data ? [data] : [];
 }
 
+function isMissingFlashSaleEligibilityRpcError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+
+  return (
+    code === "42883" ||
+    code === "PGRST202" ||
+    code === "PGRST204" ||
+    message.includes("get_flash_sale_eligibility")
+  );
+}
+
 function createEmptyProductInsight() {
   return {
     successfulUnitsSold: 0,
@@ -452,7 +464,13 @@ export const productService = {
       p_product_id: productId,
     });
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingFlashSaleEligibilityRpcError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
     return normalizeRpcRows(data)[0] || null;
   },
 

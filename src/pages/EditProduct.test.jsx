@@ -293,4 +293,24 @@ describe('EditProduct flash-sale eligibility', () => {
       screen.queryByText(/flash sales are locked for this product right now/i)
     ).not.toBeInTheDocument();
   });
+
+  it('still loads the edit page when flash-sale eligibility cannot be fetched', async () => {
+    mockGetFlashSaleEligibility.mockRejectedValue(new Error('Edge function unavailable'));
+
+    renderEditProduct();
+
+    expect(await screen.findByDisplayValue('Studio Headphones')).toBeInTheDocument();
+    expect(
+      screen.getByText('Flash-sale eligibility is temporarily unavailable.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'You can keep editing this product. Refresh the page in a moment to re-check flash-sale access.'
+      )
+    ).toBeInTheDocument();
+    expect(mockShowError).not.toHaveBeenCalledWith(
+      'Load Failed',
+      expect.stringContaining('Edge function unavailable')
+    );
+  });
 });
