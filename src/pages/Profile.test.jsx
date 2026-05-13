@@ -6,6 +6,7 @@ import Profile from './Profile';
 
 const {
   mockGetSessionWithRetry,
+  mockUsersUpdate,
   mockUsersSingle,
   mockProfilesMaybeSingle,
   mockProfilesUpsert,
@@ -14,6 +15,7 @@ const {
   mockAuthUpdateUser,
 } = vi.hoisted(() => {
   const mockGetSessionWithRetry = vi.fn();
+  const mockUsersUpdate = vi.fn();
   const mockUsersSingle = vi.fn();
   const mockProfilesMaybeSingle = vi.fn();
   const mockProfilesUpsert = vi.fn();
@@ -23,6 +25,7 @@ const {
 
   return {
     mockGetSessionWithRetry,
+    mockUsersUpdate,
     mockUsersSingle,
     mockProfilesMaybeSingle,
     mockProfilesUpsert,
@@ -51,9 +54,7 @@ vi.mock('../supabaseClient', () => {
                 single: mockUsersSingle,
               }),
             }),
-            update: () => ({
-              eq: mockUpdateEq,
-            }),
+            update: mockUsersUpdate,
           };
         }
 
@@ -159,6 +160,7 @@ function createSellerProfile(overrides = {}) {
 describe('Profile', () => {
   beforeEach(() => {
     mockGetSessionWithRetry.mockReset();
+    mockUsersUpdate.mockReset();
     mockUsersSingle.mockReset();
     mockProfilesMaybeSingle.mockReset();
     mockProfilesUpsert.mockReset();
@@ -189,6 +191,9 @@ describe('Profile', () => {
     });
     mockSearchUniversities.mockResolvedValue([]);
     mockUpdateEq.mockResolvedValue({ error: null });
+    mockUsersUpdate.mockImplementation(() => ({
+      eq: mockUpdateEq,
+    }));
     mockAuthUpdateUser.mockResolvedValue({ error: null });
   });
 
@@ -392,6 +397,11 @@ describe('Profile', () => {
     fireEvent.click(screen.getByRole('button', { name: /save details/i }));
 
     await waitFor(() => {
+      expect(mockUsersUpdate).toHaveBeenCalledWith({
+        name: 'Jane Seller',
+        phone_number: '08012345678',
+        date_of_birth: '1999-04-10',
+      });
       expect(mockUpdateEq).toHaveBeenCalledWith('id', 'seller-1');
       expect(mockProfilesUpsert).toHaveBeenCalledWith(
         {

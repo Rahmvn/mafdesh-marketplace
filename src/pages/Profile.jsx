@@ -931,7 +931,7 @@ export default function Profile() {
 
     try {
       const userPayload = {
-        full_name: normalizedCoreDetails.full_name,
+        name: normalizedCoreDetails.full_name,
         phone_number: normalizedCoreDetails.phone_number,
         date_of_birth: normalizedCoreDetails.date_of_birth,
       };
