@@ -1,0 +1,52 @@
+{
+  "runId": "authsession20260511205623",
+  "environmentName": "test",
+  "createdAt": "2026-05-11T20:56:43.665Z",
+  "results": [
+    {
+      "caseId": "control_login_before_reset",
+      "verdict": "pass",
+      "note": "Login succeeded and public user/profile context resolved before password reset."
+    },
+    {
+      "caseId": "password_reset_request_existing_email",
+      "verdict": "fail",
+      "note": "Email address \"auth-session.authsession20260511205623@example.com\" is invalid"
+    },
+    {
+      "caseId": "password_reset_request_unknown_email",
+      "verdict": "pass",
+      "note": "Unknown-email password reset request returned a generic success response."
+    },
+    {
+      "caseId": "recovery_link_verification_and_password_change",
+      "verdict": "pass",
+      "note": "Recovery link was verified and password change completed successfully."
+    },
+    {
+      "caseId": "old_password_rejected_after_reset",
+      "verdict": "pass",
+      "note": "Old password was rejected after reset as expected."
+    },
+    {
+      "caseId": "new_password_login_after_reset",
+      "verdict": "pass",
+      "note": "New password login succeeded and public context remained intact after recovery."
+    },
+    {
+      "caseId": "session_refresh_works_with_valid_refresh_token",
+      "verdict": "pass",
+      "note": "Session refresh succeeded with a valid refresh token."
+    },
+    {
+      "caseId": "sign_out_clears_local_session",
+      "verdict": "pass",
+      "note": "Global sign-out cleared the local session state."
+    },
+    {
+      "caseId": "revoked_refresh_token_rejected_after_sign_out",
+      "verdict": "pass",
+      "note": "Refresh token was rejected after global sign-out: Invalid Refresh Token: Refresh Token Not Found"
+    }
+  ]
+}

@@ -1,0 +1,1007 @@
+{
+  "runId": "run20260511195813",
+  "environmentName": "test",
+  "createdAt": "2026-05-11T20:01:29.914Z",
+  "results": [
+    {
+      "runId": "run20260511195813",
+      "userNumber": 1,
+      "email": "testuser001.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "1784a72b-c471-40d2-8400-da3666916276"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 2,
+      "email": "testuser002.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "3754e205-fde7-4f31-a176-1802633dda51"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 3,
+      "email": "testuser003.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "ead3d536-0d0c-47be-8b70-b7fea9fbf4db"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 4,
+      "email": "testuser004.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "6ba04bc8-e624-4cfc-a95c-17ce3bac5208"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 5,
+      "email": "testuser005.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "8babfe3e-f8e1-4665-8df0-6a65ff4a57ae"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 6,
+      "email": "testuser006.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "fc04e4eb-c637-4770-ac7b-be7ba7dc3994"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 7,
+      "email": "testuser007.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "543d670d-1e68-4008-82ad-b9ec8a8163d9"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 8,
+      "email": "testuser008.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "a0383e5c-accb-4a0d-a55f-f4b77227a312"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 9,
+      "email": "testuser009.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "cbc05d97-403f-45d6-b4ba-7c6487a2b381"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 10,
+      "email": "testuser010.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "4767e804-f929-4210-86a6-7e369b485c6d"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 11,
+      "email": "testuser011.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "d3fa9ad1-7dca-4fde-b82a-4f86f963f6fa"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 12,
+      "email": "testuser012.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "34091119-3e51-4f5c-af7f-555b36f3ce8e"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 13,
+      "email": "testuser013.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "9982fc2f-20c9-4c35-9457-1c925747ed8b"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 14,
+      "email": "testuser014.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "10abea39-4e01-44e6-acc9-6c0ed075d9a5"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 15,
+      "email": "testuser015.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "58eaca83-7aa0-4c30-a4b3-b0f731e33421"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 16,
+      "email": "testuser016.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "1364d35f-fb60-4cf2-905c-9a23a5608e8a"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 17,
+      "email": "testuser017.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "5097b586-b60a-415b-abbc-cc66a42060c4"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 18,
+      "email": "testuser018.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "c9458f45-5361-45a4-b497-9d055ad017c5"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 19,
+      "email": "testuser019.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "47b2cb2a-2de4-4b40-8848-a6c9176c690e"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 20,
+      "email": "testuser020.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "c82faa38-ea03-4be7-aea3-6bd629497c52"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 21,
+      "email": "testuser021.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "8695cb3e-0eab-4783-92ba-659f49345987"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 22,
+      "email": "testuser022.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "71cdee9f-b78a-41d5-ab75-a7e27d54f269"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 23,
+      "email": "testuser023.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "0341b103-1537-4300-ac29-d68b0a1a3b7d"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 24,
+      "email": "testuser024.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "8dace0e1-65af-4eb5-97bc-7df54d57df8f"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 25,
+      "email": "testuser025.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 26,
+      "email": "testuser026.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "ce6b2b22-9947-48ed-ac68-767d7e0d2300"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 27,
+      "email": "testuser027.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 28,
+      "email": "testuser028.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 29,
+      "email": "testuser029.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 30,
+      "email": "testuser030.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 31,
+      "email": "testuser031.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "a3b0e3ee-eb92-4431-942a-8e33574da2b8"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 32,
+      "email": "testuser032.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 33,
+      "email": "testuser033.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 34,
+      "email": "testuser034.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 35,
+      "email": "testuser035.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 36,
+      "email": "testuser036.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "cf9fa2c7-de8d-4090-9cfd-79666a8aed08"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 37,
+      "email": "testuser037.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 38,
+      "email": "testuser038.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 39,
+      "email": "testuser039.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 40,
+      "email": "testuser040.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 41,
+      "email": "testuser041.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 42,
+      "email": "testuser042.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "810331a7-99ae-40eb-9a4f-3c83b6b1d8b7"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 43,
+      "email": "testuser043.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 44,
+      "email": "testuser044.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 45,
+      "email": "testuser045.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 46,
+      "email": "testuser046.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 47,
+      "email": "testuser047.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "0f34f0ae-e597-41bf-ad3c-b04a451f3e22"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 48,
+      "email": "testuser048.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 49,
+      "email": "testuser049.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 50,
+      "email": "testuser050.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 51,
+      "email": "testuser051.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 52,
+      "email": "testuser052.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "36a89e43-9815-439c-9030-4f46afea7d31"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 53,
+      "email": "testuser053.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 54,
+      "email": "testuser054.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 55,
+      "email": "testuser055.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 56,
+      "email": "testuser056.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 57,
+      "email": "testuser057.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "9320023a-084f-4005-b934-44caaee7a5ce"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 58,
+      "email": "testuser058.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 59,
+      "email": "testuser059.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 60,
+      "email": "testuser060.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 61,
+      "email": "testuser061.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 62,
+      "email": "testuser062.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 63,
+      "email": "testuser063.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "7763c549-7dd1-4da1-81f0-eaa1177735c4"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 64,
+      "email": "testuser064.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 65,
+      "email": "testuser065.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 66,
+      "email": "testuser066.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 67,
+      "email": "testuser067.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "85a917ab-9e9f-48c2-9e04-6894928efe31"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 68,
+      "email": "testuser068.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 69,
+      "email": "testuser069.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 70,
+      "email": "testuser070.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 71,
+      "email": "testuser071.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 72,
+      "email": "testuser072.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 73,
+      "email": "testuser073.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "b13b9e87-3430-485c-b7c2-2f90dbadb5cd"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 74,
+      "email": "testuser074.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 75,
+      "email": "testuser075.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 76,
+      "email": "testuser076.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 77,
+      "email": "testuser077.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 78,
+      "email": "testuser078.run20260511195813@example.com",
+      "role": "seller",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "d86014b9-1a00-4485-a1e7-b6bdf822204a"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 79,
+      "email": "testuser079.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 80,
+      "email": "testuser080.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 81,
+      "email": "testuser081.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 82,
+      "email": "testuser082.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 83,
+      "email": "testuser083.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "211a3060-b8f9-4bf2-8e54-40287ba55292"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 84,
+      "email": "testuser084.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 85,
+      "email": "testuser085.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 86,
+      "email": "testuser086.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 87,
+      "email": "testuser087.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "f0a50001-7435-482d-8a31-487f4587e613"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 88,
+      "email": "testuser088.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 89,
+      "email": "testuser089.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 90,
+      "email": "testuser090.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 91,
+      "email": "testuser091.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 92,
+      "email": "testuser092.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 93,
+      "email": "testuser093.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "6ae8b59d-72a4-4b80-9685-b8dd9ada233a"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 94,
+      "email": "testuser094.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 95,
+      "email": "testuser095.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 96,
+      "email": "testuser096.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 97,
+      "email": "testuser097.run20260511195813@example.com",
+      "role": "buyer",
+      "success": true,
+      "failedStep": "",
+      "errorMessage": "",
+      "authUserId": "af0d135a-85f1-4f59-8495-4054c6c8f928"
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 98,
+      "email": "testuser098.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 99,
+      "email": "testuser099.run20260511195813@example.com",
+      "role": "buyer",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    },
+    {
+      "runId": "run20260511195813",
+      "userNumber": 100,
+      "email": "testuser100.run20260511195813@example.com",
+      "role": "seller",
+      "success": false,
+      "failedStep": "auth_signup_rate_limited",
+      "errorMessage": "Request rate limit reached",
+      "authUserId": ""
+    }
+  ]
+}

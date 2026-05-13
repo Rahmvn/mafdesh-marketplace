@@ -6,7 +6,13 @@ import {
   addDisputeMessage,
   resolveDisputeImageUrls,
   uploadDisputeEvidence,
+  validateDisputeEvidenceFiles,
 } from '../services/disputeService';
+import {
+  DISPUTE_MESSAGE_MAX_LENGTH,
+  normalizeMultilineText,
+  validateDisputeMessage,
+} from '../utils/accountValidation';
 
 export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
   const [messages, setMessages] = useState([]);
@@ -80,19 +86,35 @@ export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() && newImages.length === 0) return;
+    const normalizedMessage = normalizeMultilineText(newMessage);
+    const messageError = validateDisputeMessage(normalizedMessage, {
+      required: newImages.length === 0,
+    });
+    const fileError = validateDisputeEvidenceFiles(newImages);
+
+    if (messageError) {
+      showError('Message Failed', messageError);
+      return;
+    }
+
+    if (fileError) {
+      showError('Upload Failed', fileError);
+      return;
+    }
+
+    if (!normalizedMessage && newImages.length === 0) return;
     setUploading(true);
     try {
       let uploadedPaths = [];
       if (newImages.length) {
         uploadedPaths = await uploadImages(newImages);
       }
-      await addDisputeMessage(orderId, newMessage.trim() || null, uploadedPaths);
+      await addDisputeMessage(orderId, normalizedMessage || null, uploadedPaths);
       setNewMessage('');
       setNewImages([]);
     } catch (err) {
       console.error(err);
-      showError('Message Failed', 'Failed to send message.');
+      showError('Message Failed', err?.message || 'Failed to send message.');
     } finally {
       setUploading(false);
     }
@@ -159,6 +181,7 @@ export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type your message..."
             rows="3"
+            maxLength={DISPUTE_MESSAGE_MAX_LENGTH}
             className="w-full border rounded p-2 mb-2"
           />
           <div className="flex items-center gap-2 mb-2">
@@ -169,7 +192,16 @@ export default function DisputeThread({ orderId, currentUserId, orderStatus }) {
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(e) => setNewImages(Array.from(e.target.files))}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  const fileError = validateDisputeEvidenceFiles(files);
+                  if (fileError) {
+                    showError('Upload Failed', fileError);
+                    return;
+                  }
+
+                  setNewImages(files);
+                }}
                 className="hidden"
               />
             </label>

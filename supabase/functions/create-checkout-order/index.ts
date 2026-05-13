@@ -7,6 +7,74 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const ZERO_WIDTH_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/gu;
+const INVISIBLE_SPACE_CHARACTERS = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/gu;
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu;
+const MAX_REFERENCE_LENGTH = 120;
+const MAX_ADDRESS_LENGTH = 500;
+const MAX_STATE_LENGTH = 80;
+const MAX_PICKUP_LABEL_LENGTH = 160;
+
+function removeInvisibleCharacters(value: unknown) {
+  return String(value || '')
+    .replace(INVISIBLE_SPACE_CHARACTERS, ' ')
+    .replace(ZERO_WIDTH_CHARACTERS, '')
+    .replace(CONTROL_CHARACTERS, '');
+}
+
+function normalizeSingleLineText(value: unknown, maxLength = 250) {
+  return removeInvisibleCharacters(value).replace(/\s+/gu, ' ').trim().slice(0, maxLength);
+}
+
+function normalizeUuidLike(value: unknown) {
+  return normalizeSingleLineText(value, 80);
+}
+
+function toNonNegativeMoney(value: unknown) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error('Invalid monetary amount in checkout request.');
+  }
+
+  return Number(amount.toFixed(2));
+}
+
+function sanitizeSnapshotValue(value: unknown, depth = 0): unknown {
+  if (depth > 3) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return normalizeSingleLineText(value, 500);
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((entry) => sanitizeSnapshotValue(entry, depth + 1));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 30)
+        .map(([key, entry]) => [normalizeSingleLineText(key, 80), sanitizeSnapshotValue(entry, depth + 1)])
+    );
+  }
+
+  return null;
+}
+
+function sanitizeOptionalSnapshot(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return sanitizeSnapshotValue(value);
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -23,21 +91,23 @@ serve(async (req) => {
       });
     }
 
-    const {
-      productId,
-      deliveryType,
-      deliveryFee,
-      deliveryState,
-      deliveryAddress,
-      selectedPickupLocation,
-      deliveryZoneSnapshot,
-      pickupLocationSnapshot,
-      checkout_reference,
-      items,
-    } = requestBody;
-
-    const normalizedItems = Array.isArray(items) && items.length > 0
-      ? items
+    const productId = normalizeUuidLike(requestBody.productId);
+    const deliveryType = normalizeSingleLineText(requestBody.deliveryType, 20).toLowerCase();
+    const deliveryFee = toNonNegativeMoney(requestBody.deliveryFee);
+    const deliveryState = normalizeSingleLineText(requestBody.deliveryState, MAX_STATE_LENGTH);
+    const deliveryAddress = normalizeSingleLineText(requestBody.deliveryAddress, MAX_ADDRESS_LENGTH);
+    const selectedPickupLocation = normalizeSingleLineText(
+      requestBody.selectedPickupLocation,
+      MAX_PICKUP_LABEL_LENGTH
+    );
+    const deliveryZoneSnapshot = sanitizeOptionalSnapshot(requestBody.deliveryZoneSnapshot);
+    const pickupLocationSnapshot = sanitizeOptionalSnapshot(requestBody.pickupLocationSnapshot);
+    const checkoutReference = normalizeSingleLineText(
+      requestBody.checkout_reference,
+      MAX_REFERENCE_LENGTH
+    );
+    const normalizedItems = Array.isArray(requestBody.items) && requestBody.items.length > 0
+      ? requestBody.items
       : (productId ? [{ product_id: productId, quantity: 1 }] : []);
 
     if (!productId || !normalizedItems.length) {
@@ -47,7 +117,48 @@ serve(async (req) => {
       });
     }
 
-    const reference = checkout_reference || `MAFDESH_${crypto.randomUUID()}`;
+    if (!['delivery', 'pickup'].includes(deliveryType)) {
+      return new Response(JSON.stringify({ error: 'Invalid delivery type.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (normalizedItems.length !== 1) {
+      return new Response(JSON.stringify({ error: 'Single-order checkout only supports one item.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const firstItem = normalizedItems[0] && typeof normalizedItems[0] === 'object'
+      ? normalizedItems[0] as Record<string, unknown>
+      : null;
+    const itemProductId = normalizeUuidLike(firstItem?.product_id);
+    const itemQuantity = Number(firstItem?.quantity || 1);
+
+    if (!firstItem || itemProductId !== productId || !Number.isInteger(itemQuantity) || itemQuantity !== 1) {
+      return new Response(JSON.stringify({ error: 'Single-order checkout payload is invalid.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (deliveryType === 'delivery' && (!deliveryState || !deliveryAddress)) {
+      return new Response(JSON.stringify({ error: 'Delivery state and address are required.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (deliveryType === 'pickup' && !selectedPickupLocation) {
+      return new Response(JSON.stringify({ error: 'Pickup location is required.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const reference = checkoutReference || `MAFDESH_${crypto.randomUUID()}`;
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -108,8 +219,8 @@ serve(async (req) => {
 
     const { error: stockError } = await supabaseAdmin.rpc('reserve_stock_for_order', {
       p_items: normalizedItems.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
+        product_id: normalizeUuidLike((item as Record<string, unknown>).product_id),
+        quantity: Number((item as Record<string, unknown>).quantity || 1),
       })),
     });
 
@@ -126,7 +237,7 @@ serve(async (req) => {
     // Calculate fees
     const productPrice = product.price;
     const platformFee = Math.round(productPrice * 0.05);
-    const totalAmount = productPrice + (deliveryFee || 0);
+    const totalAmount = productPrice + deliveryFee;
     const orderNumber = Math.random().toString(36).substring(2, 10).toUpperCase();
 
     // Product snapshot
@@ -155,7 +266,7 @@ serve(async (req) => {
         product_snapshot: productSnapshot,
         quantity: 1,
         product_price: productPrice,
-        delivery_fee: deliveryFee || 0,
+        delivery_fee: deliveryFee,
         platform_fee: platformFee,
         total_amount: totalAmount,
         delivery_type: deliveryType,

@@ -1,4 +1,12 @@
 import { supabase } from "../supabaseClient";
+import {
+  DISPUTE_MESSAGE_MAX_LENGTH,
+  MAX_DISPUTE_EVIDENCE_BYTES,
+  MAX_DISPUTE_IMAGES,
+  normalizeMultilineText,
+  validateDisputeMessage,
+  validateSelectedFiles,
+} from '../utils/accountValidation';
 
 function sanitizeFileName(fileName) {
   return String(fileName || "evidence")
@@ -11,7 +19,25 @@ function isAbsoluteUrl(value) {
   return /^https?:\/\//i.test(String(value || "").trim());
 }
 
+export function validateDisputeEvidenceFiles(files) {
+  return validateSelectedFiles(files, {
+    label: 'Dispute evidence',
+    maxCount: MAX_DISPUTE_IMAGES,
+    maxFileSizeBytes: MAX_DISPUTE_EVIDENCE_BYTES,
+    allowedMimePrefixes: ['image/'],
+  });
+}
+
+function normalizeDisputeMessage(message) {
+  return normalizeMultilineText(message).slice(0, DISPUTE_MESSAGE_MAX_LENGTH);
+}
+
 export async function uploadDisputeEvidence({ orderId, actorId, files }) {
+  const fileValidationError = validateDisputeEvidenceFiles(files);
+  if (fileValidationError) {
+    throw new Error(fileValidationError);
+  }
+
   const uploadedPaths = [];
 
   for (const file of files || []) {
@@ -64,9 +90,19 @@ export async function resolveDisputeImageUrls(values, expiresInSeconds = 3600) {
 }
 
 export async function openBuyerDispute(orderId, message, imagePaths = []) {
+  const normalizedMessage = normalizeDisputeMessage(message);
+  const messageRequired = (imagePaths || []).length === 0;
+  const messageValidationError = validateDisputeMessage(normalizedMessage, {
+    required: messageRequired,
+  });
+
+  if (messageValidationError) {
+    throw new Error(messageValidationError);
+  }
+
   const { data, error } = await supabase.rpc("open_order_dispute", {
     p_order_id: orderId,
-    p_message: message,
+    p_message: normalizedMessage || null,
     p_images: imagePaths,
   });
 
@@ -78,9 +114,19 @@ export async function openBuyerDispute(orderId, message, imagePaths = []) {
 }
 
 export async function addDisputeMessage(orderId, message, imagePaths = []) {
+  const normalizedMessage = normalizeDisputeMessage(message);
+  const messageRequired = (imagePaths || []).length === 0;
+  const messageValidationError = validateDisputeMessage(normalizedMessage, {
+    required: messageRequired,
+  });
+
+  if (messageValidationError) {
+    throw new Error(messageValidationError);
+  }
+
   const { data, error } = await supabase.rpc("add_dispute_message", {
     p_order_id: orderId,
-    p_message: message,
+    p_message: normalizedMessage || null,
     p_images: imagePaths,
   });
 

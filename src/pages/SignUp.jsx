@@ -20,6 +20,16 @@ import { safeParseJSON } from '../utils/storage';
 import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
 import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import { searchUniversities } from '../services/universityService';
+import {
+  normalizeBusinessName,
+  normalizeHumanName,
+  normalizePhoneNumber,
+  normalizePlainText,
+  validateBusinessName,
+  validateDateOfBirth,
+  validateHumanName,
+  validatePhoneNumber,
+} from '../utils/accountValidation';
 
 const SIGNUP_DRAFT_STORAGE_KEY = 'mafdesh_signup_draft';
 const SIGNUP_STEPS = [
@@ -448,17 +458,17 @@ export default function SignUp() {
 
   const normalizeFormData = () => {
     const trimmed = {
-      fullName: formData.full_name?.trim() || '',
+      fullName: normalizeHumanName(formData.full_name),
       email: formData.email?.trim().toLowerCase() || '',
       username: formData.username?.trim().toLowerCase() || '',
-      phone: formData.phone_number?.trim() || '',
+      phone: normalizePhoneNumber(formData.phone_number),
       dateOfBirth: formData.date_of_birth || '',
-      businessName: formData.business_name?.trim() || '',
-      location: formData.location?.trim() || '',
-      universityName: formData.university_name?.trim() || '',
-      customUniversityName: formData.custom_university_name?.trim() || '',
-      universityState: formData.university_state?.trim() || '',
-      universityZone: formData.university_zone?.trim() || '',
+      businessName: normalizeBusinessName(formData.business_name),
+      location: normalizePlainText(formData.location),
+      universityName: normalizePlainText(formData.university_name),
+      customUniversityName: normalizePlainText(formData.custom_university_name),
+      universityState: normalizePlainText(formData.university_state),
+      universityZone: normalizePlainText(formData.university_zone),
     };
 
     return {
@@ -478,7 +488,8 @@ export default function SignUp() {
   };
 
   const validateAccountStep = (normalizedFormData) => {
-    if (!normalizedFormData.full_name || !normalizedFormData.email) {
+    const fullNameError = validateHumanName(normalizedFormData.full_name);
+    if (fullNameError || !normalizedFormData.email) {
       showWarning('Missing Details', 'Please fill in your full name and email.');
       return false;
     }
@@ -492,18 +503,16 @@ export default function SignUp() {
       return false;
     }
 
-    if (!normalizedFormData.phone_number || normalizedFormData.phone_number.length !== 11) {
-      showWarning('Phone Number Required', 'Please enter a valid 11-digit Nigerian phone number. This is needed for delivery coordination.');
+    const phoneNumberError = validatePhoneNumber(normalizedFormData.phone_number);
+    if (phoneNumberError) {
+      showWarning('Phone Number Required', phoneNumberError);
       return false;
     }
 
-    if (normalizedFormData.date_of_birth) {
-      const dob = new Date(normalizedFormData.date_of_birth);
-      const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-      if (age < 16) {
-        showWarning('Age Requirement', 'You must be at least 16 years old to create a Mafdesh account.');
-        return false;
-      }
+    const dateOfBirthError = validateDateOfBirth(normalizedFormData.date_of_birth);
+    if (dateOfBirthError) {
+      showWarning('Age Requirement', dateOfBirthError);
+      return false;
     }
 
     if (normalizedFormData.password.length < 6) {
@@ -520,9 +529,12 @@ export default function SignUp() {
   };
 
   const validateDetailsStep = (normalizedFormData, { requireTerms = false } = {}) => {
-    if (isSeller && !normalizedFormData.business_name) {
-      showWarning('Business Name Required', 'Please enter your business name.');
-      return false;
+    if (isSeller) {
+      const businessNameError = validateBusinessName(normalizedFormData.business_name);
+      if (businessNameError) {
+        showWarning('Business Name Required', businessNameError);
+        return false;
+      }
     }
 
     if (isSeller && (!normalizedFormData.university_name || !normalizedFormData.university_state)) {

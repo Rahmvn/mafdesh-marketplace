@@ -3,6 +3,18 @@ import { supabase } from '../supabaseClient';
 import { productService } from '../services/productService';
 import { getSellerPickupLocations, PICKUP_MODE } from '../services/deliveryService';
 import { buildProductDescription, validateAttributes } from './productAttributes';
+import {
+  MAX_PRODUCT_IMAGES,
+  MAX_PRODUCT_IMAGE_BYTES,
+  normalizeMultilineText,
+  normalizeSingleLineText,
+  validateProductDescription,
+  validateProductFeatureLine,
+  validateProductName,
+  validateProductOverview,
+  validateProductSpecLine,
+  validateSelectedFiles,
+} from './accountValidation';
 
 export const ADD_PRODUCT_DRAFT_KEY = 'mafdesh_add_product_draft';
 export const PLATFORM_FEE_RATE = 0.05;
@@ -36,7 +48,7 @@ function cloneSpecRows(specs = []) {
 
 function normalizeFeatureList(features = []) {
   return (Array.isArray(features) ? features : [])
-    .map((feature) => String(feature || '').trim())
+    .map((feature) => normalizeSingleLineText(feature))
     .filter(Boolean)
     .slice(0, MAX_PRODUCT_FEATURES);
 }
@@ -153,8 +165,8 @@ export function getFeaturesForSubmit(features = []) {
 export function getSpecsForSubmit(specs = []) {
   return cloneSpecRows(specs)
     .map((spec) => ({
-      key: String(spec.key || '').trim(),
-      value: String(spec.value || '').trim(),
+      key: normalizeSingleLineText(spec.key),
+      value: normalizeSingleLineText(spec.value),
     }))
     .filter((spec) => spec.key && spec.value)
     .slice(0, MAX_PRODUCT_SPECS);
@@ -165,7 +177,7 @@ export function buildFullDescription(formData = {}) {
   const specs = getSpecsForSubmit(formData.specs).map((spec) => `${spec.key}: ${spec.value}`);
 
   return `
-${String(formData.overview || '').trim()}
+${normalizeMultilineText(formData.overview)}
 
 Key Features:
 ${features.join('\n')}
@@ -182,8 +194,9 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
   const shouldValidateDescription = step === 'all' || step === 3;
 
   if (shouldValidateBasic) {
-    if (!String(formData.name || '').trim() || String(formData.name || '').trim().length < 5) {
-      newErrors.name = 'Product name must be at least 5 characters';
+    const nameError = validateProductName(formData.name);
+    if (nameError) {
+      newErrors.name = nameError;
     }
 
     if (String(formData.name || '').toLowerCase().includes('test')) {
@@ -220,6 +233,20 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
     if (requiredImages.some((image) => image === null)) {
       newErrors.images = 'At least 3 images are required';
     }
+
+    const imageValidationError = validateSelectedFiles(
+      (formData.images || []).filter((image) => image instanceof File),
+      {
+        label: 'Product images',
+        maxCount: MAX_PRODUCT_IMAGES,
+        maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
+        allowedMimePrefixes: ['image/'],
+      }
+    );
+
+    if (imageValidationError) {
+      newErrors.images = imageValidationError;
+    }
   }
 
   if (shouldValidateDescription) {
@@ -227,6 +254,33 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
     Object.entries(attributeErrors).forEach(([key, value]) => {
       newErrors[`attr_${key}`] = value;
     });
+
+    const overviewError = validateProductOverview(formData.overview);
+    if (overviewError) {
+      newErrors.overview = overviewError;
+    }
+
+    const fullDescriptionError = validateProductDescription(buildFullDescription(formData));
+    if (fullDescriptionError) {
+      newErrors.overview = fullDescriptionError;
+    }
+
+    for (const [index, feature] of getFeaturesForSubmit(formData.features).entries()) {
+      const featureError = validateProductFeatureLine(feature, `Feature ${index + 1}`);
+      if (featureError) {
+        newErrors.features = featureError;
+        break;
+      }
+    }
+
+    for (const [index, spec] of getSpecsForSubmit(formData.specs).entries()) {
+      const keyError = validateProductSpecLine(spec.key, `Specification name ${index + 1}`);
+      const valueError = validateProductSpecLine(spec.value, `Specification value ${index + 1}`);
+      if (keyError || valueError) {
+        newErrors.specs = keyError || valueError;
+        break;
+      }
+    }
   }
 
   return newErrors;
@@ -234,7 +288,7 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
 
 export function getDraftPayload(formData) {
   return JSON.stringify({
-    name: formData.name,
+    name: normalizeSingleLineText(formData.name),
     category: formData.category,
     marketPrice: formData.marketPrice,
     discountPercent: formData.discountPercent,
@@ -243,7 +297,7 @@ export function getDraftPayload(formData) {
       formData.attributes && typeof formData.attributes === 'object' && !Array.isArray(formData.attributes)
         ? formData.attributes
         : {},
-    overview: formData.overview,
+    overview: normalizeMultilineText(formData.overview),
     features: getFeaturesForSubmit(formData.features),
     specs: cloneSpecRows(formData.specs),
     pickupEnabled: Boolean(formData.pickupEnabled),
@@ -340,6 +394,19 @@ export async function loadSellerAddProductContext(userId) {
 
 export async function submitAddProductForm({ currentUser, formData }) {
   const uploadedUrls = [];
+  const imageValidationError = validateSelectedFiles(
+    (formData.images || []).filter((image) => image instanceof File),
+    {
+      label: 'Product images',
+      maxCount: MAX_PRODUCT_IMAGES,
+      maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
+      allowedMimePrefixes: ['image/'],
+    }
+  );
+
+  if (imageValidationError) {
+    throw new Error(imageValidationError);
+  }
 
   for (let index = 0; index < (formData.images || []).length; index += 1) {
     const file = formData.images[index];
@@ -347,7 +414,10 @@ export async function submitAddProductForm({ currentUser, formData }) {
       continue;
     }
 
-    const fileExt = file.name.split('.').pop();
+    const fileExt = String(file.name.split('.').pop() || 'jpg')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 8) || 'jpg';
     const fileName = `${currentUser.id}/${uuidv4()}.${fileExt}`;
 
     const { error: uploadError } = await supabase.storage
@@ -363,8 +433,16 @@ export async function submitAddProductForm({ currentUser, formData }) {
   }
 
   const { originalPrice, hasDiscount, sellingPrice } = getProductPricing(formData);
+  const normalizedProductName = normalizeSingleLineText(formData.name);
+  const normalizedDescription = buildProductDescription(formData.attributes, formData.category);
+  const descriptionError = validateProductDescription(normalizedDescription);
+
+  if (descriptionError) {
+    throw new Error(descriptionError);
+  }
+
   const productData = {
-    description: buildProductDescription(formData.attributes, formData.category),
+    description: normalizedDescription,
     attributes:
       formData.attributes &&
       typeof formData.attributes === 'object' &&
@@ -372,7 +450,7 @@ export async function submitAddProductForm({ currentUser, formData }) {
         ? formData.attributes
         : {},
     seller_id: currentUser.id,
-    name: String(formData.name || '').trim(),
+    name: normalizedProductName,
     category: formData.category,
     price: sellingPrice,
     original_price: hasDiscount ? originalPrice : null,

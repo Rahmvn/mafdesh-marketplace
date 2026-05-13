@@ -4,6 +4,8 @@ const SYSTEM_SOURCE = 'system_cron'
 const CRON_SCHEDULE = '*/5 * * * *'
 const DELIVERY_REVIEW_ACTION = 'DELIVERY_DEADLINE_REVIEW'
 const DELIVERY_REVIEW_BUFFER_MS = 24 * 60 * 60 * 1000
+const ENABLE_EMBEDDED_CRON =
+  String(Deno.env.get('ENABLE_PROCESS_ORDER_DEADLINES_CRON') || '').trim().toLowerCase() === 'true'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -32,6 +34,10 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
       'Content-Type': 'application/json',
     },
   })
+}
+
+function normalizeSingleLineText(value: unknown, maxLength = 120) {
+  return String(value || '').replace(/\s+/gu, ' ').trim().slice(0, maxLength)
 }
 
 function createSingleOrderProcessResult(
@@ -726,22 +732,28 @@ async function runDeadlineProcessor() {
   return processOrderDeadlines(supabase)
 }
 
-Deno.cron('process-order-deadlines', CRON_SCHEDULE, async () => {
+if (ENABLE_EMBEDDED_CRON && typeof Deno.cron === 'function') {
   try {
-    console.log(
-      `Starting scheduled order deadline processor at ${new Date().toISOString()} on ${CRON_SCHEDULE}`
-    )
-    const results = await runDeadlineProcessor()
+    Deno.cron('process-order-deadlines', CRON_SCHEDULE, async () => {
+      try {
+        console.log(
+          `Starting scheduled order deadline processor at ${new Date().toISOString()} on ${CRON_SCHEDULE}`
+        )
+        const results = await runDeadlineProcessor()
 
-    if (results.length > 0) {
-      console.log(`Processed order deadlines: ${results.join('; ')}`)
-    } else {
-      console.log('Scheduled order deadline processor completed with no status transitions')
-    }
-  } catch (err) {
-    console.error('Scheduled deadline processor failed:', err)
+        if (results.length > 0) {
+          console.log(`Processed order deadlines: ${results.join('; ')}`)
+        } else {
+          console.log('Scheduled order deadline processor completed with no status transitions')
+        }
+      } catch (err) {
+        console.error('Scheduled deadline processor failed:', err)
+      }
+    })
+  } catch (error) {
+    console.error('Embedded cron registration for process-order-deadlines failed:', error)
   }
-})
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -784,7 +796,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null)
-    const orderId = String(body?.orderId || '').trim()
+    const orderId = normalizeSingleLineText(body?.orderId, 80)
 
     if (!orderId) {
       return jsonResponse({ error: 'Missing orderId' }, 400)

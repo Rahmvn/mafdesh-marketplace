@@ -43,15 +43,15 @@ function errorMessage(error: unknown) {
 }
 
 function normalizeReason(reason: unknown) {
-  return typeof reason === "string" ? reason.trim() : "";
+  return sanitizeText(reason, 2000);
 }
 
-function sanitizeText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+function sanitizeText(value: unknown, maxLength = 250) {
+  return typeof value === "string" ? value.replace(/\s+/gu, " ").trim().slice(0, maxLength) : "";
 }
 
 function sanitizeDigits(value: unknown) {
-  return typeof value === "string" ? value.replace(/\D/g, "") : "";
+  return typeof value === "string" ? value.replace(/\D/g, "").slice(0, 32) : "";
 }
 
 function normalizePendingBankDetails(value: unknown) {
@@ -174,8 +174,8 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const sellerId = typeof body?.sellerId === "string" ? body.sellerId : "";
-    const decision = typeof body?.decision === "string" ? body.decision.trim().toLowerCase() : "";
+    const sellerId = sanitizeText(body?.sellerId, 80);
+    const decision = sanitizeText(body?.decision, 20).toLowerCase();
     const reason = normalizeReason(body?.reason);
 
     if (!sellerId || !["approve", "reject"].includes(decision)) {

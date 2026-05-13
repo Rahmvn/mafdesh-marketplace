@@ -9,6 +9,13 @@ const corsHeaders = {
 };
 
 const CORE_FIELDS = ["name", "price", "category", "description", "images"] as const;
+const ZERO_WIDTH_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/gu;
+const INVISIBLE_SPACE_CHARACTERS = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/gu;
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu;
+const PRODUCT_NAME_MAX_LENGTH = 120;
+const PRODUCT_DESCRIPTION_MAX_LENGTH = 5000;
+const PRODUCT_CATEGORY_MAX_LENGTH = 80;
+const PRODUCT_MAX_IMAGES = 5;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -20,10 +27,67 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function removeInvisibleCharacters(value: unknown) {
+  return String(value || "")
+    .replace(INVISIBLE_SPACE_CHARACTERS, " ")
+    .replace(ZERO_WIDTH_CHARACTERS, "")
+    .replace(CONTROL_CHARACTERS, "");
+}
+
+function normalizeSingleLineText(value: unknown) {
+  return removeInvisibleCharacters(value).replace(/\s+/gu, " ").trim();
+}
+
+function normalizeMultilineText(value: unknown) {
+  return removeInvisibleCharacters(value)
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => normalizeSingleLineText(line))
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
 function normalizeImages(images: unknown) {
   return Array.isArray(images)
-    ? images.filter((image) => typeof image === "string" && image.trim().length > 0)
+    ? images
+        .filter((image) => typeof image === "string" && image.trim().length > 0)
+        .map((image) => String(image).trim())
+        .slice(0, PRODUCT_MAX_IMAGES)
     : [];
+}
+
+function validateProposedSnapshot(snapshot: Record<string, unknown> | null) {
+  if (!snapshot) {
+    return "Missing proposedSnapshot.";
+  }
+
+  const name = normalizeSingleLineText(snapshot.name);
+  const category = normalizeSingleLineText(snapshot.category);
+  const description = normalizeMultilineText(snapshot.description);
+  const images = normalizeImages(snapshot.images);
+
+  if (!name || name.length < 5 || name.length > PRODUCT_NAME_MAX_LENGTH) {
+    return `Product name must be between 5 and ${PRODUCT_NAME_MAX_LENGTH} characters.`;
+  }
+
+  if (!category || category.length > PRODUCT_CATEGORY_MAX_LENGTH) {
+    return `Category must be between 1 and ${PRODUCT_CATEGORY_MAX_LENGTH} characters.`;
+  }
+
+  if (!description || description.length < 20 || description.length > PRODUCT_DESCRIPTION_MAX_LENGTH) {
+    return `Product description must be between 20 and ${PRODUCT_DESCRIPTION_MAX_LENGTH} characters.`;
+  }
+
+  if (images.length === 0 || images.length > PRODUCT_MAX_IMAGES) {
+    return `Product images must contain between 1 and ${PRODUCT_MAX_IMAGES} entries.`;
+  }
+
+  if (images.some((image) => image.length > 2048)) {
+    return "Image references are too long.";
+  }
+
+  return "";
 }
 
 function buildSnapshot(product: Record<string, unknown> | null) {
@@ -33,11 +97,11 @@ function buildSnapshot(product: Record<string, unknown> | null) {
 
   return {
     product_id: String(product.product_id || product.id || ""),
-    name: String(product.name || "").trim(),
+    name: normalizeSingleLineText(product.name),
     price: Number(product.price || 0),
     images: normalizeImages(product.images),
-    category: String(product.category || "").trim(),
-    description: String(product.description || "").trim(),
+    category: normalizeSingleLineText(product.category),
+    description: normalizeMultilineText(product.description),
     seller_id: String(product.seller_id || ""),
   };
 }
@@ -122,6 +186,11 @@ serve(async (req) => {
 
     if (!productId || !proposedSnapshot) {
       return jsonResponse({ error: "Missing productId or proposedSnapshot." }, 400);
+    }
+
+    const proposedSnapshotValidationError = validateProposedSnapshot(proposedSnapshot);
+    if (proposedSnapshotValidationError) {
+      return jsonResponse({ error: proposedSnapshotValidationError }, 400);
     }
 
     const { data: product, error: productError } = await supabaseAdmin

@@ -12,6 +12,10 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 }
 
+function normalizeSingleLineText(value: unknown, maxLength = 120) {
+  return String(value || '').replace(/\s+/gu, ' ').trim().slice(0, maxLength)
+}
+
 async function assertSellerIsActive(
   supabaseAdmin: ReturnType<typeof createClient>,
   sellerId: string
@@ -88,7 +92,7 @@ serve(async (req) => {
       })
     }
 
-    const { orderId } = body
+    const orderId = normalizeSingleLineText(body?.orderId, 80)
     if (!orderId) {
       return new Response(JSON.stringify({ error: 'Missing orderId' }), {
         status: 400,

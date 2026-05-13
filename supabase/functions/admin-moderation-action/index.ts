@@ -22,6 +22,9 @@ const ADMIN_ACTION_TYPES = {
   APPROVE_BANK_DETAILS: "APPROVE_BANK_DETAILS",
   REJECT_BANK_DETAILS: "REJECT_BANK_DETAILS",
 } as const;
+const ZERO_WIDTH_CHARACTERS = /[\u200B-\u200D\u2060\uFEFF]/gu;
+const INVISIBLE_SPACE_CHARACTERS = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/gu;
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -34,7 +37,29 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function normalizeReason(reason: unknown) {
-  return typeof reason === "string" ? reason.trim() : "";
+  return normalizeMultilineText(reason).slice(0, 2000);
+}
+
+function removeInvisibleCharacters(value: unknown) {
+  return String(value || "")
+    .replace(INVISIBLE_SPACE_CHARACTERS, " ")
+    .replace(ZERO_WIDTH_CHARACTERS, "")
+    .replace(CONTROL_CHARACTERS, "");
+}
+
+function normalizeSingleLineText(value: unknown, maxLength = 250) {
+  return removeInvisibleCharacters(value).replace(/\s+/gu, " ").trim().slice(0, maxLength);
+}
+
+function normalizeMultilineText(value: unknown, maxLength = 5000) {
+  return removeInvisibleCharacters(value)
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => normalizeSingleLineText(line, 500))
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim()
+    .slice(0, maxLength);
 }
 
 function errorMessage(error: unknown) {
@@ -103,8 +128,24 @@ async function createNotification(
 
 function normalizeImages(images: unknown) {
   return Array.isArray(images)
-    ? images.filter((image) => typeof image === "string" && image.trim().length > 0)
+    ? images
+        .filter((image) => typeof image === "string" && image.trim().length > 0)
+        .map((image) => normalizeSingleLineText(image, 2048))
+        .slice(0, 5)
     : [];
+}
+
+function sanitizeProductSnapshot(snapshot: unknown) {
+  const safeSnapshot =
+    snapshot && typeof snapshot === "object" ? snapshot as Record<string, unknown> : {};
+
+  return {
+    name: normalizeSingleLineText(safeSnapshot.name, 120),
+    price: Number(safeSnapshot.price || 0),
+    category: normalizeSingleLineText(safeSnapshot.category, 80),
+    description: normalizeMultilineText(safeSnapshot.description, 5000),
+    images: normalizeImages(safeSnapshot.images),
+  };
 }
 
 function getChangedCoreFields(
@@ -234,9 +275,9 @@ serve(async (req) => {
       return jsonResponse({ error: "Forbidden" }, 403);
     }
 
-    const body = await req.json();
-    const actionType = body?.actionType;
-    const targetId = body?.targetId;
+    const body = await req.json().catch(() => null);
+    const actionType = normalizeSingleLineText(body?.actionType, 80);
+    const targetId = normalizeSingleLineText(body?.targetId, 80);
     const reason = normalizeReason(body?.reason);
     const context =
       body?.context && typeof body.context === "object" ? body.context : {};
@@ -559,8 +600,10 @@ serve(async (req) => {
 
       case ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT:
       case ADMIN_ACTION_TYPES.REJECT_PRODUCT_EDIT: {
-        const requestId =
-          typeof context.requestId === "string" ? context.requestId : "";
+        const requestId = normalizeSingleLineText(
+          typeof context.requestId === "string" ? context.requestId : "",
+          80
+        );
 
         if (!requestId) {
           return jsonResponse(
@@ -648,30 +691,15 @@ serve(async (req) => {
           reviewed_by: actingAdmin.id,
         };
 
-        const proposedSnapshot =
-          editRequest.proposed_snapshot &&
-          typeof editRequest.proposed_snapshot === "object"
-            ? editRequest.proposed_snapshot
-            : {};
+        const proposedSnapshot = sanitizeProductSnapshot(editRequest.proposed_snapshot);
         const productUpdates: Record<string, unknown> =
           actionType === ADMIN_ACTION_TYPES.APPROVE_PRODUCT_EDIT
             ? {
-                name:
-                  typeof proposedSnapshot.name === "string"
-                    ? proposedSnapshot.name.trim()
-                    : product.name,
-                price: Number(proposedSnapshot.price ?? product.price),
-                category:
-                  typeof proposedSnapshot.category === "string"
-                    ? proposedSnapshot.category.trim()
-                    : product.category,
-                description:
-                  typeof proposedSnapshot.description === "string"
-                    ? proposedSnapshot.description.trim()
-                    : product.description,
-                images: Array.isArray(proposedSnapshot.images)
-                  ? proposedSnapshot.images
-                  : product.images,
+                name: proposedSnapshot.name || product.name,
+                price: Number.isFinite(proposedSnapshot.price) ? proposedSnapshot.price : product.price,
+                category: proposedSnapshot.category || product.category,
+                description: proposedSnapshot.description || product.description,
+                images: proposedSnapshot.images.length > 0 ? proposedSnapshot.images : product.images,
                 updated_at: reviewedAt,
               }
             : {};

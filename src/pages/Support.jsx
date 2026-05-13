@@ -24,6 +24,17 @@ import Footer from '../components/FooterSlim';
 import { supabase } from '../supabaseClient';
 import { getUserWithRetry } from '../utils/authResilience';
 import { getStoredUser } from '../utils/storage';
+import {
+  MAX_SUPPORT_ATTACHMENTS,
+  MAX_SUPPORT_ATTACHMENT_BYTES,
+  SUPPORT_MESSAGE_MAX_LENGTH,
+  SUPPORT_SUBJECT_MAX_LENGTH,
+  normalizeMultilineText,
+  normalizeSingleLineText,
+  validateSelectedFiles,
+  validateSupportMessage,
+  validateSupportSubject,
+} from '../utils/accountValidation';
 
 const SUPPORT_EMAIL = 'support@mafdesh.com';
 const SUPPORT_ATTACHMENTS_BUCKET = 'support-attachments';
@@ -208,15 +219,17 @@ export default function Support() {
     });
   }, [faqSearch, userRole]);
 
+  const normalizedSubject = normalizeSingleLineText(subject);
+  const normalizedMessage = normalizeMultilineText(message);
   const supportSubject =
-    subject.trim() || `Mafdesh ${issueType.replaceAll('-', ' ')} support request`;
+    normalizedSubject || `Mafdesh ${issueType.replaceAll('-', ' ')} support request`;
   const supportBody = encodeURIComponent(
     [
       `Role: ${userRole}`,
       `Issue type: ${issueType}`,
       user?.email ? `Account email: ${user.email}` : null,
       '',
-      message.trim() || 'Please describe your issue here.',
+      normalizedMessage || 'Please describe your issue here.',
     ]
       .filter(Boolean)
       .join('\n')
@@ -228,6 +241,19 @@ export default function Support() {
 
   const handleAttachmentChange = (event) => {
     const files = Array.from(event.target.files || []);
+    const fileError = validateSelectedFiles(files, {
+      label: 'Attachments',
+      maxCount: MAX_SUPPORT_ATTACHMENTS,
+      maxFileSizeBytes: MAX_SUPPORT_ATTACHMENT_BYTES,
+      allowedMimeTypes: ['application/pdf'],
+      allowedMimePrefixes: ['image/'],
+    });
+
+    if (fileError) {
+      setSubmitStatus({ type: 'error', message: fileError });
+      return;
+    }
+
     setAttachments(files);
     setSubmitStatus({ type: '', message: '' });
   };
@@ -255,7 +281,10 @@ export default function Support() {
     const uploadedLinks = [];
 
     for (const file of files) {
-      const extension = file.name.split('.').pop();
+      const extension = String(file.name.split('.').pop() || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .slice(0, 8);
       const fileName = `support_${ownerId}_${Date.now()}_${Math.random()
         .toString(36)
         .slice(2)}${extension ? `.${extension}` : ''}`;
@@ -281,11 +310,36 @@ export default function Support() {
 
   const handleSupportSubmit = async (event) => {
     event.preventDefault();
+    const subjectError = validateSupportSubject(normalizedSubject);
+    const messageError = validateSupportMessage(normalizedMessage);
+    const fileError = validateSelectedFiles(attachments, {
+      label: 'Attachments',
+      maxCount: MAX_SUPPORT_ATTACHMENTS,
+      maxFileSizeBytes: MAX_SUPPORT_ATTACHMENT_BYTES,
+      allowedMimeTypes: ['application/pdf'],
+      allowedMimePrefixes: ['image/'],
+    });
 
-    if (!message.trim()) {
+    if (subjectError) {
       setSubmitStatus({
         type: 'error',
-        message: 'Please describe the issue before submitting.',
+        message: subjectError,
+      });
+      return;
+    }
+
+    if (messageError) {
+      setSubmitStatus({
+        type: 'error',
+        message: messageError,
+      });
+      return;
+    }
+
+    if (fileError) {
+      setSubmitStatus({
+        type: 'error',
+        message: fileError,
       });
       return;
     }
@@ -323,8 +377,9 @@ export default function Support() {
           user_id: authenticatedUserId,
           user_role: userRole,
           issue_type: issueType,
-          subject: supportSubject,
-          message: message.trim(),
+          subject:
+            normalizedSubject || `Mafdesh ${issueType.replaceAll('-', ' ')} support request`,
+          message: normalizedMessage,
           attachment_urls: attachmentLinks,
         })
         .select('id')
@@ -629,6 +684,7 @@ export default function Support() {
                     value={subject}
                     onChange={(event) => setSubject(event.target.value)}
                     placeholder="Short summary of the issue"
+                    maxLength={SUPPORT_SUBJECT_MAX_LENGTH}
                     className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
                   />
                 </div>
@@ -643,8 +699,12 @@ export default function Support() {
                     onChange={(event) => setMessage(event.target.value)}
                     rows={6}
                     placeholder="Explain what happened, which order or page was involved, and what outcome you expected."
+                    maxLength={SUPPORT_MESSAGE_MAX_LENGTH}
                     className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-orange-300 focus:ring-4 focus:ring-orange-100"
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    {normalizeMultilineText(message).length}/{SUPPORT_MESSAGE_MAX_LENGTH} characters
+                  </p>
                 </div>
 
                 <div>
@@ -676,6 +736,9 @@ export default function Support() {
                       ))}
                     </div>
                   )}
+                  <p className="mt-2 text-xs text-slate-500">
+                    Up to {MAX_SUPPORT_ATTACHMENTS} files. Images or PDF only, {Math.round(MAX_SUPPORT_ATTACHMENT_BYTES / (1024 * 1024))}MB each max.
+                  </p>
                 </div>
 
                 {submitStatus.message && (

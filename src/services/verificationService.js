@@ -1,4 +1,8 @@
 import { supabase } from '../supabaseClient';
+import {
+  MAX_VERIFICATION_PROOF_BYTES,
+  validateSelectedFiles,
+} from '../utils/accountValidation';
 
 export const EARLY_VERIFICATION_FEE = 1500;
 export const SELLER_VERIFICATION_PROOFS_BUCKET = 'seller-verification-proofs';
@@ -127,6 +131,18 @@ export async function fetchSellerVerificationSnapshot(sellerId) {
 export async function uploadSellerVerificationProof(sellerId, proofFile) {
   if (!proofFile) {
     return null;
+  }
+
+  const fileValidationError = validateSelectedFiles([proofFile], {
+    label: 'Verification proof',
+    maxCount: 1,
+    maxFileSizeBytes: MAX_VERIFICATION_PROOF_BYTES,
+    allowedMimeTypes: ['application/pdf'],
+    allowedMimePrefixes: ['image/'],
+  });
+
+  if (fileValidationError) {
+    throw new Error(fileValidationError);
   }
 
   const storagePath = buildProofPath(sellerId, proofFile.name);

@@ -15,6 +15,18 @@ import {
   getProductPricing,
   hasFlashSaleConfiguration,
 } from '../utils/flashSale';
+import {
+  MAX_PRODUCT_IMAGE_BYTES,
+  PRODUCT_DESCRIPTION_MAX_LENGTH,
+  PRODUCT_NAME_MAX_LENGTH,
+  PRODUCT_OVERVIEW_MAX_LENGTH,
+  normalizeMultilineText,
+  normalizeSingleLineText,
+  validateProductDescription,
+  validateProductName,
+  validateProductOverview,
+  validateSelectedFiles,
+} from '../utils/accountValidation';
 
 const REAPPROVAL_WARNING_MESSAGE =
   'Changing this field will require admin re-approval. Your product will be temporarily hidden from buyers.';
@@ -34,13 +46,13 @@ function splitProductDescription(description = '') {
 
 function buildFullDescription(formData) {
   return `
-${formData.overview}
+${normalizeMultilineText(formData.overview)}
 
 Key Features:
-${formData.features}
+${normalizeMultilineText(formData.features)}
 
 Specifications:
-${formData.specs}
+${normalizeMultilineText(formData.specs)}
 `.trim();
 }
 
@@ -136,7 +148,7 @@ function getDiscountPreview(priceValue, originalPriceValue) {
 
 function buildGeneralUpdates(formData, imageUrls) {
   const updates = {
-    name: formData.name.trim(),
+    name: normalizeSingleLineText(formData.name),
     category: formData.category,
     price: parsePriceInput(formData.price),
     description: buildFullDescription(formData),
@@ -400,8 +412,15 @@ export default function EditProduct() {
       return;
     }
 
-    if (file.size > 3 * 1024 * 1024) {
-      showWarning('Image Too Large', 'Image must be less than 3MB.');
+    const fileValidationError = validateSelectedFiles([file], {
+      label: 'Product image',
+      maxCount: 1,
+      maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
+      allowedMimePrefixes: ['image/'],
+    });
+
+    if (fileValidationError) {
+      showWarning('Invalid Image', fileValidationError);
       return;
     }
 
@@ -428,8 +447,20 @@ export default function EditProduct() {
     const nextErrors = {};
     const price = parsePriceInput(formData.price);
     const originalPrice = parsePriceInput(formData.originalPrice);
+    const productNameError = validateProductName(formData.name);
+    const overviewError = validateProductOverview(formData.overview);
+    const productDescriptionError = validateProductDescription(buildFullDescription(formData));
+    const imageValidationError = validateSelectedFiles(
+      formData.imageFiles.filter(Boolean),
+      {
+        label: 'Product images',
+        maxCount: formData.imageFiles.length,
+        maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
+        allowedMimePrefixes: ['image/'],
+      }
+    );
 
-    if (!formData.name.trim()) nextErrors.name = 'Required';
+    if (productNameError) nextErrors.name = productNameError;
     if (!price || price <= 0) nextErrors.price = 'Required';
     if (formData.originalPrice !== '') {
       if (!originalPrice || originalPrice <= 0) {
@@ -438,7 +469,9 @@ export default function EditProduct() {
         nextErrors.originalPrice = discountPreview.error;
       }
     }
-    if (!formData.overview.trim()) nextErrors.overview = 'Required';
+    if (overviewError) nextErrors.overview = overviewError;
+    if (!nextErrors.overview && productDescriptionError) nextErrors.overview = productDescriptionError;
+    if (imageValidationError) nextErrors.images = imageValidationError;
     if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
       nextErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
     }
@@ -475,7 +508,10 @@ export default function EditProduct() {
         continue;
       }
 
-      const fileExt = file.name.split('.').pop();
+      const fileExt = String(file.name.split('.').pop() || 'jpg')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .slice(0, 8) || 'jpg';
       const fileName = `${currentUser.id}/${Date.now()}-${index}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -665,6 +701,7 @@ export default function EditProduct() {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
+                maxLength={PRODUCT_NAME_MAX_LENGTH}
                 className={`w-full px-4 py-2 border rounded-lg ${
                   errors.name ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -1040,13 +1077,14 @@ export default function EditProduct() {
                       />
                     )}
                     <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleImageChange(index, e.target.files[0])}
-                    />
-                  </div>
-                ))}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageChange(index, e.target.files[0])}
+                  />
+                </div>
+              ))}
               </div>
+              {errors.images && <p className="text-sm text-red-600 mt-2">{errors.images}</p>}
               {reapprovalWarningFields.has('images') && (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   {REAPPROVAL_WARNING_MESSAGE}
@@ -1063,11 +1101,15 @@ export default function EditProduct() {
                 value={formData.overview}
                 onChange={handleChange}
                 rows="4"
+                maxLength={PRODUCT_OVERVIEW_MAX_LENGTH}
                 className={`w-full px-4 py-2 border rounded-lg ${
                   errors.overview ? 'border-red-500' : 'border-gray-300'
                 }`}
               />
               {errors.overview && <p className="text-sm text-red-600 mt-1">{errors.overview}</p>}
+              <p className="text-xs text-gray-500 mt-2">
+                {normalizeMultilineText(formData.overview).length}/{PRODUCT_OVERVIEW_MAX_LENGTH} characters
+              </p>
             </div>
 
             <div>
@@ -1079,6 +1121,7 @@ export default function EditProduct() {
                 value={formData.features}
                 onChange={handleChange}
                 rows="4"
+                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -1092,6 +1135,7 @@ export default function EditProduct() {
                 value={formData.specs}
                 onChange={handleChange}
                 rows="3"
+                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>

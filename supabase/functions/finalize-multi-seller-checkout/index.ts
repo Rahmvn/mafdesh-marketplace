@@ -17,6 +17,10 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   })
 }
 
+function normalizeSingleLineText(value: unknown, maxLength = 250) {
+  return String(value || '').replace(/\s+/gu, ' ').trim().slice(0, maxLength)
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
@@ -402,13 +406,16 @@ serve(async (req) => {
     }
 
     const mockMode = isTruthyFlag(body.mockPayment) || isMockModeEnabled()
-    const checkoutSessionId = String(body.checkoutSessionId || '').trim()
-    const paymentReference = String(body.paymentReference || '').trim()
+    const checkoutSessionId = normalizeSingleLineText(body.checkoutSessionId, 120)
+    const paymentReference = normalizeSingleLineText(body.paymentReference, 120)
     const expectedAmountKobo = Number(body.expectedAmountKobo || 0)
     const orders = body.orders
-    const cartId = String(body.cartId || '').trim()
+    const cartId = normalizeSingleLineText(body.cartId, 80)
     const cartItemIds = Array.isArray(body.cartItemIds)
-      ? body.cartItemIds.map((itemId: unknown) => String(itemId)).filter(Boolean)
+      ? body.cartItemIds
+          .map((itemId: unknown) => normalizeSingleLineText(itemId, 80))
+          .filter(Boolean)
+          .slice(0, 100)
       : []
 
     if (!checkoutSessionId) {

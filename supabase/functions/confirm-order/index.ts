@@ -15,6 +15,10 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   })
 }
 
+function normalizeSingleLineText(value: unknown, maxLength = 120) {
+  return String(value || '').replace(/\s+/gu, ' ').trim().slice(0, maxLength)
+}
+
 function getPaystackSecretKey() {
   const candidateNames = ['PAYSTACK_SECRET_KEY', 'PAYSTACK_SECRET']
 
@@ -374,7 +378,10 @@ serve(async (req) => {
       return jsonResponse({ error: 'Unauthorized' }, 401)
     }
 
-    const { orderId, mockPayment = false, paymentReference = '' } = await req.json()
+    const body = await req.json().catch(() => null)
+    const orderId = normalizeSingleLineText(body?.orderId, 80)
+    const mockPayment = body?.mockPayment ?? false
+    const paymentReference = normalizeSingleLineText(body?.paymentReference, 120)
     if (!orderId) {
       return jsonResponse({ error: 'Missing orderId' }, 400)
     }
@@ -411,7 +418,7 @@ serve(async (req) => {
       mockMode,
       explicitMockPaymentRequested,
       orderId,
-      paymentReference: String(paymentReference || '').trim(),
+      paymentReference,
     })
 
     // Temporary mock/confirmation path:
@@ -434,7 +441,7 @@ serve(async (req) => {
     }
 
     try {
-      await finalizePaidOrder(supabaseAdmin, orderId, String(paymentReference || '').trim())
+      await finalizePaidOrder(supabaseAdmin, orderId, paymentReference)
     } catch (finalizationError) {
       try {
         await restoreReservedStock(supabaseAdmin, orderId)

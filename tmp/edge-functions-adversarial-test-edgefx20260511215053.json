@@ -1,0 +1,115 @@
+{
+  "runId": "edgefx20260511215053",
+  "environmentName": "test",
+  "createdAt": "2026-05-11T21:51:30.549Z",
+  "results": [
+    {
+      "id": "control_create_checkout_order_valid_pickup",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Checkout order created successfully. orderId=537bf7de-d775-410c-8010-1c520b188ea6"
+    },
+    {
+      "id": "reject_create_checkout_order_invalid_delivery_type",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Invalid deliveryType was rejected before order creation."
+    },
+    {
+      "id": "reject_create_checkout_order_multi_item_payload",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Multi-item single-order payload was rejected cleanly."
+    },
+    {
+      "id": "reject_create_checkout_order_mismatched_item_product",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Mismatched single-order item payload was rejected cleanly."
+    },
+    {
+      "id": "control_get_order_counterparty_valid",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Counterparty lookup succeeded and resolved seller context correctly."
+    },
+    {
+      "id": "reject_get_order_counterparty_missing_order_id",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing orderId was rejected cleanly."
+    },
+    {
+      "id": "reject_confirm_order_missing_order_id",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing orderId was rejected by confirm-order."
+    },
+    {
+      "id": "reject_confirm_order_forbidden_intruder",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-owner order confirmation was rejected."
+    },
+    {
+      "id": "reject_finalize_multi_missing_orders",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing multi-seller orders array was rejected cleanly."
+    },
+    {
+      "id": "reject_finalize_multi_duplicate_seller_groups",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Duplicate seller groups were rejected by secure multi-seller checkout validation."
+    },
+    {
+      "id": "reject_admin_moderation_action_non_admin",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-admin moderation request was rejected."
+    },
+    {
+      "id": "reject_admin_moderation_action_missing_reason",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Empty admin moderation reason was rejected cleanly."
+    },
+    {
+      "id": "control_admin_moderation_action_approve_product_edit",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Admin-approved product edit was applied through sanitized server-side fields."
+    },
+    {
+      "id": "reject_admin_approve_bank_change_non_admin",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-admin bank-change review was rejected."
+    },
+    {
+      "id": "reject_admin_approve_bank_change_invalid_decision",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Invalid bank-change decision was rejected cleanly."
+    },
+    {
+      "id": "control_admin_approve_bank_change_valid",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Admin-approved bank change stored sanitized digits and cleared the pending request."
+    },
+    {
+      "id": "reject_process_order_deadlines_missing_order_id",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing orderId was rejected by process-order-deadlines."
+    },
+    {
+      "id": "reject_process_order_deadlines_forbidden_intruder",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-participant deadline processing request was rejected."
+    }
+  ]
+}

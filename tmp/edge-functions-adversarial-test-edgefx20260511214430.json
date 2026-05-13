@@ -1,0 +1,115 @@
+{
+  "runId": "edgefx20260511214430",
+  "environmentName": "test",
+  "createdAt": "2026-05-11T21:45:18.031Z",
+  "results": [
+    {
+      "id": "control_create_checkout_order_valid_pickup",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Checkout order created successfully. orderId=e3815f60-2bb4-4355-91bd-9062727642d0"
+    },
+    {
+      "id": "reject_create_checkout_order_invalid_delivery_type",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected 400 invalid delivery type, got 200: {\"order\":{\"id\":\"6a96b705-e14d-4d61-9fad-f15daddb1ff5\",\"buyer_id\":\"fb5e2028-a738-4153-ba2e-c3083cb90b72\",\"seller_id\":\"f980ebdc-d504-4499-945e-3f633ec9c06f\",\"product_id\":\"5f199786-ba79-4322-b98d-e2fccd06cdfa\",\"quantity\":1,\"total_amount\":5000,\"status\":\"PENDING\",\"created_at\":\"2026-05-11T21:44:50.744844\",\"delivery_state\":null,\"delivery_address\":null,\"delivery_type\":\"drone-drop\",\"product_price\":5000,\"delivery_fee\":0,\"platform_fee\":250,\"completed_at\":null,\"shipped_at\":null,\"disputed_at\":null,\"payment_reference\":\"MAFDESH_76571678-f69d-4a15-a234-8bd478b4903b\",\"paid_at\":null,\"auto_complete_at\":null,\"dispute_reason\":null,\"dispute_images\":null,\"delivered_at\":null,\"dispute_status\":\"none\",\"resolved_by\":null,\"resolution_type\":null,\"resolution_amount\":null,\"resolution_notes\":null,\"constitution_section\":null,\"resolved_at\":null,\"ship_deadline\":null,\"dispute_deadline\":null,\"pickup_deadline\":null,\"ready_for_pickup_at\":null,\"picked_up_at\":null,\"cancelled_at\":null,\"auto_cancel_at\":null,\"pickup_location\":null,\"order_number\":\"9HHIZ8JN\",\"selected_pickup_location\":null,\"delivery_deadline\":null,\"delivery_zone_snapshot\":null,\"pickup_location_snapshot\":null,\"product_snapshot\":{\"name\":\"Edge Product 214430\",\"price\":5000,\"images\":[\"https://example.com/edge-product.jpg\"],\"category\":\"Electronics\",\"seller_id\":\"f980ebdc-d504-4499-945e-3f633ec9c06f\",\"product_id\":\"5f199786-ba79-4322-b98d-e2fccd06cdfa\",\"description\":\"A safe seeded product description for Edge Function adversarial testing.\",\"snapshot_at\":\"2026-05-11T21:44:50.714387+00:00\",\"original_price\":null,\"seller_is_verified\":false,\"seller_business_name\":\"Edge Seller Store\"},\"checkout_session_id\":null,\"subtotal\":0,\"review_required\":false,\"review_deadline_at\":null,\"payout_account_snapshot\":null},\"payment_reference\":\"MAFDESH_76571678-f69d-4a15-a234-8bd478b4903b\"}"
+    },
+    {
+      "id": "reject_create_checkout_order_multi_item_payload",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected single-order payload rejection, got 200: {\"order\":{\"id\":\"39129d2e-f04b-417b-ba4c-ad7bc73d51c8\",\"buyer_id\":\"fb5e2028-a738-4153-ba2e-c3083cb90b72\",\"seller_id\":\"f980ebdc-d504-4499-945e-3f633ec9c06f\",\"product_id\":\"5f199786-ba79-4322-b98d-e2fccd06cdfa\",\"quantity\":1,\"total_amount\":5000,\"status\":\"PENDING\",\"created_at\":\"2026-05-11T21:44:52.25572\",\"delivery_state\":null,\"delivery_address\":null,\"delivery_type\":\"pickup\",\"product_price\":5000,\"delivery_fee\":0,\"platform_fee\":250,\"completed_at\":null,\"shipped_at\":null,\"disputed_at\":null,\"payment_reference\":\"MAFDESH_28935316-a15c-4556-bfca-ddd6731862f4\",\"paid_at\":null,\"auto_complete_at\":null,\"dispute_reason\":null,\"dispute_images\":null,\"delivered_at\":null,\"dispute_status\":\"none\",\"resolved_by\":null,\"resolution_type\":null,\"resolution_amount\":null,\"resolution_notes\":null,\"constitution_section\":null,\"resolved_at\":null,\"ship_deadline\":null,\"dispute_deadline\":null,\"pickup_deadline\":null,\"ready_for_pickup_at\":null,\"picked_up_at\":null,\"cancelled_at\":null,\"auto_cancel_at\":null,\"pickup_location\":null,\"order_number\":\"YBGSGKL9\",\"selected_pickup_location\":\"Main Gate\",\"delivery_deadline\":null,\"delivery_zone_snapshot\":null,\"pickup_location_snapshot\":null,\"product_snapshot\":{\"name\":\"Edge Product 214430\",\"price\":5000,\"images\":[\"https://example.com/edge-product.jpg\"],\"category\":\"Electronics\",\"seller_id\":\"f980ebdc-d504-4499-945e-3f633ec9c06f\",\"product_id\":\"5f199786-ba79-4322-b98d-e2fccd06cdfa\",\"description\":\"A safe seeded product description for Edge Function adversarial testing.\",\"snapshot_at\":\"2026-05-11T21:44:52.225381+00:00\",\"original_price\":null,\"seller_is_verified\":false,\"seller_business_name\":\"Edge Seller Store\"},\"checkout_session_id\":null,\"subtotal\":0,\"review_required\":false,\"review_deadline_at\":null,\"payout_account_snapshot\":null},\"payment_reference\":\"MAFDESH_28935316-a15c-4556-bfca-ddd6731862f4\"}"
+    },
+    {
+      "id": "reject_create_checkout_order_mismatched_item_product",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected invalid payload rejection, got 409: Product not found or no longer available."
+    },
+    {
+      "id": "control_get_order_counterparty_valid",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Counterparty lookup succeeded and resolved seller context correctly."
+    },
+    {
+      "id": "reject_get_order_counterparty_missing_order_id",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing orderId was rejected cleanly."
+    },
+    {
+      "id": "reject_confirm_order_missing_order_id",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing orderId was rejected by confirm-order."
+    },
+    {
+      "id": "reject_confirm_order_forbidden_intruder",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-owner order confirmation was rejected."
+    },
+    {
+      "id": "reject_finalize_multi_missing_orders",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Missing multi-seller orders array was rejected cleanly."
+    },
+    {
+      "id": "reject_finalize_multi_duplicate_seller_groups",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected duplicate seller rejection, got 500: invalid input syntax for type uuid: \"checkout-dup-edgefx20260511214430\""
+    },
+    {
+      "id": "reject_admin_moderation_action_non_admin",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-admin moderation request was rejected."
+    },
+    {
+      "id": "reject_admin_moderation_action_missing_reason",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Empty admin moderation reason was rejected cleanly."
+    },
+    {
+      "id": "control_admin_moderation_action_approve_product_edit",
+      "expected": "should_accept",
+      "status": "fail",
+      "note": "Approved product edit did not normalize as expected: {\"name\":\"Updated​ Edge Product\",\"category\":\"Electronics\",\"description\":\"Updated description \\n\\n with extra spacing.\",\"images\":[\" https://example.com/updated-edge-product.jpg \",\"\"]}"
+    },
+    {
+      "id": "reject_admin_approve_bank_change_non_admin",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Non-admin bank-change review was rejected."
+    },
+    {
+      "id": "reject_admin_approve_bank_change_invalid_decision",
+      "expected": "should_reject",
+      "status": "pass",
+      "note": "Invalid bank-change decision was rejected cleanly."
+    },
+    {
+      "id": "control_admin_approve_bank_change_valid",
+      "expected": "should_accept",
+      "status": "pass",
+      "note": "Admin-approved bank change stored sanitized digits and cleared the pending request."
+    },
+    {
+      "id": "reject_process_order_deadlines_missing_order_id",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected missing orderId rejection, got 200: {\"success\":true,\"results\":[]}"
+    },
+    {
+      "id": "reject_process_order_deadlines_forbidden_intruder",
+      "expected": "should_reject",
+      "status": "fail",
+      "note": "Expected 403 for non-participant deadline processing, got 200: {\"success\":true,\"results\":[]}"
+    }
+  ]
+}

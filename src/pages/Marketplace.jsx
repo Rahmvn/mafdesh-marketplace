@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
-import { ChevronDown, MapPin, Search, X } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
@@ -21,7 +20,6 @@ import {
 
 const CACHED_PRODUCTS_KEY = 'cached_products';
 const RECENTLY_VIEWED_KEY = 'recently_viewed';
-const CAMPUS_OPTION_LIMIT = 14;
 
 function formatPrice(value) {
   return `\u20A6${Number(value).toLocaleString()}`;
@@ -370,14 +368,11 @@ export default function Marketplace() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [products, setProducts] = useState(() => readCachedProducts());
   const [selectedCampusGroupId, setSelectedCampusGroupId] = useState('');
-  const [isCampusPickerOpen, setIsCampusPickerOpen] = useState(false);
-  const [campusQuery, setCampusQuery] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [isLoading, setIsLoading] = useState(() => readCachedProducts().length === 0);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === 'undefined' ? 1280 : window.innerWidth
   );
-  const campusPickerRef = useRef(null);
 
   const availableCategories = ['All', ...PRODUCT_CATEGORIES];
 
@@ -435,32 +430,6 @@ export default function Marketplace() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isCampusPickerOpen) {
-      return undefined;
-    }
-
-    const handlePointerDown = (event) => {
-      if (!campusPickerRef.current?.contains(event.target)) {
-        setIsCampusPickerOpen(false);
-      }
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setIsCampusPickerOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isCampusPickerOpen]);
-
   const flashSaleProducts = useMemo(() => getActiveFlashSaleProducts(products, now), [now, products]);
   const marketplaceProducts = useMemo(() => excludeActiveFlashSaleProducts(products, now), [now, products]);
   const campusGroups = useMemo(() => buildCampusGroups(marketplaceProducts), [marketplaceProducts]);
@@ -473,7 +442,6 @@ export default function Marketplace() {
     [campusGroups, selectedCampusGroupId]
   );
   const hasActiveCampusFilter = Boolean(selectedCampusGroup);
-  const hasCampusOptions = campusGroups.length > 0;
 
   const fuse = useMemo(
     () =>
@@ -544,28 +512,6 @@ export default function Marketplace() {
       }));
   }, [campusFilteredProducts, categoryPreviewLimit, isDefaultCategoryView]);
 
-  const filteredCampusGroups = useMemo(() => {
-    const normalizedQuery = normalizeText(campusQuery);
-    const matchingCampusGroups = normalizedQuery
-      ? campusGroups.filter((campusGroup) =>
-          normalizeText(campusGroup?.displayName).includes(normalizedQuery)
-          || normalizeText(campusGroup?.state).includes(normalizedQuery)
-        )
-      : campusGroups;
-
-    if (!selectedCampusGroup) {
-      return matchingCampusGroups.slice(0, CAMPUS_OPTION_LIMIT);
-    }
-
-    const selectedId = String(selectedCampusGroup.id);
-    const prioritizedCampusGroups = [
-      ...matchingCampusGroups.filter((campusGroup) => String(campusGroup.id) === selectedId),
-      ...matchingCampusGroups.filter((campusGroup) => String(campusGroup.id) !== selectedId),
-    ];
-
-    return prioritizedCampusGroups.slice(0, CAMPUS_OPTION_LIMIT);
-  }, [campusGroups, campusQuery, selectedCampusGroup]);
-
   const emptyStateMessage = useMemo(() => {
     const messageParts = [];
 
@@ -590,14 +536,10 @@ export default function Marketplace() {
 
   const handleCampusGroupSelect = (campusGroup) => {
     setSelectedCampusGroupId(String(campusGroup?.id || ''));
-    setCampusQuery('');
-    setIsCampusPickerOpen(false);
   };
 
   const handleClearCampusFilters = () => {
     setSelectedCampusGroupId('');
-    setCampusQuery('');
-    setIsCampusPickerOpen(false);
   };
 
   const handleProductOpen = useCallback(
@@ -644,133 +586,99 @@ export default function Marketplace() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <section className="relative">
-            <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto pb-1">
-              <div className="relative shrink-0" ref={campusPickerRef}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!hasCampusOptions) {
-                      return;
-                    }
-                    setCampusQuery('');
-                    setIsCampusPickerOpen((current) => !current);
-                  }}
-                  disabled={!hasCampusOptions}
-                  aria-expanded={isCampusPickerOpen}
-                  aria-haspopup="dialog"
-                  className={`inline-flex items-center gap-2 rounded-full border bg-white px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                    !hasCampusOptions
-                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
-                      : selectedCampusGroup
-                      ? 'border-orange-200 text-orange-700 ring-1 ring-orange-100'
-                      : 'border-slate-200 text-slate-700 hover:border-blue-200 hover:text-blue-700'
-                  }`}
-                >
-                  <MapPin className="h-4 w-4 shrink-0" />
-                  <span className="max-w-[11rem] truncate sm:max-w-[14rem]">
-                    {selectedCampusGroup?.displayName || 'All campuses'}
-                  </span>
-                  <ChevronDown className={`h-4 w-4 shrink-0 transition ${isCampusPickerOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isCampusPickerOpen ? (
-                  <div
-                    role="dialog"
-                    aria-label="Campus filter"
-                    className="absolute left-0 top-full z-20 mt-2 w-[min(26rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)]"
+            {campusGroups.length > 0 && (
+              <div className="mt-2">
+                <div className="scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={handleClearCampusFilters}
+                    className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                      !selectedCampusGroup
+                        ? 'bg-blue-900 text-white'
+                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    }`}
                   >
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-900">Pick a campus</p>
-                      {selectedCampusGroup ? (
-                        <button
-                          type="button"
-                          onClick={handleClearCampusFilters}
-                          className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                        >
-                          All campuses
-                        </button>
-                      ) : null}
-                    </div>
+                    All Campuses
+                  </button>
 
-                    <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2">
-                      <Search className="h-4 w-4 text-blue-500" />
-                      <input
-                        type="text"
-                        value={campusQuery}
-                        onChange={(event) => setCampusQuery(event.target.value)}
-                        placeholder="Search campuses"
-                        aria-label="Search campuses"
-                        autoFocus
-                        className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                      />
-                      {campusQuery ? (
-                        <button
-                          type="button"
-                          onClick={() => setCampusQuery('')}
-                          aria-label="Clear campus search"
-                          className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
+                  {campusGroups.map((campusGroup) => {
+                    const isSelected = String(campusGroup.id) === String(selectedCampusGroup?.id || '');
+                    return (
+                      <button
+                        key={campusGroup.id}
+                        type="button"
+                        onClick={() => handleCampusGroupSelect(campusGroup)}
+                        className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                          isSelected
+                            ? 'bg-orange-600 text-white'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
+                      >
+                        {campusGroup.displayName}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                    <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-                      {filteredCampusGroups.map((campusGroup) => {
-                        const isSelected = String(campusGroup.id) === String(selectedCampusGroup?.id || '');
-
-                        return (
-                          <button
-                            key={campusGroup.id}
-                            type="button"
-                            onClick={() => handleCampusGroupSelect(campusGroup)}
-                            className={`w-full rounded-xl border px-3 py-3 text-left text-sm transition ${
-                              isSelected
-                                ? 'border-orange-200 bg-orange-50 text-orange-700 ring-1 ring-orange-100'
-                                : 'border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50/70'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <span className="block font-semibold">{campusGroup.displayName}</span>
-                              {isSelected ? (
-                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700">
-                                  Active
-                                </span>
-                              ) : null}
-                            </div>
-                            <span className="mt-1 block text-xs text-slate-500">
-                              {campusGroup.state || 'Seller campus'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {filteredCampusGroups.length === 0 ? (
-                      <p className="mt-3 px-1 text-sm text-slate-500">
-                        No campuses match that search yet.
-                      </p>
-                    ) : null}
+                {selectedCampusGroup && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-500">
+                      {'\ud83c\udfeb'} Showing products from <strong>{selectedCampusGroup.displayName}</strong>
+                      {selectedCampusGroup.state ? `, ${selectedCampusGroup.state}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearCampusFilters}
+                      className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                    >
+                      &times; Clear
+                    </button>
                   </div>
-                ) : null}
+                )}
+
+                {(() => {
+                  const states = [...new Set(campusGroups.map((campusGroup) => campusGroup.state).filter(Boolean))].sort();
+                  if (states.length < 2) return null;
+
+                  const selectedState = selectedCampusGroup?.state || '';
+
+                  return (
+                    <div className="mt-2 scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
+                      <span className="shrink-0 text-xs font-medium text-slate-400">State:</span>
+                      <button
+                        type="button"
+                        onClick={handleClearCampusFilters}
+                        className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                          !selectedState
+                            ? 'bg-blue-900 text-white'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
+                      >
+                        All States
+                      </button>
+                      {states.map((state) => (
+                        <button
+                          key={state}
+                          type="button"
+                          onClick={() => {
+                            const firstMatch = campusGroups.find((campusGroup) => campusGroup.state === state);
+                            if (firstMatch) handleCampusGroupSelect(firstMatch);
+                          }}
+                          className={`whitespace-nowrap rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                            selectedState === state
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          }`}
+                        >
+                          {state}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
-
-              {hasActiveCampusFilter ? (
-                <button
-                  type="button"
-                  onClick={handleClearCampusFilters}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Clear
-                </button>
-              ) : null}
-            </div>
-
-          </section>
+            )}
+          </div>
         </div>
 
         {flashSaleProducts.length > 0 && (

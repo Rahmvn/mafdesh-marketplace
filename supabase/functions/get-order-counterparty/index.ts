@@ -19,7 +19,7 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function normalizeText(value: unknown) {
-  return String(value || "").trim();
+  return String(value || "").replace(/\s+/gu, " ").trim();
 }
 
 serve(async (req) => {
@@ -54,7 +54,7 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null);
-    const orderId = body?.orderId;
+    const orderId = normalizeText(body?.orderId).slice(0, 80);
 
     if (!orderId) {
       return jsonResponse({ error: "Missing orderId" }, 400);
@@ -92,7 +92,7 @@ serve(async (req) => {
         .maybeSingle(),
       supabaseAdmin
         .from("profiles")
-        .select("*")
+        .select("id, full_name, username")
         .eq("id", counterpartyId)
         .maybeSingle(),
     ]);

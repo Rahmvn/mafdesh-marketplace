@@ -96,6 +96,15 @@ function formatLongDate(value) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function addDays(value, days) {
   if (!value) {
     return null;
@@ -799,19 +808,19 @@ export default function SellerPayments() {
               <div class="grid">
                 <div class="card">
                   <span class="label">Seller</span>
-                  <div class="value">${sellerName}</div>
+                  <div class="value">${escapeHtml(sellerName)}</div>
                 </div>
                 <div class="card">
                   <span class="label">Order</span>
-                  <div class="value">${row.orderNumber || 'N/A'}</div>
+                  <div class="value">${escapeHtml(row.orderNumber || 'N/A')}</div>
                 </div>
                 <div class="card">
                   <span class="label">Receipt date</span>
-                  <div class="value">${formatLongDate(row.createdAt)}</div>
+                  <div class="value">${escapeHtml(formatLongDate(row.createdAt))}</div>
                 </div>
                 <div class="card">
                   <span class="label">Status</span>
-                  <div class="value">${row.status}</div>
+                  <div class="value">${escapeHtml(row.status)}</div>
                 </div>
               </div>
 

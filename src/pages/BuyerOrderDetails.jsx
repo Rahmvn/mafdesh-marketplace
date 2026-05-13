@@ -34,6 +34,7 @@ import {
 import {
   openBuyerDispute,
   uploadDisputeEvidence,
+  validateDisputeEvidenceFiles,
 } from "../services/disputeService";
 import {
   fetchOrderAdminHolds,
@@ -61,6 +62,13 @@ import {
   getBusinessUrgencyClass,
   getUrgencyClass,
 } from "../utils/timeUtils";
+import {
+  DISPUTE_MESSAGE_MAX_LENGTH,
+  REVIEW_COMMENT_MAX_LENGTH,
+  normalizeMultilineText,
+  validateDisputeMessage,
+  validateReviewComment,
+} from '../utils/accountValidation';
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -660,8 +668,19 @@ export default function BuyerOrderDetails() {
       return;
     }
 
-    if (!disputeMessage.trim()) {
-      showGlobalWarning('Issue Required', 'Please describe the issue.');
+    const normalizedDisputeMessage = normalizeMultilineText(disputeMessage);
+    const disputeMessageError = validateDisputeMessage(normalizedDisputeMessage, {
+      required: true,
+    });
+    const disputeFileError = validateDisputeEvidenceFiles(disputeImages);
+
+    if (disputeMessageError) {
+      showGlobalWarning('Issue Required', disputeMessageError);
+      return;
+    }
+
+    if (disputeFileError) {
+      showGlobalWarning('Invalid Evidence', disputeFileError);
       return;
     }
     setUploadingDispute(true);
@@ -670,7 +689,7 @@ export default function BuyerOrderDetails() {
       if (disputeImages.length > 0) {
         uploadedPaths = await uploadDisputeImages(disputeImages);
       }
-      await openBuyerDispute(order.id, disputeMessage.trim(), uploadedPaths);
+      await openBuyerDispute(order.id, normalizedDisputeMessage, uploadedPaths);
       showGlobalSuccess('Dispute Submitted', 'Your dispute was submitted successfully. Our team will review.');
       setDisputeModal(false);
       setDisputeMessage('');
@@ -678,7 +697,7 @@ export default function BuyerOrderDetails() {
       loadOrder();
     } catch (err) {
       console.error(err);
-      showGlobalError('Dispute Failed', 'Failed to submit dispute. Please try again.');
+      showGlobalError('Dispute Failed', err?.message || 'Failed to submit dispute. Please try again.');
     } finally {
       setUploadingDispute(false);
     }
@@ -691,6 +710,14 @@ export default function BuyerOrderDetails() {
 
   const submitReview = async () => {
     if (!reviewModal.productId) return;
+    const normalizedComment = normalizeMultilineText(comment);
+    const reviewCommentError = validateReviewComment(normalizedComment);
+
+    if (reviewCommentError) {
+      showGlobalWarning('Review Comment Invalid', reviewCommentError);
+      return;
+    }
+
     const { error } = await supabase
       .from('reviews')
       .insert({
@@ -698,7 +725,7 @@ export default function BuyerOrderDetails() {
         product_id: reviewModal.productId,
         buyer_id: order.buyer_id,
         rating,
-        comment: comment.trim() || null
+        comment: normalizedComment || null
       });
     if (error) {
       if (error.code === '23505') {
@@ -1398,6 +1425,7 @@ export default function BuyerOrderDetails() {
               onChange={(e) => setDisputeMessage(e.target.value)}
               placeholder="Please describe the issue with this order..."
               rows="4"
+              maxLength={DISPUTE_MESSAGE_MAX_LENGTH}
               className="w-full border rounded p-2 mb-4"
               required
             />
@@ -1407,7 +1435,16 @@ export default function BuyerOrderDetails() {
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(e) => setDisputeImages(Array.from(e.target.files))}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  const fileError = validateDisputeEvidenceFiles(files);
+                  if (fileError) {
+                    showGlobalWarning('Invalid Evidence', fileError);
+                    return;
+                  }
+
+                  setDisputeImages(files);
+                }}
                 className="w-full"
               />
               {disputeImages.length > 0 && (
@@ -1482,6 +1519,7 @@ export default function BuyerOrderDetails() {
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows="3"
+                maxLength={REVIEW_COMMENT_MAX_LENGTH}
                 className="w-full border rounded p-2"
                 placeholder="Share your experience with this product..."
               />

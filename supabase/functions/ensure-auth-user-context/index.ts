@@ -33,7 +33,9 @@ function normalizeMarketplaceRole(value: unknown) {
 }
 
 function normalizeText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string"
+    ? value.replace(/[\u200B-\u200D\uFEFF]/gu, "").replace(/\s+/gu, " ").trim()
+    : "";
 }
 
 function normalizeOptionalUuid(value: unknown) {
@@ -49,6 +51,130 @@ function normalizeOptionalDate(value: unknown) {
   }
 
   return normalized;
+}
+
+function validateHumanName(value: string) {
+  if (!value) {
+    return "A valid full name is required for signup.";
+  }
+
+  if (value.length < 2 || value.length > 100) {
+    return "Full name must be between 2 and 100 characters.";
+  }
+
+  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'-]+$/u.test(value)) {
+    return "Full name contains invalid characters.";
+  }
+
+  return "";
+}
+
+function validateBusinessName(value: string) {
+  if (!value) {
+    return "A valid business name is required for seller signup.";
+  }
+
+  if (value.length < 2 || value.length > 120) {
+    return "Business name must be between 2 and 120 characters.";
+  }
+
+  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'&()/-]+$/u.test(value)) {
+    return "Business name contains invalid characters.";
+  }
+
+  return "";
+}
+
+function validatePhoneNumber(value: string) {
+  if (!/^0\d{10}$/.test(value)) {
+    return "Phone number must be a valid 11-digit Nigerian number starting with 0.";
+  }
+
+  return "";
+}
+
+function validateLocation(value: string) {
+  if (!value || value.length > 80 || value.includes("<") || value.includes(">")) {
+    return "A valid location is required for signup.";
+  }
+
+  return "";
+}
+
+function validateDateOfBirth(value: string) {
+  if (!value) {
+    return "Date of birth is required for signup.";
+  }
+
+  const birthDate = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(birthDate.getTime())) {
+    return "Date of birth must be a valid date.";
+  }
+
+  const now = new Date();
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDelta = now.getUTCMonth() - birthDate.getUTCMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < birthDate.getUTCDate())) {
+    age -= 1;
+  }
+
+  if (age < 16) {
+    return "You must be at least 16 years old to create an account.";
+  }
+
+  if (age > 120) {
+    return "Date of birth must be realistic.";
+  }
+
+  return "";
+}
+
+function validateUniversityName(value: string) {
+  if (!value || value.length < 2 || value.length > 120 || value.includes("<") || value.includes(">")) {
+    return "A valid university name is required for signup.";
+  }
+
+  return "";
+}
+
+function validateSelfServiceSignupInput({
+  role,
+  fullName,
+  phoneNumber,
+  dateOfBirth,
+  businessName,
+  location,
+  universityName,
+  universityState,
+  universityZone,
+}: {
+  role: string;
+  fullName: string;
+  phoneNumber: string;
+  dateOfBirth: string;
+  businessName: string;
+  location: string;
+  universityName: string;
+  universityState: string;
+  universityZone: string;
+}) {
+  const errors = [
+    validateHumanName(fullName),
+    validatePhoneNumber(phoneNumber),
+    validateDateOfBirth(dateOfBirth),
+    validateLocation(location),
+    validateUniversityName(universityName),
+  ].filter(Boolean);
+
+  if (role === "seller") {
+    errors.push(
+      validateBusinessName(businessName),
+      universityState ? "" : "University state is required for seller signup.",
+      universityZone ? "" : "University zone is required for seller signup."
+    );
+  }
+
+  return errors.filter(Boolean)[0] || "";
 }
 
 function errorMessage(error: unknown) {
@@ -189,18 +315,38 @@ serve(async (req) => {
     const universityName = normalizeText(body?.university_name || metadata?.university_name);
     const universityState = normalizeText(body?.university_state || metadata?.university_state);
     const universityZone = normalizeText(body?.university_zone || metadata?.university_zone);
+    const fullName = normalizeText(metadata?.full_name);
+    const location = normalizeText(metadata?.location);
+
+    if (desiredRole === "buyer" || desiredRole === "seller") {
+      const validationError = validateSelfServiceSignupInput({
+        role: desiredRole,
+        fullName,
+        phoneNumber,
+        dateOfBirth,
+        businessName,
+        location,
+        universityName,
+        universityState,
+        universityZone,
+      });
+
+      if (validationError) {
+        return jsonResponse({ error: validationError }, 400);
+      }
+    }
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .upsert(
         {
           id: authUser.id,
-          full_name: existingProfile?.full_name || normalizeText(metadata?.full_name) || null,
+          full_name: existingProfile?.full_name || fullName || null,
           username:
             existingProfile?.username ||
             normalizeText(metadata?.username).toLowerCase() ||
             null,
-          location: existingProfile?.location || normalizeText(metadata?.location) || null,
+          location: existingProfile?.location || location || null,
         },
         { onConflict: "id" }
       );

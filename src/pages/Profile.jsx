@@ -45,6 +45,13 @@ import {
   validateBankDetailsRequest,
 } from '../utils/bankDetailsRequests';
 import { findMatchingNigerianBankName, NIGERIAN_BANKS } from '../utils/nigerianBanks';
+import {
+  normalizeHumanName,
+  normalizePhoneNumber,
+  validateDateOfBirth,
+  validateHumanName,
+  validatePhoneNumber,
+} from '../utils/accountValidation';
 
 function getSellerVerificationLabel(status, isVerified) {
   if (isVerified) {
@@ -157,8 +164,8 @@ function getProfileDisplayName(profile) {
 
 function normalizeCoreProfileDetails(values = {}) {
   return {
-    full_name: String(values.full_name || '').trim(),
-    phone_number: String(values.phone_number || '').trim(),
+    full_name: normalizeHumanName(values.full_name),
+    phone_number: normalizePhoneNumber(values.phone_number),
     date_of_birth: String(values.date_of_birth || '').trim(),
   };
 }
@@ -818,32 +825,25 @@ export default function Profile() {
 
     const normalizedCoreDetails = normalizeCoreProfileDetails(coreDetailsForm);
 
-    if (!normalizedCoreDetails.full_name) {
-      const message = 'Please enter your full name.';
+    const fullNameError = validateHumanName(normalizedCoreDetails.full_name);
+    if (fullNameError) {
+      const message = fullNameError;
       setCoreDetailsMessage({ type: 'error', text: message });
       showError('Full Name Required', message);
       return;
     }
 
-    if (!normalizedCoreDetails.phone_number || normalizedCoreDetails.phone_number.length !== 11) {
-      const message = 'Please enter a valid 11-digit Nigerian phone number.';
+    const phoneNumberError = validatePhoneNumber(normalizedCoreDetails.phone_number);
+    if (phoneNumberError) {
+      const message = phoneNumberError;
       setCoreDetailsMessage({ type: 'error', text: message });
       showError('Phone Number Required', message);
       return;
     }
 
-    if (!normalizedCoreDetails.date_of_birth) {
-      const message = 'Please enter your date of birth.';
-      setCoreDetailsMessage({ type: 'error', text: message });
-      showError('Date of Birth Required', message);
-      return;
-    }
-
-    const birthDate = new Date(normalizedCoreDetails.date_of_birth);
-    const age = Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-
-    if (Number.isNaN(birthDate.getTime()) || age < 16) {
-      const message = 'You must be at least 16 years old.';
+    const dateOfBirthError = validateDateOfBirth(normalizedCoreDetails.date_of_birth);
+    if (dateOfBirthError) {
+      const message = dateOfBirthError;
       setCoreDetailsMessage({ type: 'error', text: message });
       showError('Age Requirement', message);
       return;
