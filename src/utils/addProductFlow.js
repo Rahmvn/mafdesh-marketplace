@@ -9,10 +9,7 @@ import {
   normalizeMultilineText,
   normalizeSingleLineText,
   validateProductDescription,
-  validateProductFeatureLine,
   validateProductName,
-  validateProductOverview,
-  validateProductSpecLine,
   validateSelectedFiles,
 } from './accountValidation';
 
@@ -22,6 +19,15 @@ export const MIN_PRODUCT_FEATURES = 3;
 export const MAX_PRODUCT_FEATURES = 10;
 export const MAX_PRODUCT_SPECS = 15;
 export const PRODUCT_IMAGE_SLOT_COUNT = 5;
+const ADD_PRODUCT_BASIC_STEP_FIELDS = new Set([
+  'name',
+  'category',
+  'marketPrice',
+  'discountPercent',
+  'stock',
+  'pickupEnabled',
+]);
+const ADD_PRODUCT_IMAGE_STEP_FIELDS = new Set(['images']);
 export const ADD_PRODUCT_STEPS = [
   { id: 1, label: 'Basic Info' },
   { id: 2, label: 'Images' },
@@ -255,35 +261,31 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
       newErrors[`attr_${key}`] = value;
     });
 
-    const overviewError = validateProductOverview(formData.overview);
-    if (overviewError) {
-      newErrors.overview = overviewError;
-    }
-
-    const fullDescriptionError = validateProductDescription(buildFullDescription(formData));
-    if (fullDescriptionError) {
-      newErrors.overview = fullDescriptionError;
-    }
-
-    for (const [index, feature] of getFeaturesForSubmit(formData.features).entries()) {
-      const featureError = validateProductFeatureLine(feature, `Feature ${index + 1}`);
-      if (featureError) {
-        newErrors.features = featureError;
-        break;
-      }
-    }
-
-    for (const [index, spec] of getSpecsForSubmit(formData.specs).entries()) {
-      const keyError = validateProductSpecLine(spec.key, `Specification name ${index + 1}`);
-      const valueError = validateProductSpecLine(spec.value, `Specification value ${index + 1}`);
-      if (keyError || valueError) {
-        newErrors.specs = keyError || valueError;
-        break;
-      }
+    const descriptionValue = buildProductDescription(formData.attributes, formData.category);
+    const descriptionError = validateProductDescription(descriptionValue);
+    if (descriptionError && !newErrors.attr_description) {
+      newErrors.attr_description = descriptionError;
     }
   }
 
   return newErrors;
+}
+
+export function getFirstAddProductInvalidStep(validationErrors = {}) {
+  const errorKeys =
+    validationErrors && typeof validationErrors === 'object'
+      ? Object.keys(validationErrors)
+      : [];
+
+  if (errorKeys.some((key) => ADD_PRODUCT_BASIC_STEP_FIELDS.has(key))) {
+    return 1;
+  }
+
+  if (errorKeys.some((key) => ADD_PRODUCT_IMAGE_STEP_FIELDS.has(key))) {
+    return 2;
+  }
+
+  return 3;
 }
 
 export function getDraftPayload(formData) {

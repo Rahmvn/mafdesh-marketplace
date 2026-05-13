@@ -67,7 +67,7 @@ function normalizeDisplayText(value) {
 
 function shouldShowDistinctPickupAddress(label, address) {
   return Boolean(
-    normalizeDisplayText(address) &&
+    normalizeDisplayText(address) &&  
       normalizeDisplayText(address) !== normalizeDisplayText(label)
   );
 }

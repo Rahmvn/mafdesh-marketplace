@@ -21,6 +21,7 @@ import {
   clearAddProductPreviewCache,
   getAddProductPreviewCache,
   getDraftPayload,
+  getFirstAddProductInvalidStep,
   getInitialAddProductFormData,
   hasDraftContent,
   loadSellerAddProductContext,
@@ -350,7 +351,18 @@ export default function AddProduct() {
   };
 
   const handlePreview = () => {
-    if (!validateStep('all')) {
+    const validationErrors = validateAddProductForm(formData, sellerPickupLocations, 'all');
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      const nextStep = getFirstAddProductInvalidStep(validationErrors);
+      setCurrentStep(nextStep);
+      showWarning(
+        'Complete required fields',
+        nextStep === currentStep
+          ? 'Please fix the highlighted fields before previewing your product.'
+          : `Please review step ${nextStep} and fix the highlighted fields before previewing your product.`
+      );
       return;
     }
 
