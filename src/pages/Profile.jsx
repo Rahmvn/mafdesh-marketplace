@@ -208,6 +208,31 @@ function getProfileDisplayName(profile) {
   );
 }
 
+function canTreatDisplayNameAsFullName(profile, displayName) {
+  const normalizedDisplayName = normalizeHumanName(displayName);
+
+  if (!normalizedDisplayName) {
+    return false;
+  }
+
+  const emailPrefix = String(profile?.email || '').split('@')[0]?.trim() || '';
+  const profileId = String(profile?.id || '').trim();
+
+  if (
+    normalizedDisplayName.includes('@')
+    || (emailPrefix && normalizedDisplayName.toLowerCase() === emailPrefix.toLowerCase())
+    || (profileId && normalizedDisplayName === profileId)
+  ) {
+    return false;
+  }
+
+  if (validateHumanName(normalizedDisplayName)) {
+    return false;
+  }
+
+  return /\s/u.test(normalizedDisplayName);
+}
+
 function getMissingCoreDetailsSummary(missingDetails) {
   const labels = [];
 
@@ -1286,11 +1311,12 @@ export default function Profile() {
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
   const sellerUniversityPolicyLocked = isSeller && !sellerUniversityEditAccess.canEdit;
   const universityFieldsLocked = sellerUniversityPolicyLocked || (Boolean(profile.university_name) && !isEditingUniversity);
-  const resolvedProfileFullName = getResolvedFullName(profile);
+  const resolvedProfileFullName = normalizeHumanName(getResolvedFullName(profile));
   const profileDisplayName = getProfileDisplayName(profile);
+  const displayNameCountsAsFullName = canTreatDisplayNameAsFullName(profile, profileDisplayName);
   const profileAge = getProfileAge(profile?.date_of_birth);
   const missingCoreDetails = {
-    full_name: !String(resolvedProfileFullName || '').trim(),
+    full_name: !(resolvedProfileFullName || displayNameCountsAsFullName),
     phone_number: !String(profile?.phone_number || '').trim(),
     date_of_birth: !String(profile?.date_of_birth || '').trim(),
   };
