@@ -1,9 +1,10 @@
 const FLASH_SALE_MAX_ITEMS = 10;
-const FLASH_SALE_MAX_DURATION_HOURS = 48;
+const FLASH_SALE_MAX_DURATION_DAYS = 5;
 const DEFAULT_MAX_DISCOUNT_PERCENT = 50;
 const FLASH_SALE_MIN_COMPLETED_ORDERS = 5;
 const FLASH_SALE_MIN_AVERAGE_RATING = 4.0;
 const FLASH_SALE_MAX_DISPUTE_RATE = 0.10;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -193,6 +194,55 @@ export function formatCompactCountdown({ hours = 0, minutes = 0, seconds = 0, ex
   return `${seconds}s`;
 }
 
+export function deriveFlashSaleDurationDays(saleStart, saleEnd) {
+  const startDate = toDate(saleStart);
+  const endDate = toDate(saleEnd);
+
+  if (!startDate || !endDate || endDate <= startDate) {
+    return '';
+  }
+
+  const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / DAY_IN_MS);
+  return String(Math.max(durationDays, 1));
+}
+
+export function buildFlashSaleWindowFromDuration({
+  durationDays,
+  existingStart = null,
+  existingEnd = null,
+  preserveExistingWindow = false,
+  now = new Date(),
+}) {
+  const normalizedDuration = Number(durationDays);
+
+  if (!Number.isInteger(normalizedDuration) || normalizedDuration <= 0) {
+    return {
+      saleStart: null,
+      saleEnd: null,
+    };
+  }
+
+  if (preserveExistingWindow) {
+    const startDate = toDate(existingStart);
+    const endDate = toDate(existingEnd);
+
+    if (startDate && endDate && endDate > startDate) {
+      return {
+        saleStart: startDate.toISOString(),
+        saleEnd: endDate.toISOString(),
+      };
+    }
+  }
+
+  const startDate = toDate(now) || new Date();
+  const endDate = new Date(startDate.getTime() + normalizedDuration * DAY_IN_MS);
+
+  return {
+    saleStart: startDate.toISOString(),
+    saleEnd: endDate.toISOString(),
+  };
+}
+
 export function getFlashSaleValidationErrors({
   enabled,
   eligibility,
@@ -204,14 +254,13 @@ export function getFlashSaleValidationErrors({
   deletedAt,
   price,
   salePrice,
-  saleStart,
-  saleEnd,
+  saleDurationDays,
   saleQuantityLimit,
   adminApprovedDiscount,
 }) {
   const errors = {};
   const shouldValidateConfiguration = Boolean(
-    enabled || salePrice || saleStart || saleEnd || saleQuantityLimit
+    enabled || salePrice || saleDurationDays || saleQuantityLimit
   );
 
   if (!shouldValidateConfiguration) {
@@ -220,9 +269,8 @@ export function getFlashSaleValidationErrors({
 
   const basePrice = toNumber(price);
   const parsedSalePrice = salePrice === '' ? NaN : toNumber(salePrice);
+  const parsedDurationDays = saleDurationDays === '' ? null : Number(saleDurationDays);
   const parsedQuantityLimit = saleQuantityLimit === '' ? null : Number(saleQuantityLimit);
-  const startDate = toDate(saleStart);
-  const endDate = toDate(saleEnd);
   const blockingSummary = getFlashSaleBlockingSummary(eligibility);
 
   if (blockingSummary) {
@@ -263,27 +311,12 @@ export function getFlashSaleValidationErrors({
     errors.salePrice = 'Discounts above 50% require admin approval.';
   }
 
-  if (!saleStart) {
-    errors.saleStart = 'Start time is required.';
-  } else if (!startDate) {
-    errors.saleStart = 'Enter a valid start time.';
-  }
-
-  if (!saleEnd) {
-    errors.saleEnd = 'End time is required.';
-  } else if (!endDate) {
-    errors.saleEnd = 'Enter a valid end time.';
-  }
-
-  if (startDate && endDate) {
-    if (endDate <= startDate) {
-      errors.saleEnd = 'End time must be after the start time.';
-    } else {
-      const durationHours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-      if (durationHours > FLASH_SALE_MAX_DURATION_HOURS) {
-        errors.saleEnd = 'Flash sales cannot last longer than 48 hours.';
-      }
-    }
+  if (!saleDurationDays) {
+    errors.saleDurationDays = 'Duration is required.';
+  } else if (!Number.isInteger(parsedDurationDays) || parsedDurationDays <= 0) {
+    errors.saleDurationDays = 'Duration must be a whole number greater than 0.';
+  } else if (parsedDurationDays > FLASH_SALE_MAX_DURATION_DAYS) {
+    errors.saleDurationDays = `Flash sales cannot last longer than ${FLASH_SALE_MAX_DURATION_DAYS} days.`;
   }
 
   if (saleQuantityLimit !== '' && saleQuantityLimit != null) {

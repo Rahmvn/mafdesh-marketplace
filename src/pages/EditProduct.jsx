@@ -36,6 +36,8 @@ import {
 import { supabase } from '../supabaseClient';
 import { getStoredUser, setStoredUser } from '../utils/storage';
 import {
+  buildFlashSaleWindowFromDuration,
+  deriveFlashSaleDurationDays,
   getFlashSaleBlockingMessages,
   getFlashSaleValidationErrors,
   normalizeFlashSaleEligibility,
@@ -66,8 +68,7 @@ const EDIT_PRODUCT_BASIC_STEP_FIELDS = new Set([
   'pickupEnabled',
   'flashSale',
   'salePrice',
-  'saleStart',
-  'saleEnd',
+  'saleDurationDays',
   'saleQuantityLimit',
 ]);
 
@@ -128,29 +129,6 @@ function StepIndicator({ currentStep, theme, darkMode }) {
       </div>
     </div>
   );
-}
-
-function toLocalDateTimeValue(value) {
-  if (!value) {
-    return '';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return offsetDate.toISOString().slice(0, 16);
-}
-
-function toIsoDateTime(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function parsePriceInput(value) {
@@ -269,7 +247,7 @@ function buildGeneralUpdates(formData, imageUrls) {
   return updates;
 }
 
-function buildFlashSalePayload(formData) {
+function buildFlashSalePayload(formData, productRecord) {
   if (!formData.flashSaleEnabled) {
     return {
       is_flash_sale: false,
@@ -280,11 +258,25 @@ function buildFlashSalePayload(formData) {
     };
   }
 
+  const existingDurationDays = deriveFlashSaleDurationDays(
+    productRecord?.sale_start,
+    productRecord?.sale_end
+  );
+  const preserveExistingWindow =
+    hasFlashSaleConfiguration(productRecord) &&
+    String(existingDurationDays || '') === String(formData.saleDurationDays || '');
+  const flashSaleWindow = buildFlashSaleWindowFromDuration({
+    durationDays: formData.saleDurationDays,
+    existingStart: productRecord?.sale_start,
+    existingEnd: productRecord?.sale_end,
+    preserveExistingWindow,
+  });
+
   return {
     is_flash_sale: true,
     sale_price: parseFloat(formData.salePrice),
-    sale_start: toIsoDateTime(formData.saleStart),
-    sale_end: toIsoDateTime(formData.saleEnd),
+    sale_start: flashSaleWindow.saleStart,
+    sale_end: flashSaleWindow.saleEnd,
     sale_quantity_limit: formData.saleQuantityLimit
       ? parseInt(formData.saleQuantityLimit, 10)
       : null,
@@ -438,8 +430,7 @@ export default function EditProduct() {
     pickupEnabled: false,
     flashSaleEnabled: false,
     salePrice: '',
-    saleStart: '',
-    saleEnd: '',
+    saleDurationDays: '',
     saleQuantityLimit: '',
   });
 
@@ -456,6 +447,10 @@ export default function EditProduct() {
   const flashSaleBlockingMessages = useMemo(
     () => getFlashSaleBlockingMessages(normalizedFlashSaleEligibility),
     [normalizedFlashSaleEligibility]
+  );
+  const flashSalePreviewWindow = useMemo(
+    () => buildFlashSaleWindowFromDuration({ durationDays: formData.saleDurationDays }),
+    [formData.saleDurationDays]
   );
   const shouldShowFlashSaleTrustSnapshot = Boolean(
     normalizedFlashSaleEligibility && !normalizedFlashSaleEligibility.eligible
@@ -540,8 +535,7 @@ export default function EditProduct() {
         pickupEnabled: (data.pickup_mode || PICKUP_MODE.DISABLED) !== PICKUP_MODE.DISABLED,
         flashSaleEnabled: hasFlashSaleConfiguration(data),
         salePrice: data.sale_price != null ? String(data.sale_price) : '',
-        saleStart: toLocalDateTimeValue(data.sale_start),
-        saleEnd: toLocalDateTimeValue(data.sale_end),
+        saleDurationDays: deriveFlashSaleDurationDays(data.sale_start, data.sale_end),
         saleQuantityLimit: data.sale_quantity_limit != null ? String(data.sale_quantity_limit) : '',
       });
     } catch (error) {
@@ -764,8 +758,7 @@ export default function EditProduct() {
           deletedAt: productRecord?.deleted_at,
           price: formData.price,
           salePrice: formData.salePrice,
-          saleStart: formData.saleStart,
-          saleEnd: formData.saleEnd,
+          saleDurationDays: formData.saleDurationDays,
           saleQuantityLimit: formData.saleQuantityLimit,
           adminApprovedDiscount: productRecord?.admin_approved_discount,
         })
@@ -843,7 +836,7 @@ export default function EditProduct() {
     try {
       const imageUrls = await uploadPreparedImages();
       const generalUpdates = buildGeneralUpdates(formData, imageUrls);
-      const flashSaleUpdates = buildFlashSalePayload(formData);
+      const flashSaleUpdates = buildFlashSalePayload(formData, productRecord);
       const generalChanged = hasGeneralChanges(productRecord, generalUpdates);
       const flashSaleChanged = hasFlashSaleChanges(productRecord, flashSaleUpdates);
 
@@ -1425,15 +1418,13 @@ export default function EditProduct() {
                         ...previousData,
                         flashSaleEnabled: enabled,
                         salePrice: enabled ? previousData.salePrice : '',
-                        saleStart: enabled ? previousData.saleStart : '',
-                        saleEnd: enabled ? previousData.saleEnd : '',
+                        saleDurationDays: enabled ? previousData.saleDurationDays || '1' : '',
                         saleQuantityLimit: enabled ? previousData.saleQuantityLimit : '',
                       }));
                       clearErrorFields([
                         'flashSale',
                         'salePrice',
-                        'saleStart',
-                        'saleEnd',
+                        'saleDurationDays',
                         'saleQuantityLimit',
                       ]);
                     }}
@@ -1501,34 +1492,31 @@ export default function EditProduct() {
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold">
-                        Start Time <span className="text-orange-500">*</span>
+                        Duration (Days) <span className="text-orange-500">*</span>
                       </label>
                       <input
-                        type="datetime-local"
-                        name="saleStart"
-                        value={formData.saleStart}
+                        type="number"
+                        name="saleDurationDays"
+                        min="1"
+                        max="5"
+                        step="1"
+                        value={formData.saleDurationDays}
                         onChange={handleChange}
                         className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
-                          errors.saleStart ? 'border-orange-500 focus:border-orange-500' : ''
+                          errors.saleDurationDays ? 'border-orange-500 focus:border-orange-500' : ''
                         }`}
                       />
-                      <FieldError message={errors.saleStart} />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold">
-                        End Time <span className="text-orange-500">*</span>
-                      </label>
-                      <input
-                        type="datetime-local"
-                        name="saleEnd"
-                        value={formData.saleEnd}
-                        onChange={handleChange}
-                        className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
-                          errors.saleEnd ? 'border-orange-500 focus:border-orange-500' : ''
-                        }`}
-                      />
-                      <FieldError message={errors.saleEnd} />
+                      <p className={`mt-2 text-xs ${theme.softText}`}>
+                        Flash sales start as soon as you save. Choose 1 to 5 days and we&apos;ll
+                        calculate the end time for you.
+                      </p>
+                      {flashSalePreviewWindow.saleEnd ? (
+                        <p className={`mt-2 text-xs ${theme.softText}`}>
+                          This flash sale will end on{' '}
+                          {new Date(flashSalePreviewWindow.saleEnd).toLocaleString()}.
+                        </p>
+                      ) : null}
+                      <FieldError message={errors.saleDurationDays} />
                     </div>
                   </div>
                 ) : null}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const {
   mockGetProductById,
@@ -294,9 +294,11 @@ describe('EditProduct flash-sale eligibility', () => {
 
     renderEditProduct();
 
-    expect(
-      await screen.findByLabelText(/enable flash sale pricing for this product/i)
-    ).toBeInTheDocument();
+    const toggle = await screen.findByLabelText(/enable flash sale pricing for this product/i);
+
+    expect(toggle).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.getByText('Duration (Days)')).toBeInTheDocument();
     expect(
       screen.queryByText(/flash sales are locked for this product right now/i)
     ).not.toBeInTheDocument();

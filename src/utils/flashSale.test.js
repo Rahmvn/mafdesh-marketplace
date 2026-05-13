@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildFlashSaleWindowFromDuration,
+  deriveFlashSaleDurationDays,
   getFlashSaleBlockingMessages,
   getActiveFlashSaleProducts,
   getFlashSaleValidationErrors,
@@ -58,14 +60,13 @@ describe('flashSale utils', () => {
       deletedAt: null,
       price: 10000,
       salePrice: 4000,
-      saleStart: '2026-04-19T08:00',
-      saleEnd: '2026-04-21T12:30',
+      saleDurationDays: '6',
       saleQuantityLimit: '9',
       adminApprovedDiscount: false,
     });
 
     expect(errors.salePrice).toBe('Discounts above 50% require admin approval.');
-    expect(errors.saleEnd).toBe('Flash sales cannot last longer than 48 hours.');
+    expect(errors.saleDurationDays).toBe('Flash sales cannot last longer than 5 days.');
     expect(errors.saleQuantityLimit).toBe('Quantity limit cannot exceed current stock.');
   });
 
@@ -118,8 +119,7 @@ describe('flashSale utils', () => {
       deletedAt: null,
       price: 10000,
       salePrice: '',
-      saleStart: '',
-      saleEnd: '',
+      saleDurationDays: '',
       saleQuantityLimit: '',
       adminApprovedDiscount: false,
     });
@@ -128,8 +128,7 @@ describe('flashSale utils', () => {
       'This product needs at least 1 item in stock before it can join a flash sale.'
     );
     expect(errors.salePrice).toBe('Sale price is required.');
-    expect(errors.saleStart).toBe('Start time is required.');
-    expect(errors.saleEnd).toBe('End time is required.');
+    expect(errors.saleDurationDays).toBe('Duration is required.');
   });
 
   it('skips stale fallback trust gating when eligibility is temporarily unavailable', () => {
@@ -144,15 +143,31 @@ describe('flashSale utils', () => {
       deletedAt: '2026-04-19T12:00:00Z',
       price: 10000,
       salePrice: '',
-      saleStart: '',
-      saleEnd: '',
+      saleDurationDays: '',
       saleQuantityLimit: '',
       adminApprovedDiscount: false,
     });
 
     expect(errors.flashSale).toBeUndefined();
     expect(errors.salePrice).toBe('Sale price is required.');
-    expect(errors.saleStart).toBe('Start time is required.');
-    expect(errors.saleEnd).toBe('End time is required.');
+    expect(errors.saleDurationDays).toBe('Duration is required.');
+  });
+
+  it('derives sale duration in days from an existing flash-sale window', () => {
+    expect(
+      deriveFlashSaleDurationDays('2026-04-19T08:00:00Z', '2026-04-24T08:00:00Z')
+    ).toBe('5');
+  });
+
+  it('builds a new flash-sale window from the chosen duration', () => {
+    const window = buildFlashSaleWindowFromDuration({
+      durationDays: '5',
+      now: '2026-04-19T08:00:00Z',
+    });
+
+    expect(window).toEqual({
+      saleStart: '2026-04-19T08:00:00.000Z',
+      saleEnd: '2026-04-24T08:00:00.000Z',
+    });
   });
 });
