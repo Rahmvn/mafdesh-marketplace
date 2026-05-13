@@ -158,6 +158,14 @@ function createSellerProfile(overrides = {}) {
 
 describe('Profile', () => {
   beforeEach(() => {
+    mockGetSessionWithRetry.mockReset();
+    mockUsersSingle.mockReset();
+    mockProfilesMaybeSingle.mockReset();
+    mockProfilesUpsert.mockReset();
+    mockSearchUniversities.mockReset();
+    mockUpdateEq.mockReset();
+    mockAuthUpdateUser.mockReset();
+
     mockGetSessionWithRetry.mockResolvedValue({
       data: {
         session: {
@@ -182,6 +190,50 @@ describe('Profile', () => {
     mockSearchUniversities.mockResolvedValue([]);
     mockUpdateEq.mockResolvedValue({ error: null });
     mockAuthUpdateUser.mockResolvedValue({ error: null });
+  });
+
+  it('allows not-submitted sellers to edit and save university details', async () => {
+    mockUsersSingle
+      .mockResolvedValueOnce({
+        data: createSellerProfile(),
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: createSellerProfile({
+          university_id: '',
+          university_name: 'Updated University',
+          university_state: 'Lagos',
+          university_zone: 'South West',
+        }),
+        error: null,
+      });
+
+    renderProfile();
+
+    expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+
+    const universityInput = await screen.findByLabelText(/university name/i);
+    expect(universityInput).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /edit university details/i }));
+
+    await waitFor(() => {
+      expect(universityInput).not.toBeDisabled();
+      expect(universityInput).toHaveFocus();
+    });
+
+    fireEvent.change(universityInput, {
+      target: { value: 'Updated University' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /save university details/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateEq).toHaveBeenCalledWith('id', 'seller-1');
+      expect(screen.getByText('University details saved successfully.')).toBeInTheDocument();
+    });
   });
 
   it('unlocks and focuses the university form when edit is clicked', async () => {
@@ -212,6 +264,83 @@ describe('Profile', () => {
       expect(universityInput).toBeDisabled();
       expect(universityInput).toHaveValue('University of Lagos');
     });
+  });
+
+  it('keeps pending sellers locked and rejects direct university submits', async () => {
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        verification_status: 'pending',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+
+    const universityInput = await screen.findByLabelText(/university name/i);
+    expect(universityInput).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /edit university details/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /contact support/i })).toBeInTheDocument();
+
+    fireEvent.submit(universityInput.closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/campus identity is locked after verification starts/i)[0]).toBeInTheDocument();
+    });
+
+    expect(mockUpdateEq).not.toHaveBeenCalled();
+  });
+
+  it('keeps approved sellers locked and shows support guidance', async () => {
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        is_verified_seller: true,
+        verification_status: 'approved',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+
+    const universityInput = await screen.findByLabelText(/university name/i);
+    expect(universityInput).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /edit university details/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /contact support/i })).toBeInTheDocument();
+  });
+
+  it('allows rejected sellers to edit university details again', async () => {
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        verification_status: 'rejected',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+
+    const universityInput = await screen.findByLabelText(/university name/i);
+    expect(universityInput).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /edit university details/i }));
+
+    await waitFor(() => {
+      expect(universityInput).not.toBeDisabled();
+    });
+
+    expect(
+      screen.getByText(/correct your campus identity before resubmitting verification/i)
+    ).toBeInTheDocument();
   });
 
   it('keeps the bank picker search-first and only shows suggestions after typing enough', async () => {
@@ -279,5 +408,35 @@ describe('Profile', () => {
         },
       });
     });
+  });
+
+  it('uses legacy saved name fields before falling back to the user id', async () => {
+    mockGetSessionWithRetry.mockResolvedValueOnce({
+      data: {
+        session: {
+          user: {
+            id: 'seller-1',
+            email: 'seller@example.com',
+            user_metadata: {
+              name: 'Legacy Jane Seller',
+            },
+          },
+        },
+      },
+    });
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        full_name: '',
+        phone_number: '08012345678',
+        date_of_birth: '1999-04-10',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Legacy Jane Seller')).toBeInTheDocument();
+    expect(screen.queryByText('Complete your profile')).not.toBeInTheDocument();
+    expect(screen.queryByText('seller-1')).not.toBeInTheDocument();
   });
 });

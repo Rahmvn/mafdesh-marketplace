@@ -71,6 +71,31 @@ function getSellerVerificationLabel(status, isVerified) {
   return 'Not submitted';
 }
 
+function getSellerUniversityEditAccess(status, isVerified) {
+  const normalizedStatus = isVerified
+    ? 'approved'
+    : String(status || '').trim().toLowerCase() || 'not_submitted';
+
+  if (normalizedStatus === 'pending' || normalizedStatus === 'approved') {
+    return {
+      canEdit: false,
+      status: normalizedStatus,
+    };
+  }
+
+  if (normalizedStatus === 'rejected') {
+    return {
+      canEdit: true,
+      status: 'rejected',
+    };
+  }
+
+  return {
+    canEdit: true,
+    status: 'not_submitted',
+  };
+}
+
 function normalizeUniversityPayload(values = {}) {
   return {
     university_id: values.university_id || null,
@@ -152,12 +177,33 @@ function readFirstFilledValue(...values) {
   return '';
 }
 
+function getResolvedFullName(...sources) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') {
+      continue;
+    }
+
+    const candidate = readFirstFilledValue(
+      source.full_name,
+      source.fullName,
+      source.name
+    );
+
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return '';
+}
+
 function getProfileDisplayName(profile) {
   return (
     readFirstFilledValue(
-      profile?.full_name,
-      profile?.id,
-      String(profile?.email || '').split('@')[0]
+      getResolvedFullName(profile),
+      profile?.username,
+      String(profile?.email || '').split('@')[0],
+      profile?.id
     ) || 'Account'
   );
 }
@@ -172,17 +218,14 @@ function normalizeCoreProfileDetails(values = {}) {
 
 function mergeProfileData(userData = {}, profileData = {}, authUser = null) {
   const authMetadata = authUser?.user_metadata || authUser?.raw_user_meta_data || {};
+  const resolvedFullName = getResolvedFullName(profileData, userData, authMetadata);
 
   return {
     ...userData,
     ...(profileData || {}),
     email: readFirstFilledValue(userData?.email, authUser?.email, profileData?.email),
     role: readFirstFilledValue(userData?.role, profileData?.role, authMetadata?.role),
-    full_name: readFirstFilledValue(
-      profileData?.full_name,
-      userData?.full_name,
-      authMetadata?.full_name
-    ),
+    full_name: resolvedFullName,
     username: readFirstFilledValue(
       profileData?.username,
       userData?.username,
@@ -808,6 +851,19 @@ export default function Profile() {
   };
 
   const openUniversityEdit = () => {
+    const editAccess = getSellerUniversityEditAccess(
+      profile?.verification_status,
+      Boolean(profile?.is_verified || profile?.is_verified_seller)
+    );
+
+    if (profile?.role === 'seller' && !editAccess.canEdit) {
+      setUniversityMessage({
+        type: 'error',
+        text: 'Your campus identity is locked after verification starts. Contact support if you need to change it.',
+      });
+      return;
+    }
+
     setUniversityMessage(null);
     setActiveSellerTab('university');
     resetUniversityFormToProfile();
@@ -853,6 +909,7 @@ export default function Profile() {
 
     try {
       const userPayload = {
+        full_name: normalizedCoreDetails.full_name,
         phone_number: normalizedCoreDetails.phone_number,
         date_of_birth: normalizedCoreDetails.date_of_birth,
       };
@@ -911,6 +968,19 @@ export default function Profile() {
     event.preventDefault();
     setUniversityMessage(null);
 
+    const editAccess = getSellerUniversityEditAccess(
+      profile?.verification_status,
+      Boolean(profile?.is_verified || profile?.is_verified_seller)
+    );
+
+    if (profile?.role === 'seller' && !editAccess.canEdit) {
+      setUniversityMessage({
+        type: 'error',
+        text: 'Your campus identity is locked after verification starts. Contact support if you need to change it.',
+      });
+      return;
+    }
+
     const payload = normalizeUniversityPayload(universityForm);
 
     if (!payload.university_name || !payload.university_state) {
@@ -956,10 +1026,7 @@ export default function Profile() {
 
       await loadUserProfile();
 
-      const shouldResetVerification = identityChanged && (
-        Boolean(profile?.is_verified_seller || profile?.is_verified)
-        || String(profile?.verification_status || '').trim().toLowerCase() !== 'not_submitted'
-      );
+      const shouldResetVerification = identityChanged && editAccess.status === 'rejected';
 
       const successText = shouldResetVerification
         ? 'University details saved. Seller verification has been reset and must be submitted again for the new campus identity.'
@@ -1189,9 +1256,14 @@ export default function Profile() {
   const isSeller = profile.role === 'seller';
   const isVerified = Boolean(profile.is_verified || profile.is_verified_seller);
   const verificationLabel = getSellerVerificationLabel(profile.verification_status, isVerified);
+  const sellerUniversityEditAccess = getSellerUniversityEditAccess(
+    profile.verification_status,
+    isVerified
+  );
   const hasActiveDetails = profile.bank_name || profile.account_number || profile.account_name;
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
-  const universityFieldsLocked = Boolean(profile.university_name) && !isEditingUniversity;
+  const sellerUniversityPolicyLocked = isSeller && !sellerUniversityEditAccess.canEdit;
+  const universityFieldsLocked = sellerUniversityPolicyLocked || (Boolean(profile.university_name) && !isEditingUniversity);
   const profileDisplayName = getProfileDisplayName(profile);
   const profileAge = getProfileAge(profile?.date_of_birth);
   const missingCoreDetails = {
@@ -1489,13 +1561,19 @@ export default function Profile() {
               onSubmit={submitUniversityIdentity}
               className="space-y-4"
             >
-                {universityFieldsLocked ? (
+                {sellerUniversityPolicyLocked ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    Campus identity is locked after verification starts. Contact support if you need to change it.
+                  </div>
+                ) : universityFieldsLocked ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     Click Edit to update these details.
                   </div>
                 ) : (
                   <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                    Changes reset verification review.
+                    {sellerUniversityEditAccess.status === 'rejected'
+                      ? 'Correct your campus identity before resubmitting verification.'
+                      : 'Set your campus identity before starting verification.'}
                   </div>
                 )}
 
@@ -1556,7 +1634,15 @@ export default function Profile() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                {universityFieldsLocked ? (
+                {sellerUniversityPolicyLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/support')}
+                    className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+                  >
+                    Contact Support
+                  </button>
+                ) : universityFieldsLocked ? (
                   <button
                     type="button"
                     onClick={openUniversityEdit}

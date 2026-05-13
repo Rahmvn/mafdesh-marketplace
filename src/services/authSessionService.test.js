@@ -109,6 +109,19 @@ describe('authSessionService.signOutAndClearAuthState', () => {
     expect(navigate).toHaveBeenCalledWith('/admin/orders', { replace: true });
   });
 
+  it('routes sellers to the seller dashboard instead of cart return URLs', async () => {
+    const navigate = vi.fn();
+    const { routeAuthenticatedUser } = await import('./authSessionService');
+
+    routeAuthenticatedUser(
+      navigate,
+      { id: 'seller-1', role: 'seller' },
+      { returnUrl: '/cart' }
+    );
+
+    expect(navigate).toHaveBeenCalledWith('/seller/dashboard', { replace: true });
+  });
+
   it('uses the role stored in the public users table instead of auth metadata overrides', async () => {
     mockUsersMaybeSingle.mockResolvedValue({
       data: {

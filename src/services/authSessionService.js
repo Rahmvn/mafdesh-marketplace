@@ -38,7 +38,7 @@ function isRoleCompatibleReturnUrl(role, returnUrl) {
   }
 
   if (role === "seller") {
-    return !safeReturnUrl.startsWith("/admin");
+    return !safeReturnUrl.startsWith("/admin") && safeReturnUrl !== "/cart";
   }
 
   return false;

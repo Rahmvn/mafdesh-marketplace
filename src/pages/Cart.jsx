@@ -618,9 +618,7 @@ export default function Cart() {
                   <h2 className="text-xl font-bold text-blue-900 sm:text-2xl">
                     Similar products you may like
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    We boost strong matches, including verified campus sellers, without hiding other sellers.
-                  </p>
+              
                 </div>
                 <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
               </div>

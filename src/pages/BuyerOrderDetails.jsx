@@ -1,16 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import {
-  getSessionWithRetry,
-  getUserWithRetry,
-  refreshSessionWithRetry,
-} from "../utils/authResilience";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
-import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Phone, Star } from "lucide-react";
-import VerificationBadge from "../components/VerificationBadge";
+import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Star } from "lucide-react";
 import DisputeThread from "../components/DisputeThread";
 import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
 import useModal from "../hooks/useModal";
@@ -46,18 +40,15 @@ import { getBuyerOrderAmounts } from "../utils/orderAmounts";
 import { getProductPricing } from "../utils/flashSale";
 import {
   enrichProductsWithPublicSellerData,
-  fetchPublicSellerDirectory,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
 import {
   useOrderDeadlineAutoProcessing,
 } from "../services/orderDeadlineService";
-import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
 import { scoreRecommendationProducts } from "../utils/recommendationScoring";
 import {
   formatBusinessDeadline,
-  formatLagosDeadline,
   formatRemaining,
   getBusinessUrgencyClass,
   getUrgencyClass,
@@ -72,21 +63,6 @@ import {
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
-}
-
-function getValidPhoneNumber(value, ...disallowedValues) {
-  const text = String(value || "").trim();
-
-  if (!text) {
-    return "";
-  }
-
-  if (disallowedValues.some((candidate) => normalizeDisplayText(candidate) === normalizeDisplayText(text))) {
-    return "";
-  }
-
-  const digitsOnly = text.replace(/\D/g, "");
-  return digitsOnly.length >= 7 ? text : "";
 }
 
 function shouldShowDistinctPickupAddress(label, address) {
@@ -182,7 +158,6 @@ export default function BuyerOrderDetails() {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
-  const [seller, setSeller] = useState(null);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [recommendationProducts, setRecommendationProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -211,85 +186,6 @@ export default function BuyerOrderDetails() {
       new Set(items.map((item) => String(item?.product?.id || "")).filter(Boolean)),
     [items]
   );
-
-  const loadSellerDetails = useCallback(async (orderId) => {
-    const invokeCounterparty = async (accessToken) => {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error('Supabase URL is not configured.');
-      }
-
-      const response = await fetchWithTimeout(
-        `${supabaseUrl}/functions/v1/get-order-counterparty`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ orderId }),
-        }
-      );
-
-      const payload = await response.json().catch(() => ({}));
-      return { response, payload };
-    };
-
-    const { data: sessionData } = await getSessionWithRetry(supabase.auth);
-    let accessToken = sessionData.session?.access_token;
-
-    if (!accessToken) {
-      const {
-        data: refreshedSession,
-        error: refreshError,
-      } = await refreshSessionWithRetry(supabase.auth);
-
-      if (refreshError) {
-        console.error("Counterparty session refresh error:", refreshError);
-        return null;
-      }
-
-      accessToken = refreshedSession.session?.access_token;
-    }
-
-    if (!accessToken) {
-      console.error("Counterparty lookup error: Missing access token.");
-      return null;
-    }
-
-    let { response, payload } = await invokeCounterparty(accessToken);
-
-    if (response.status === 401) {
-      const {
-        data: refreshedSession,
-        error: refreshError,
-      } = await refreshSessionWithRetry(supabase.auth);
-
-      if (refreshError) {
-        console.error("Counterparty session refresh error:", refreshError);
-        return null;
-      }
-
-      const refreshedToken = refreshedSession.session?.access_token;
-
-      if (!refreshedToken) {
-        console.error("Counterparty lookup error: Missing refreshed access token.");
-        return null;
-      }
-
-      ({ response, payload } = await invokeCounterparty(refreshedToken));
-    }
-
-    if (!response.ok) {
-      console.error("Counterparty lookup error:", {
-        status: response.status,
-        payload,
-      });
-      return null;
-    }
-
-    return payload?.counterparty || null;
-  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -368,39 +264,7 @@ export default function BuyerOrderDetails() {
       setExistingReviews(reviewedProductIds);
     }
 
-    const {
-      data: { user: authUser },
-    } = await getUserWithRetry(supabase.auth);
-
-    const sellerDetails = authUser ? await loadSellerDetails(orderData.id) : null;
-
-    const sellerDirectory = await fetchPublicSellerDirectory([orderData.seller_id]);
-    const publicSeller = sellerDirectory[String(orderData.seller_id)] || null;
-    const profile = publicSeller?.profiles || null;
-
-    const businessName = String(
-      sellerDetails?.businessName || publicSeller?.business_name || ""
-    ).trim();
-    const contactName = String(sellerDetails?.fullName || profile?.full_name || "").trim();
-    const username = String(sellerDetails?.username || profile?.username || "").trim();
-
-    const sellerPhone =
-      getValidPhoneNumber(sellerDetails?.phoneNumber, username, contactName, businessName) ||
-      "";
-
     setOrder(orderData);
-    setSeller({
-      id: String(publicSeller?.id || orderData.seller_id || "").trim(),
-      name: businessName || contactName || String(publicSeller?.id || orderData.seller_id || "").trim() || "Seller",
-      businessName,
-      contactName,
-      username,
-      phone: sellerPhone,
-      is_verified: Boolean(sellerDetails?.isVerified || publicSeller?.is_verified),
-      university_name: publicSeller?.university_name || "",
-      university_state: publicSeller?.university_state || "",
-      average_rating: publicSeller?.average_rating ?? null,
-    });
     try {
       const refundRequestRows = await fetchOrderRefundRequests(id);
       setRefundRequests(refundRequestRows);
@@ -415,7 +279,7 @@ export default function BuyerOrderDetails() {
       setAdminHolds([]);
     }
     setLoading(false);
-  }, [id, loadSellerDetails, navigate]);
+  }, [id, navigate]);
 
   useEffect(() => {
     loadOrder();
@@ -797,11 +661,7 @@ export default function BuyerOrderDetails() {
   const shipDeadlineExpired = isExpired(order.ship_deadline);
   const pickupDeadlineExpired = isExpired(order.auto_cancel_at);
   const disputeDeadlineExpired = isExpired(order.dispute_deadline);
-  const shipTimerLabel = formatBusinessDeadline(order.ship_deadline, now);
-  const shipDueLabel = formatLagosDeadline(order.ship_deadline);
-  const shipUrgencyClass = getBusinessUrgencyClass(order.ship_deadline, now);
   const pickupTimerLabel = formatBusinessDeadline(order.auto_cancel_at, now);
-  const pickupDueLabel = formatLagosDeadline(order.auto_cancel_at);
   const pickupUrgencyClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
 
   const steps = [
@@ -814,8 +674,8 @@ export default function BuyerOrderDetails() {
       desc: isRefundProcessing
         ? "Refund request is processing. Fulfillment is paused during admin review."
         : isDelivery
-          ? "Seller has 2 business days to ship."
-          : "Seller has 2 business days to prepare for pickup.",
+          ? "Seller is preparing your order."
+          : "Seller is preparing your pickup order.",
       expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
@@ -838,12 +698,9 @@ export default function BuyerOrderDetails() {
   if (isAdminHoldProcessing) {
     actionMessage = "This order is paused while admin reviews it. Order actions are disabled until review is resolved.";
   } else if (isRefundProcessing) {
-    actionMessage = "Your refund request is processing. The seller cannot ship or mark this order ready for pickup while admin reviews it. Admin has up to 10 days to decide.";
+    actionMessage = "Your refund request is processing. Order updates are paused while admin reviews it.";
   } else if (order.status === "PAID_ESCROW") {
     actionMessage = "Seller is preparing your order. You'll be notified when it's ready.";
-    if (shipDueLabel) {
-      actionMessage += ` Seller has until ${shipDueLabel} to prepare.`;
-    }
   }  else if (order.status === "SHIPPED") {
   actionMessage = "Your order has been shipped and is on its way. Once the seller marks it as delivered, you will be able to confirm receipt.";
   // No action buttons for SHIPPED (buyer cannot confirm yet)
@@ -853,7 +710,7 @@ export default function BuyerOrderDetails() {
     if (pickupDeadlineExpired) {
       actionMessage = "The pickup window has expired. This order will be cancelled.";
     } else {
-      actionMessage = "Your order is ready for pickup. Please inspect the items carefully before confirming pickup. Once confirmed, the sale is final and you cannot request a refund.";
+      actionMessage = "Your order is ready for pickup. Inspect everything carefully before you confirm.";
       actionButton = (
         <>
           <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Pickup & Release Payment</button>
@@ -861,11 +718,11 @@ export default function BuyerOrderDetails() {
         </>
       );
     }
-   } else if (order.status === "DELIVERED") {
+  } else if (order.status === "DELIVERED") {
   if (disputeDeadlineExpired) {
     actionMessage = "The dispute window has passed. The order will auto-complete.";
   } else {
-    actionMessage = "Order has been delivered. Please confirm receipt or report an issue within the dispute window.";
+    actionMessage = "Order has been delivered. Confirm receipt or report a problem if anything is wrong.";
     actionButton = (
       <>
         <button onClick={confirmDelivery} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Delivery</button>
@@ -899,34 +756,12 @@ export default function BuyerOrderDetails() {
         </p>
       </div>
     );
-  } else if (isRefundProcessing) {
-    infoBox = (
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
-          <AlertCircle size={18} /> Refund review in progress
-        </h3>
-        <p className="text-sm text-amber-800">
-          This order is temporarily on hold while admin reviews the refund request. Fulfillment stays paused during the review window.
-          {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
-        </p>
-      </div>
-    );
   } else if (order.status === "PAID_ESCROW") {
     if (shipDeadlineExpired) {
       infoBox = (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Seller missed deadline</h3>
           <p className="text-sm text-red-700">The seller did not prepare your order in time. The order will be cancelled and you will be refunded.</p>
-        </div>
-      );
-    } else {
-      infoBox = (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2"><Clock size={18} /> What's happening?</h3>
-          <p className="text-sm text-blue-700">
-            The seller has <strong className={shipUrgencyClass}>{shipTimerLabel}</strong> to prepare your order.
-            You'll be notified when it's {isDelivery ? "shipped" : "ready for pickup"}.
-          </p>
         </div>
       );
     }
@@ -951,18 +786,6 @@ export default function BuyerOrderDetails() {
           <p className="text-sm text-orange-700 mt-2">
             If anything is wrong, use the <strong>"Report a Problem"</strong> button below instead of confirming.
           </p>
-          <div className="mt-3 p-3 bg-orange-100 rounded-lg">
-            <p className="text-sm font-medium text-orange-800 flex items-center gap-1">
-              <Clock size={16} />
-              Pickup deadline:
-            </p>
-            <p className={`text-xl font-bold ${pickupUrgencyClass}`}>
-              {pickupTimerLabel}
-            </p>
-            <p className="text-xs text-gray-600 mt-1">
-              Must be picked up by {pickupDueLabel}
-            </p>
-          </div>
         </div>
       );
     }
@@ -979,8 +802,7 @@ export default function BuyerOrderDetails() {
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Confirm delivery or report an issue</h3>
           <p className="text-sm text-yellow-700">
-            You have <strong className={getUrgencyClass(order.dispute_deadline, now)}>{formatRemaining(order.dispute_deadline, now)}</strong> to confirm delivery or open a dispute.
-            If you don't act, the order will auto-complete and payment will be released to the seller.
+            Confirm delivery if everything arrived correctly, or report a problem if something is wrong. If you do nothing, the order will auto-complete.
           </p>
         </div>
       );
@@ -1201,32 +1023,6 @@ export default function BuyerOrderDetails() {
             )}
           </div>
         </div>
-
-        {/* Seller Info */}
-    {seller && (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-    <h2 className="font-semibold text-gray-900 mb-3">Seller</h2>
-    <div className="flex flex-wrap items-center gap-2">
-      <p className="text-gray-900 font-medium">
-        {seller.businessName || seller.contactName || seller.id || "Seller"}
-      </p>
-      {seller.is_verified && <VerificationBadge />}
-    </div>
-    {seller.university_name ? (
-      <p className="mt-2 text-sm text-gray-600">
-        {[seller.university_name, seller.university_state].filter(Boolean).join(', ')}
-      </p>
-    ) : null}
-    {seller.phone && (
-      <div className="flex items-center gap-2 mt-2 text-gray-700">
-        <Phone size={16} className="text-gray-500" />
-        <span className="font-medium">Phone:</span>
-        <span>{seller.phone}</span>
-      </div>
-    )}
-  </div>
-)}
-
         {/* Pickup / Delivery Info */}
         {isPickup && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 border-l-4 border-l-orange-500">
@@ -1252,21 +1048,7 @@ export default function BuyerOrderDetails() {
                 )}
               </>
             ) : (
-              <p className="text-gray-500">The seller will provide pickup details. Contact them for arrangement.</p>
-            )}
-            {order.auto_cancel_at && (
-              <div className="mt-3 p-3 bg-orange-50 rounded-lg">
-                <p className="text-sm font-medium text-orange-800 flex items-center gap-1">
-                  <Clock size={16} />
-                  Pickup deadline:
-                </p>
-                <p className={`text-xl font-bold ${pickupUrgencyClass}`}>
-                  {pickupTimerLabel}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Must be picked up by {pickupDueLabel}
-                </p>
-              </div>
+              <p className="text-gray-500">Pickup details will appear here once they are available.</p>
             )}
           </div>
         )}
@@ -1364,7 +1146,15 @@ export default function BuyerOrderDetails() {
           </div>
         </div>
 
+        {/* Action Area */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <p className="text-gray-700 mb-4">{actionMessage}</p>
+          <div className="space-y-3">
+            {actionButton}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <div>
               <h2 className="text-xl font-bold text-gray-900">Similar products you may like</h2>
@@ -1404,14 +1194,6 @@ export default function BuyerOrderDetails() {
               No similar products are available right now.
             </div>
           )}
-        </div>
-
-        {/* Action Area */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <p className="text-gray-700 mb-4">{actionMessage}</p>
-          <div className="space-y-3">
-            {actionButton}
-          </div>
         </div>
       </main>
 
