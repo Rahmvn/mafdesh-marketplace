@@ -98,6 +98,12 @@ async function openCampusDialog() {
   return screen.findByRole('dialog', { name: 'Campus filter' });
 }
 
+function selectCampusState(dialog, state) {
+  fireEvent.change(within(dialog).getByLabelText(/state/i), {
+    target: { value: state },
+  });
+}
+
 function findCampusButtons(dialog, pattern) {
   return within(dialog)
     .getAllByRole('button')
@@ -323,15 +329,30 @@ describe('Marketplace seller-derived campus filters', () => {
     expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
   });
 
-  it('clears the selected seller-derived campus filter back to All campuses', async () => {
+  it('selecting a state narrows campus options but does not filter products until a campus is chosen', async () => {
     renderMarketplace();
 
     await screen.findByText('UNILAG Hoodie');
     const dialog = await openCampusDialog();
 
-    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
-      target: { value: 'lagos' },
-    });
+    selectCampusState(dialog, 'Lagos');
+
+    expect(within(dialog).getByRole('button', { name: /university of lagos/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /lagos state university/i })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /ahmadu bello university/i })).not.toBeInTheDocument();
+
+    expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
+    expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
+    expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
+  });
+
+  it('filters by campus after state narrowing and clears back to All campuses', async () => {
+    renderMarketplace();
+
+    await screen.findByText('UNILAG Hoodie');
+    const dialog = await openCampusDialog();
+
+    selectCampusState(dialog, 'Lagos');
 
     fireEvent.click(within(dialog).getByRole('button', { name: /university of lagos/i }));
 
@@ -341,7 +362,7 @@ describe('Marketplace seller-derived campus filters', () => {
       expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
@@ -349,5 +370,28 @@ describe('Marketplace seller-derived campus filters', () => {
       expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
       expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
     });
+  });
+
+  it('closes the campus dialog without changing products when no campus is selected', async () => {
+    renderMarketplace();
+
+    await screen.findByText('UNILAG Hoodie');
+    const dialog = await openCampusDialog();
+
+    selectCampusState(dialog, 'Kaduna');
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'ahmadu' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /close campus filter/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Campus filter' })).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
+    expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
+    expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
+    expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
   });
 });
