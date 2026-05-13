@@ -58,7 +58,12 @@ function ThemeToggleButton({ darkMode, onToggle, compact, isDarkTheme }) {
   );
 }
 
-export default function Navbar({ onLogout, theme = 'light', themeToggle = null }) {
+export default function Navbar({
+  onLogout,
+  theme = 'light',
+  themeToggle = null,
+  marketplaceLocationAction = null,
+}) {
   const [storedUser, setStoredUser] = useState(() => getStoredUser());
   const [authUserId, setAuthUserId] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -379,6 +384,9 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
   const mobileNavBase = `flex items-center rounded-md px-3 py-2 ${navLinkClass}`;
   const mobileHighlightedBase = `flex items-center rounded-md px-3 py-2 ${highlightedNavLinkClass}`;
   const buyerIconButtonClass = `relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors ${navLinkClass}`;
+  const buyerActiveIconButtonClass = isDarkTheme
+    ? 'border border-orange-400/60 bg-slate-900 text-orange-300'
+    : 'border border-orange-200 bg-orange-50 text-orange-600';
   const buyerBottomTabClass = `flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-medium transition-colors ${navLinkClass}`;
   const adminTriggerClass = `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
     isDarkTheme
@@ -529,6 +537,23 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
                   <Link to={homePath} className={buyerIconButtonClass} aria-label="Home">
                     <Home className="h-5 w-5" />
                   </Link>
+                  {marketplaceLocationAction ? (
+                    <button
+                      type="button"
+                      onClick={marketplaceLocationAction.onClick}
+                      disabled={marketplaceLocationAction.disabled}
+                      aria-label={marketplaceLocationAction.label}
+                      aria-pressed={marketplaceLocationAction.active || undefined}
+                      className={`${buyerIconButtonClass} ${
+                        marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
+                      } ${
+                        marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
+                      }`}
+                      title={marketplaceLocationAction.label}
+                    >
+                      <MapPin className="h-5 w-5" />
+                    </button>
+                  ) : null}
                   {isBuyer ? (
                     <Link to="/orders" className={buyerIconButtonClass} aria-label="Orders">
                       <Package className="h-5 w-5" />
@@ -741,6 +766,23 @@ export default function Navbar({ onLogout, theme = 'light', themeToggle = null }
           <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
             {isBuyerLike ? (
               <>
+                {marketplaceLocationAction ? (
+                  <button
+                    type="button"
+                    onClick={marketplaceLocationAction.onClick}
+                    disabled={marketplaceLocationAction.disabled}
+                    aria-label={marketplaceLocationAction.label}
+                    aria-pressed={marketplaceLocationAction.active || undefined}
+                    className={`${buyerIconButtonClass} ${
+                      marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
+                    } ${
+                      marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
+                    }`}
+                    title={marketplaceLocationAction.label}
+                  >
+                    <MapPin className="h-5 w-5" />
+                  </button>
+                ) : null}
                 {isBuyer ? <NotificationBell user={notificationUser} theme={theme} /> : null}
                 <Link
                   to="/cart"

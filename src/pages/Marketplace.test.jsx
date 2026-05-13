@@ -28,7 +28,20 @@ vi.mock('../supabaseClient', () => ({
 }));
 
 vi.mock('../components/AuthNavbarWrapper', () => ({
-  default: () => <div data-testid="navbar" />,
+  default: ({ marketplaceLocationAction }) => (
+    <div data-testid="navbar">
+      {marketplaceLocationAction ? (
+        <button
+          type="button"
+          aria-label={marketplaceLocationAction.label}
+          disabled={marketplaceLocationAction.disabled}
+          onClick={marketplaceLocationAction.onClick}
+        >
+          Campus filter
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock('../components/Footer', () => ({
@@ -94,7 +107,7 @@ function seedProducts(products) {
 }
 
 async function openCampusDialog() {
-  fireEvent.click(screen.getByRole('button', { name: /all campuses/i }));
+  fireEvent.click(screen.getByRole('button', { name: /campus filter/i }));
   return screen.findByRole('dialog', { name: 'Campus filter' });
 }
 
@@ -151,7 +164,7 @@ describe('Marketplace seller-derived campus filters', () => {
 
     await screen.findByText('UNILAG Hoodie');
 
-    expect(screen.getByRole('button', { name: /all campuses/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /campus filter/i })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
     expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
     expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
@@ -325,7 +338,7 @@ describe('Marketplace seller-derived campus filters', () => {
     await screen.findByText('Campus Flask');
 
     expect(screen.getByText('Campus Socks')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /all campuses/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /campus filter/i })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
   });
 
@@ -365,7 +378,7 @@ describe('Marketplace seller-derived campus filters', () => {
     fireEvent.click(screen.getByRole('button', { name: /clear/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /campus filter/i })).toBeInTheDocument();
       expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
       expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
       expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
@@ -389,7 +402,7 @@ describe('Marketplace seller-derived campus filters', () => {
       expect(screen.queryByRole('dialog', { name: 'Campus filter' })).not.toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: /all campuses/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /campus filter/i })).toBeInTheDocument();
     expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
     expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
     expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();

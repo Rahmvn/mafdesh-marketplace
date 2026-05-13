@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
-import { ChevronDown, MapPin, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
@@ -635,7 +635,16 @@ export default function Marketplace() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-blue-50 via-white to-orange-50">
-      <AuthNavbarWrapper />
+      <AuthNavbarWrapper
+        marketplaceLocationAction={{
+          active: hasActiveCampusFilter,
+          disabled: campusGroups.length === 0,
+          label: selectedCampusGroup
+            ? `Campus filter: ${selectedCampusGroup.displayName}`
+            : 'Campus filter',
+          onClick: openCampusPicker,
+        }}
+      />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-2 py-5">
         <div className="sticky top-0 z-10 mb-5 space-y-2">
@@ -655,31 +664,7 @@ export default function Marketplace() {
                 </button>
               ))}
             </div>
-            <div className="mt-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={openCampusPicker}
-                    disabled={campusGroups.length === 0}
-                    aria-expanded={isCampusPickerOpen}
-                    aria-haspopup="dialog"
-                    className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold shadow-sm transition ${
-                      campusGroups.length === 0
-                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none'
-                        : selectedCampusGroup
-                        ? 'border-orange-200 bg-orange-50 text-orange-700 ring-1 ring-orange-100'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'
-                    }`}
-                  >
-                    <MapPin className="h-4 w-4 shrink-0" />
-                    <span className="max-w-[12rem] truncate sm:max-w-[16rem]">
-                      {selectedCampusGroup?.displayName || 'All campuses'}
-                    </span>
-                    <ChevronDown className="h-4 w-4 shrink-0" />
-                  </button>
-                </div>
-
-                {selectedCampusGroup && (
+            {selectedCampusGroup && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-500">
                       {'\ud83c\udfeb'} Showing products from <strong>{selectedCampusGroup.displayName}</strong>
@@ -694,7 +679,6 @@ export default function Marketplace() {
                     </button>
                   </div>
                 )}
-            </div>
           </div>
         </div>
 

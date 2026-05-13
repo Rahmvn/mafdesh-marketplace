@@ -8,7 +8,7 @@ import {
 } from "../services/authSessionService";
 import { getStoredUser } from "../utils/storage";
 
-export default function AuthNavbarWrapper() {
+export default function AuthNavbarWrapper(props) {
   const [, setUser] = useState(() => getStoredUser());
 
   useEffect(() => {
@@ -40,5 +40,5 @@ export default function AuthNavbarWrapper() {
     return () => unsubscribe();
   }, []);
 
-  return <Navbar />;
+  return <Navbar {...props} />;
 }
