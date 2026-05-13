@@ -229,8 +229,14 @@ describe('EditProduct flash-sale eligibility', () => {
     expect(
       await screen.findByText('You need 2 more completed orders to unlock flash sales.')
     ).toBeInTheDocument();
+    expect(screen.getByText('Seller trust snapshot')).toBeInTheDocument();
     expect(
       screen.getByText('Your seller rating is 3.8; flash sales require 4.0+.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Flash-sale access is based on your seller account metrics across all orders, not just this product's own sales history."
+      )
     ).toBeInTheDocument();
     expect(
       screen.queryByLabelText(/enable flash sale pricing for this product/i)
@@ -259,6 +265,8 @@ describe('EditProduct flash-sale eligibility', () => {
         'This product needs at least 1 item in stock before it can join a flash sale.'
       )
     ).toBeInTheDocument();
+    expect(screen.getByText('Seller trust snapshot')).toBeInTheDocument();
+    expect(screen.getByText('Completed seller orders: 8')).toBeInTheDocument();
     expect(
       screen.queryByLabelText(/enable flash sale pricing for this product/i)
     ).not.toBeInTheDocument();

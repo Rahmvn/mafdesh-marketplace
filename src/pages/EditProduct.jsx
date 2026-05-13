@@ -457,6 +457,9 @@ export default function EditProduct() {
     () => getFlashSaleBlockingMessages(normalizedFlashSaleEligibility),
     [normalizedFlashSaleEligibility]
   );
+  const shouldShowFlashSaleTrustSnapshot = Boolean(
+    normalizedFlashSaleEligibility && !normalizedFlashSaleEligibility.eligible
+  );
   const isFlashSaleEligibilityTemporarilyUnavailable = Boolean(
     flashSaleEligibilityUnavailable && !normalizedFlashSaleEligibility
   );
@@ -1539,15 +1542,31 @@ export default function EditProduct() {
                   </ul>
                 ) : null}
 
-                {normalizedFlashSaleEligibility?.trust_reasons?.length ? (
+                {shouldShowFlashSaleTrustSnapshot ? (
                   <div className={`mt-4 rounded-xl border p-3 ${theme.panel}`}>
-                    <p className="font-semibold">Current trust metrics</p>
-                    <p className="mt-2">
-                      Completed orders: {normalizedFlashSaleEligibility.completed_orders}
+                    <p className="font-semibold">Seller trust snapshot</p>
+                    <p className={`mt-2 text-xs ${theme.softText}`}>
+                      Flash-sale access is based on your seller account metrics across all orders,
+                      not just this product&apos;s own sales history.
                     </p>
-                    <p>Seller rating: {normalizedFlashSaleEligibility.average_rating.toFixed(1)}</p>
+                    <p className="mt-3">
+                      Completed seller orders: {normalizedFlashSaleEligibility.completed_orders}
+                    </p>
+                    <p className="mt-2">
+                      Seller rating: {normalizedFlashSaleEligibility.average_rating.toFixed(1)}
+                    </p>
                     <p>
                       Dispute rate: {(normalizedFlashSaleEligibility.dispute_rate * 100).toFixed(1)}%
+                    </p>
+                    <p>
+                      Account status:{' '}
+                      {normalizedFlashSaleEligibility.account_status === 'active'
+                        ? 'Active'
+                        : 'Inactive'}
+                    </p>
+                    <p>
+                      Review standing:{' '}
+                      {normalizedFlashSaleEligibility.no_fraud_flags ? 'Clear' : 'Flagged for review'}
                     </p>
                   </div>
                 ) : null}
