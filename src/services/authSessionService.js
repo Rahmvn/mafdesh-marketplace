@@ -13,6 +13,51 @@ export const AUTH_CALLBACK_PATH = "/auth/callback";
 const INTENTIONAL_LOGOUT_KEY = "mafdesh_intentional_logout";
 let intentionalLogoutInMemory = false;
 
+function getSupabaseProjectRef() {
+  try {
+    const hostname = new URL(import.meta.env.VITE_SUPABASE_URL || "").hostname || "";
+    return hostname.split(".")[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function clearStorageKeysWithPrefix(storage, prefix) {
+  if (!storage || !prefix) {
+    return;
+  }
+
+  try {
+    const keysToRemove = [];
+
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => storage.removeItem(key));
+  } catch {
+    // Ignore storage access issues during cleanup.
+  }
+}
+
+function clearPersistedSupabaseSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const projectRef = getSupabaseProjectRef();
+  if (!projectRef) {
+    return;
+  }
+
+  const authTokenPrefix = `sb-${projectRef}-auth-token`;
+  clearStorageKeysWithPrefix(window.localStorage, authTokenPrefix);
+  clearStorageKeysWithPrefix(window.sessionStorage, authTokenPrefix);
+}
+
 function getSafeReturnUrl(returnUrl = "") {
   return String(returnUrl || "").startsWith("/") ? String(returnUrl) : "";
 }
@@ -208,13 +253,34 @@ export function consumeIntentionalLogoutRedirect() {
   return shouldRedirect;
 }
 
-export async function signOutAndClearAuthState() {
-  writeIntentionalLogoutFlag(true);
+export async function signOutAndClearAuthState(options = {}) {
+  const { localOnly = false, intentional = true } = options;
+  writeIntentionalLogoutFlag(intentional);
 
+  let globalSignOutError = null;
   try {
-    await runAuthOperationWithRetry(() => supabase.auth.signOut());
+    if (!localOnly) {
+      const { error } = await runAuthOperationWithRetry(() =>
+        supabase.auth.signOut({ scope: "global" })
+      );
+
+      if (error) {
+        globalSignOutError = error;
+      }
+    }
   } finally {
+    try {
+      await runAuthOperationWithRetry(() => supabase.auth.signOut({ scope: "local" }));
+    } catch (localSignOutError) {
+      console.warn("[auth-context] local sign-out cleanup failed", localSignOutError);
+    }
+
+    clearPersistedSupabaseSession();
     clearStoredUser();
+  }
+
+  if (globalSignOutError && localOnly === false) {
+    console.warn("[auth-context] global sign-out failed after local cleanup", globalSignOutError);
   }
 }
 
@@ -297,6 +363,18 @@ export async function ensureCurrentUserContext({
   }
 
   if (invokeError) {
+    try {
+      const recoveredUser = await readPublicUserRecord(currentAuthUser.id);
+      if (recoveredUser?.role) {
+        return recoveredUser;
+      }
+    } catch (recoveryError) {
+      console.warn("[auth-context] public user recovery read failed", {
+        userId: currentAuthUser.id,
+        error: recoveryError,
+      });
+    }
+
     console.warn("[auth-context] bootstrap invoke failed", {
       userId: currentAuthUser.id,
       desiredRole: normalizedRole || null,

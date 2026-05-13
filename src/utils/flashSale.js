@@ -1,6 +1,9 @@
 const FLASH_SALE_MAX_ITEMS = 10;
 const FLASH_SALE_MAX_DURATION_HOURS = 48;
 const DEFAULT_MAX_DISCOUNT_PERCENT = 50;
+const FLASH_SALE_MIN_COMPLETED_ORDERS = 5;
+const FLASH_SALE_MIN_AVERAGE_RATING = 4.0;
+const FLASH_SALE_MAX_DISPUTE_RATE = 0.10;
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -14,6 +17,85 @@ function toDate(value) {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function formatPercent(value) {
+  return `${(toNumber(value) * 100).toFixed(1)}%`;
+}
+
+export function normalizeFlashSaleEligibility(eligibility) {
+  if (!eligibility || typeof eligibility !== 'object') {
+    return null;
+  }
+
+  return {
+    eligible: Boolean(eligibility.eligible),
+    seller_eligible: Boolean(eligibility.seller_eligible),
+    product_eligible: Boolean(eligibility.product_eligible),
+    blocking_reasons: toArray(eligibility.blocking_reasons),
+    trust_reasons: toArray(eligibility.trust_reasons),
+    completed_orders: Math.max(0, Math.trunc(toNumber(eligibility.completed_orders))),
+    average_rating: toNumber(eligibility.average_rating),
+    dispute_rate: Math.max(0, toNumber(eligibility.dispute_rate)),
+    no_fraud_flags: Boolean(eligibility.no_fraud_flags),
+    is_trusted_seller: Boolean(eligibility.is_trusted_seller),
+    account_status:
+      eligibility.account_status == null ? null : String(eligibility.account_status).toLowerCase(),
+    is_approved: Boolean(eligibility.is_approved),
+    stock_quantity: Math.trunc(toNumber(eligibility.stock_quantity)),
+    is_archived: Boolean(eligibility.is_archived),
+  };
+}
+
+export function getFlashSaleBlockingMessages(eligibility) {
+  const normalizedEligibility = normalizeFlashSaleEligibility(eligibility);
+
+  if (!normalizedEligibility) {
+    return [];
+  }
+
+  return normalizedEligibility.blocking_reasons.map((reason) => {
+    switch (reason) {
+      case 'complete_more_orders': {
+        const missingOrders = Math.max(
+          FLASH_SALE_MIN_COMPLETED_ORDERS - normalizedEligibility.completed_orders,
+          1
+        );
+        return `You need ${missingOrders} more completed order${
+          missingOrders === 1 ? '' : 's'
+        } to unlock flash sales.`;
+      }
+      case 'improve_seller_rating':
+        return `Your seller rating is ${normalizedEligibility.average_rating.toFixed(
+          1
+        )}; flash sales require ${FLASH_SALE_MIN_AVERAGE_RATING.toFixed(1)}+.`;
+      case 'reduce_dispute_rate':
+        return `Your dispute rate is ${formatPercent(
+          normalizedEligibility.dispute_rate
+        )}; flash sales require ${formatPercent(FLASH_SALE_MAX_DISPUTE_RATE)} or less.`;
+      case 'account_inactive':
+        return 'Flash sales are only available to active seller accounts.';
+      case 'seller_flagged_for_review':
+        return 'Your seller account is flagged for review. Flash sales stay locked until that flag is cleared.';
+      case 'product_not_approved':
+        return 'This product must be approved before it can join a flash sale.';
+      case 'product_out_of_stock':
+        return 'This product needs at least 1 item in stock before it can join a flash sale.';
+      case 'product_archived':
+        return 'Archived products cannot be placed in a flash sale.';
+      default:
+        return 'Flash sales are unavailable for this product right now.';
+    }
+  });
+}
+
+export function getFlashSaleBlockingSummary(eligibility) {
+  const messages = getFlashSaleBlockingMessages(eligibility);
+  return messages.join(' ');
 }
 
 export function hasFlashSaleConfiguration(product) {
@@ -112,6 +194,8 @@ export function formatCompactCountdown({ hours = 0, minutes = 0, seconds = 0, ex
 }
 
 export function getFlashSaleValidationErrors({
+  enabled,
+  eligibility,
   isTrustedSeller,
   accountStatus,
   isApproved,
@@ -125,9 +209,11 @@ export function getFlashSaleValidationErrors({
   adminApprovedDiscount,
 }) {
   const errors = {};
-  const hasFlashSaleInput = Boolean(salePrice || saleStart || saleEnd || saleQuantityLimit);
+  const shouldValidateConfiguration = Boolean(
+    enabled || salePrice || saleStart || saleEnd || saleQuantityLimit
+  );
 
-  if (!hasFlashSaleInput) {
+  if (!shouldValidateConfiguration) {
     return errors;
   }
 
@@ -136,25 +222,30 @@ export function getFlashSaleValidationErrors({
   const parsedQuantityLimit = saleQuantityLimit === '' ? null : Number(saleQuantityLimit);
   const startDate = toDate(saleStart);
   const endDate = toDate(saleEnd);
+  const blockingSummary = getFlashSaleBlockingSummary(eligibility);
 
-  if (!isTrustedSeller) {
-    errors.flashSale = 'Only trusted sellers can create flash sales.';
-  }
+  if (blockingSummary) {
+    errors.flashSale = blockingSummary;
+  } else {
+    if (!isTrustedSeller) {
+      errors.flashSale = 'Only trusted sellers can create flash sales.';
+    }
 
-  if (accountStatus && accountStatus !== 'active') {
-    errors.flashSale = 'Flash sales are only available to active seller accounts.';
-  }
+    if (accountStatus && accountStatus !== 'active') {
+      errors.flashSale = 'Flash sales are only available to active seller accounts.';
+    }
 
-  if (!isApproved) {
-    errors.flashSale = 'Only approved products can be placed in a flash sale.';
-  }
+    if (!isApproved) {
+      errors.flashSale = 'Only approved products can be placed in a flash sale.';
+    }
 
-  if (toNumber(stockQuantity) <= 0) {
-    errors.flashSale = 'Flash sales require at least 1 item in stock.';
-  }
+    if (toNumber(stockQuantity) <= 0) {
+      errors.flashSale = 'Flash sales require at least 1 item in stock.';
+    }
 
-  if (deletedAt) {
-    errors.flashSale = 'Archived products cannot be placed in a flash sale.';
+    if (deletedAt) {
+      errors.flashSale = 'Archived products cannot be placed in a flash sale.';
+    }
   }
 
   if (!salePrice) {

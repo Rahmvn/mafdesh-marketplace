@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getFlashSaleBlockingMessages,
   getActiveFlashSaleProducts,
   getFlashSaleValidationErrors,
   getProductPricing,
   isFlashSaleActive,
+  normalizeFlashSaleEligibility,
 } from './flashSale';
 
 describe('flashSale utils', () => {
@@ -48,6 +50,7 @@ describe('flashSale utils', () => {
 
   it('returns inline errors for invalid flash sale form values', () => {
     const errors = getFlashSaleValidationErrors({
+      enabled: true,
       isTrustedSeller: true,
       accountStatus: 'active',
       isApproved: true,
@@ -64,5 +67,68 @@ describe('flashSale utils', () => {
     expect(errors.salePrice).toBe('Discounts above 50% require admin approval.');
     expect(errors.saleEnd).toBe('Flash sales cannot last longer than 48 hours.');
     expect(errors.saleQuantityLimit).toBe('Quantity limit cannot exceed current stock.');
+  });
+
+  it('turns blocking reason codes into seller-facing flash sale guidance', () => {
+    const eligibility = normalizeFlashSaleEligibility({
+      eligible: false,
+      seller_eligible: false,
+      product_eligible: true,
+      blocking_reasons: ['complete_more_orders', 'improve_seller_rating', 'reduce_dispute_rate'],
+      trust_reasons: ['complete_more_orders', 'improve_seller_rating', 'reduce_dispute_rate'],
+      completed_orders: 3,
+      average_rating: 3.75,
+      dispute_rate: 0.1667,
+      no_fraud_flags: true,
+      is_trusted_seller: false,
+      account_status: 'active',
+      is_approved: true,
+      stock_quantity: 8,
+      is_archived: false,
+    });
+
+    expect(getFlashSaleBlockingMessages(eligibility)).toEqual([
+      'You need 2 more completed orders to unlock flash sales.',
+      'Your seller rating is 3.8; flash sales require 4.0+.',
+      'Your dispute rate is 16.7%; flash sales require 10.0% or less.',
+    ]);
+  });
+
+  it('prefers eligibility blockers while still validating sale fields when flash sale is enabled', () => {
+    const errors = getFlashSaleValidationErrors({
+      enabled: true,
+      eligibility: {
+        eligible: false,
+        blocking_reasons: ['product_out_of_stock'],
+        trust_reasons: [],
+        completed_orders: 8,
+        average_rating: 4.8,
+        dispute_rate: 0,
+        no_fraud_flags: true,
+        is_trusted_seller: true,
+        account_status: 'active',
+        is_approved: true,
+        stock_quantity: 0,
+        is_archived: false,
+      },
+      isTrustedSeller: true,
+      accountStatus: 'active',
+      isApproved: true,
+      stockQuantity: 0,
+      deletedAt: null,
+      price: 10000,
+      salePrice: '',
+      saleStart: '',
+      saleEnd: '',
+      saleQuantityLimit: '',
+      adminApprovedDiscount: false,
+    });
+
+    expect(errors.flashSale).toBe(
+      'This product needs at least 1 item in stock before it can join a flash sale.'
+    );
+    expect(errors.salePrice).toBe('Sale price is required.');
+    expect(errors.saleStart).toBe('Start time is required.');
+    expect(errors.saleEnd).toBe('End time is required.');
   });
 });

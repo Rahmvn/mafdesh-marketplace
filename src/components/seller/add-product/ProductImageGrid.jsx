@@ -15,6 +15,28 @@ function getSlotMeta(index) {
   };
 }
 
+function resolvePreviewSource(image) {
+  if (!image) {
+    return null;
+  }
+
+  if (typeof image === 'string') {
+    return {
+      url: image,
+      revoke: false,
+    };
+  }
+
+  if (image instanceof Blob) {
+    return {
+      url: URL.createObjectURL(image),
+      revoke: true,
+    };
+  }
+
+  return null;
+}
+
 export default function ProductImageGrid({
   images = [],
   darkMode = false,
@@ -25,21 +47,15 @@ export default function ProductImageGrid({
   const inputRefs = useRef([]);
   const previewUrls = useMemo(
     () =>
-      images.map((file) => {
-        if (!file) {
-          return null;
-        }
-
-        return URL.createObjectURL(file);
-      }),
+      images.map((image) => resolvePreviewSource(image)),
     [images]
   );
 
   useEffect(() => {
     return () => {
-      previewUrls.forEach((url) => {
-        if (url) {
-          URL.revokeObjectURL(url);
+      previewUrls.forEach((preview) => {
+        if (preview?.url && preview.revoke) {
+          URL.revokeObjectURL(preview.url);
         }
       });
     };
@@ -86,7 +102,7 @@ export default function ProductImageGrid({
                 >
                   {isFilled ? (
                     <img
-                      src={previewUrls[index]}
+                      src={previewUrls[index]?.url || ''}
                       alt={`Product upload ${index + 1}`}
                       className="h-full w-full object-cover"
                     />

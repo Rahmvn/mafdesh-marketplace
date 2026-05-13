@@ -1,59 +1,133 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Lock, Truck, Zap } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  Lock,
+  Search,
+  Truck,
+  Zap,
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
-import { productService } from '../services/productService';
-import { PRODUCT_CATEGORIES } from '../utils/categories';
-import { supabase } from '../supabaseClient';
+import ProductImageGrid from '../components/seller/add-product/ProductImageGrid';
+import ProductAttributeForm from '../components/seller/ProductAttributeForm';
+import {
+  formatSellerCurrency,
+  getSellerThemeClasses,
+  useSellerTheme,
+} from '../components/seller/SellerShell';
 import useModal from '../hooks/useModal';
-import { getSellerThemeClasses, useSellerTheme } from '../components/seller/SellerShell';
+import { productService } from '../services/productService';
 import { getSellerPickupLocations, PICKUP_MODE } from '../services/deliveryService';
+import { PRODUCT_CATEGORIES } from '../utils/categories';
+import {
+  calculatePlatformFee,
+  calculateSellerReceives,
+  createEmptyImageSlots,
+  PRODUCT_IMAGE_SLOT_COUNT,
+} from '../utils/addProductFlow';
+import {
+  buildProductDescription,
+  deriveStructuredAttributes,
+  validateAttributes,
+} from '../utils/productAttributes';
+import { supabase } from '../supabaseClient';
 import { getStoredUser, setStoredUser } from '../utils/storage';
 import {
+  getFlashSaleBlockingMessages,
   getFlashSaleValidationErrors,
+  normalizeFlashSaleEligibility,
   getProductPricing,
   hasFlashSaleConfiguration,
 } from '../utils/flashSale';
 import {
   MAX_PRODUCT_IMAGE_BYTES,
-  PRODUCT_DESCRIPTION_MAX_LENGTH,
-  PRODUCT_NAME_MAX_LENGTH,
-  PRODUCT_OVERVIEW_MAX_LENGTH,
-  normalizeMultilineText,
   normalizeSingleLineText,
   validateProductDescription,
   validateProductName,
-  validateProductOverview,
   validateSelectedFiles,
 } from '../utils/accountValidation';
 
 const REAPPROVAL_WARNING_MESSAGE =
   'Changing this field will require admin re-approval. Your product will be temporarily hidden from buyers.';
 const MAX_PRODUCT_DISCOUNT_PERCENT = 70;
+const EDIT_PRODUCT_STEPS = [
+  { id: 1, label: 'Basic Info' },
+  { id: 2, label: 'Images' },
+  { id: 3, label: 'Product Details' },
+];
+const EDIT_PRODUCT_BASIC_STEP_FIELDS = new Set([
+  'name',
+  'category',
+  'price',
+  'originalPrice',
+  'pickupEnabled',
+  'flashSale',
+  'salePrice',
+  'saleStart',
+  'saleEnd',
+  'saleQuantityLimit',
+]);
 
-function splitProductDescription(description = '') {
-  const parts = description.split('Key Features:');
-  const overview = parts[0]?.trim() || '';
-  const rest = parts[1]?.split('Specifications:') || [];
+function FieldError({ message }) {
+  if (!message) {
+    return null;
+  }
 
-  return {
-    overview,
-    features: rest[0]?.trim() || '',
-    specs: rest[1]?.trim() || '',
-  };
+  return <p className="mt-2 text-sm text-orange-600">{message}</p>;
 }
 
-function buildFullDescription(formData) {
-  return `
-${normalizeMultilineText(formData.overview)}
+function StepIndicator({ currentStep, theme, darkMode }) {
+  return (
+    <div className={`rounded-2xl p-4 sm:p-5 ${theme.panelMuted}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {EDIT_PRODUCT_STEPS.map((step, index) => {
+          const isCompleted = step.id < currentStep;
+          const isActive = step.id === currentStep;
 
-Key Features:
-${normalizeMultilineText(formData.features)}
+          return (
+            <React.Fragment key={step.id}>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold ${
+                    isCompleted
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : isActive
+                        ? 'border-orange-500 bg-orange-500 text-white'
+                        : darkMode
+                          ? 'border-slate-700 bg-slate-900 text-slate-400'
+                          : 'border-slate-200 bg-white text-slate-400'
+                  }`}
+                >
+                  {isCompleted ? <Check className="h-5 w-5" /> : step.id}
+                </span>
+                <div>
+                  <p
+                    className={`text-xs font-semibold uppercase tracking-[0.18em] ${
+                      isActive || isCompleted ? 'text-orange-500' : theme.softText
+                    }`}
+                  >
+                    Step {step.id}
+                  </p>
+                  <p className={`text-sm font-semibold ${isActive ? 'text-orange-600' : ''}`}>
+                    {step.label}
+                  </p>
+                </div>
+              </div>
 
-Specifications:
-${normalizeMultilineText(formData.specs)}
-`.trim();
+              {index < EDIT_PRODUCT_STEPS.length - 1 ? (
+                <div className={`hidden flex-1 items-center sm:flex ${theme.softText}`}>
+                  <span className="mx-3 text-lg">{'->'}</span>
+                </div>
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function toLocalDateTimeValue(value) {
@@ -77,10 +151,6 @@ function toIsoDateTime(value) {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function normalizeImages(images) {
-  return Array.isArray(images) ? images.filter(Boolean) : [];
 }
 
 function parsePriceInput(value) {
@@ -146,12 +216,48 @@ function getDiscountPreview(priceValue, originalPriceValue) {
   };
 }
 
+function buildImageSlots(images = []) {
+  const slots = createEmptyImageSlots();
+
+  images
+    .filter(Boolean)
+    .slice(0, PRODUCT_IMAGE_SLOT_COUNT)
+    .forEach((image, index) => {
+      slots[index] = image;
+    });
+
+  return slots;
+}
+
+function normalizeImages(images = []) {
+  return (Array.isArray(images) ? images : []).filter(Boolean);
+}
+
+function normalizeComparableImages(images = []) {
+  return normalizeImages(images).map((image) => {
+    if (typeof image === 'string') {
+      return image;
+    }
+
+    if (image instanceof File) {
+      return `file:${image.name}:${image.size}:${image.lastModified}`;
+    }
+
+    return String(image);
+  });
+}
+
+function normalizeAttributesValue(attributes) {
+  return attributes && typeof attributes === 'object' && !Array.isArray(attributes) ? attributes : {};
+}
+
 function buildGeneralUpdates(formData, imageUrls) {
   const updates = {
     name: normalizeSingleLineText(formData.name),
     category: formData.category,
     price: parsePriceInput(formData.price),
-    description: buildFullDescription(formData),
+    description: buildProductDescription(formData.attributes, formData.category),
+    attributes: normalizeAttributesValue(formData.attributes),
     images: imageUrls,
     delivery_enabled: true,
     pickup_mode: formData.pickupEnabled ? PICKUP_MODE.SELLER_DEFAULT : PICKUP_MODE.DISABLED,
@@ -195,8 +301,11 @@ function hasGeneralChanges(productRecord, updates) {
     String(productRecord.category || '').trim() !== String(updates.category || '').trim() ||
     Number(productRecord.price || 0) !== Number(updates.price || 0) ||
     String(productRecord.description || '').trim() !== String(updates.description || '').trim() ||
+    JSON.stringify(normalizeAttributesValue(productRecord.attributes)) !==
+      JSON.stringify(normalizeAttributesValue(updates.attributes)) ||
     JSON.stringify(normalizeImages(productRecord.images)) !== JSON.stringify(normalizeImages(updates.images)) ||
-    String(productRecord.pickup_mode || PICKUP_MODE.DISABLED) !== String(updates.pickup_mode || PICKUP_MODE.DISABLED) ||
+    String(productRecord.pickup_mode || PICKUP_MODE.DISABLED) !==
+      String(updates.pickup_mode || PICKUP_MODE.DISABLED) ||
     Number(productRecord.original_price || 0) !== Number(updates.original_price || 0)
   );
 }
@@ -245,14 +354,25 @@ function getChangedReapprovalFields(productRecord, formData) {
 
   if (
     Object.prototype.hasOwnProperty.call(productRecord, 'original_price') &&
-    parseComparableNumber(productRecord.original_price) !==
-      parseComparableNumber(formData.originalPrice)
+    parseComparableNumber(productRecord.original_price) !== parseComparableNumber(formData.originalPrice)
   ) {
     changedFields.push('original_price');
   }
 
-  if ((formData.imageFiles || []).some(Boolean)) {
+  if (
+    JSON.stringify(normalizeComparableImages(productRecord.images || [])) !==
+    JSON.stringify(normalizeComparableImages(formData.images || []))
+  ) {
     changedFields.push('images');
+  }
+
+  if (
+    String(productRecord.description || '').trim() !==
+      String(buildProductDescription(formData.attributes, formData.category) || '').trim() ||
+    JSON.stringify(normalizeAttributesValue(productRecord.attributes)) !==
+      JSON.stringify(normalizeAttributesValue(formData.attributes))
+  ) {
+    changedFields.push('details');
   }
 
   return changedFields;
@@ -267,19 +387,38 @@ function didSaveTriggerReapproval(previousProduct, updatedProduct) {
   );
 }
 
+function getFirstInvalidStep(validationErrors = {}) {
+  const errorKeys = Object.keys(validationErrors || {});
+
+  if (errorKeys.some((key) => EDIT_PRODUCT_BASIC_STEP_FIELDS.has(key))) {
+    return 1;
+  }
+
+  if (errorKeys.includes('images')) {
+    return 2;
+  }
+
+  return 3;
+}
+
 export default function EditProduct() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
+  const categoryDropdownRef = useRef(null);
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+  const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRestocking, setIsRestocking] = useState(false);
   const [errors, setErrors] = useState({});
   const [sellerPickupLocations, setSellerPickupLocations] = useState([]);
   const [productRecord, setProductRecord] = useState(null);
+  const [flashSaleEligibility, setFlashSaleEligibility] = useState(null);
   const [activeOrderCount, setActiveOrderCount] = useState(0);
   const [restockAmount, setRestockAmount] = useState('');
+  const [categorySearch, setCategorySearch] = useState('');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const themeState = useSellerTheme(
     currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
   );
@@ -293,23 +432,35 @@ export default function EditProduct() {
     category: '',
     price: '',
     originalPrice: '',
-    overview: '',
-    features: '',
-    specs: '',
-    images: [],
+    attributes: {},
+    images: createEmptyImageSlots(),
     pickupEnabled: false,
     flashSaleEnabled: false,
     salePrice: '',
     saleStart: '',
     saleEnd: '',
     saleQuantityLimit: '',
-    imageFiles: [null, null, null, null, null],
   });
 
+  const filteredCategories = useMemo(() => {
+    return PRODUCT_CATEGORIES.filter((category) =>
+      category.toLowerCase().includes(categorySearch.toLowerCase())
+    );
+  }, [categorySearch]);
   const currentPricing = useMemo(() => getProductPricing(productRecord), [productRecord]);
+  const normalizedFlashSaleEligibility = useMemo(
+    () => normalizeFlashSaleEligibility(flashSaleEligibility),
+    [flashSaleEligibility]
+  );
+  const flashSaleBlockingMessages = useMemo(
+    () => getFlashSaleBlockingMessages(normalizedFlashSaleEligibility),
+    [normalizedFlashSaleEligibility]
+  );
   const activeFlashSale = currentPricing.isFlashSaleActive;
   const hasActiveOrders = activeOrderCount > 0;
-  const canManageFlashSales = Boolean(currentUser?.is_trusted_seller);
+  const canManageFlashSales = Boolean(
+    normalizedFlashSaleEligibility?.eligible || formData.flashSaleEnabled
+  );
   const categoryLocked = hasActiveOrders;
   const priceLocked = hasActiveOrders;
   const originalPriceLocked = hasActiveOrders;
@@ -320,24 +471,43 @@ export default function EditProduct() {
     ? 'This field is locked while the product has active orders.'
     : '';
   const discountPreview = getDiscountPreview(formData.price, formData.originalPrice);
+  const platformFee = calculatePlatformFee(parsePriceInput(formData.price));
+  const sellerReceives = calculateSellerReceives(parsePriceInput(formData.price));
   const reapprovalWarningFields = useMemo(
     () => new Set(getChangedReapprovalFields(productRecord, formData)),
     [formData, productRecord]
   );
 
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(event.target)
+      ) {
+        setShowCategoryDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, []);
+
   const loadProduct = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [data, orderSummary] = await Promise.all([
+      const [data, orderSummary, eligibility] = await Promise.all([
         productService.getProductById(id),
         productService.getProductActiveOrderSummary(id).catch(() => ({
           activeOrderCount: 0,
           hasActiveOrders: false,
         })),
+        productService.getFlashSaleEligibility(id),
       ]);
-      const descriptionParts = splitProductDescription(data.description || '');
 
       setProductRecord(data);
+      setFlashSaleEligibility(eligibility);
       setActiveOrderCount(orderSummary.activeOrderCount || 0);
       setFormData({
         name: data.name || '',
@@ -347,17 +517,18 @@ export default function EditProduct() {
           Object.prototype.hasOwnProperty.call(data, 'original_price') && data.original_price != null
             ? String(data.original_price)
             : '',
-        overview: descriptionParts.overview,
-        features: descriptionParts.features,
-        specs: descriptionParts.specs,
-        images: data.images || [],
+        attributes: deriveStructuredAttributes({
+          category: data.category,
+          attributes: data.attributes,
+          description: data.description,
+        }),
+        images: buildImageSlots(data.images || []),
         pickupEnabled: (data.pickup_mode || PICKUP_MODE.DISABLED) !== PICKUP_MODE.DISABLED,
         flashSaleEnabled: hasFlashSaleConfiguration(data),
         salePrice: data.sale_price != null ? String(data.sale_price) : '',
         saleStart: toLocalDateTimeValue(data.sale_start),
         saleEnd: toLocalDateTimeValue(data.sale_end),
         saleQuantityLimit: data.sale_quantity_limit != null ? String(data.sale_quantity_limit) : '',
-        imageFiles: [null, null, null, null, null],
       });
     } catch (error) {
       console.error('Error loading product:', error);
@@ -407,7 +578,55 @@ export default function EditProduct() {
     checkAuth();
   }, [loadProduct, location.pathname, navigate, showError]);
 
-  const handleImageChange = (index, file) => {
+  const clearErrorFields = (fieldNames) => {
+    setErrors((previousErrors) => {
+      let hasChange = false;
+      const nextErrors = { ...previousErrors };
+
+      fieldNames.forEach((fieldName) => {
+        if (nextErrors[fieldName]) {
+          delete nextErrors[fieldName];
+          hasChange = true;
+        }
+      });
+
+      return hasChange ? nextErrors : previousErrors;
+    });
+  };
+
+  const updateFormField = (name, value) => {
+    setFormData((previousData) => ({
+      ...previousData,
+      [name]: value,
+    }));
+  };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    updateFormField(name, value);
+    clearErrorFields([name]);
+  };
+
+  const handleCategorySelect = (category) => {
+    setFormData((previousData) => ({
+      ...previousData,
+      category,
+      attributes: previousData.category === category ? previousData.attributes : {},
+    }));
+    setCategorySearch('');
+    setShowCategoryDropdown(false);
+    clearErrorFields(['category']);
+    setErrors((previousErrors) => {
+      const nextErrors = Object.fromEntries(
+        Object.entries(previousErrors).filter(([key]) => !key.startsWith('attr_'))
+      );
+      return Object.keys(nextErrors).length === Object.keys(previousErrors).length
+        ? previousErrors
+        : nextErrors;
+    });
+  };
+
+  const handleImageSelect = (index, file) => {
     if (!file) {
       return;
     }
@@ -424,62 +643,105 @@ export default function EditProduct() {
       return;
     }
 
-    const updatedFiles = [...formData.imageFiles];
-    updatedFiles[index] = file;
-    setFormData((prev) => ({ ...prev, imageFiles: updatedFiles }));
+    setFormData((previousData) => {
+      const nextImages = [...previousData.images];
+      nextImages[index] = file;
+
+      return {
+        ...previousData,
+        images: nextImages,
+      };
+    });
+    clearErrorFields(['images']);
   };
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name] || name === 'price' || name === 'originalPrice') {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: '',
-        ...(name === 'price' || name === 'originalPrice'
-          ? { price: '', originalPrice: '' }
-          : {}),
-      }));
-    }
+  const handleImageRemove = (index) => {
+    setFormData((previousData) => {
+      const nextImages = [...previousData.images];
+      nextImages[index] = null;
+
+      return {
+        ...previousData,
+        images: nextImages,
+      };
+    });
+    clearErrorFields(['images']);
   };
 
-  const validate = () => {
+  const validateForm = (step = 'all') => {
     const nextErrors = {};
     const price = parsePriceInput(formData.price);
     const originalPrice = parsePriceInput(formData.originalPrice);
-    const productNameError = validateProductName(formData.name);
-    const overviewError = validateProductOverview(formData.overview);
-    const productDescriptionError = validateProductDescription(buildFullDescription(formData));
-    const imageValidationError = validateSelectedFiles(
-      formData.imageFiles.filter(Boolean),
-      {
-        label: 'Product images',
-        maxCount: formData.imageFiles.length,
-        maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
-        allowedMimePrefixes: ['image/'],
-      }
-    );
+    const shouldValidateBasic = step === 'all' || step === 1;
+    const shouldValidateImages = step === 'all' || step === 2;
+    const shouldValidateDetails = step === 'all' || step === 3;
 
-    if (productNameError) nextErrors.name = productNameError;
-    if (!price || price <= 0) nextErrors.price = 'Required';
-    if (formData.originalPrice !== '') {
-      if (!originalPrice || originalPrice <= 0) {
-        nextErrors.originalPrice = 'Enter a valid original price';
-      } else if (discountPreview.error) {
-        nextErrors.originalPrice = discountPreview.error;
+    if (shouldValidateBasic) {
+      const productNameError = validateProductName(formData.name);
+
+      if (productNameError) {
+        nextErrors.name = productNameError;
+      }
+
+      if (!formData.category) {
+        nextErrors.category = 'Category is required';
+      }
+
+      if (!price || price <= 0) {
+        nextErrors.price = 'Enter a valid selling price';
+      }
+
+      if (formData.originalPrice !== '') {
+        if (!originalPrice || originalPrice <= 0) {
+          nextErrors.originalPrice = 'Enter a valid original price';
+        } else if (discountPreview.error) {
+          nextErrors.originalPrice = discountPreview.error;
+        }
+      }
+
+      if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
+        nextErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
       }
     }
-    if (overviewError) nextErrors.overview = overviewError;
-    if (!nextErrors.overview && productDescriptionError) nextErrors.overview = productDescriptionError;
-    if (imageValidationError) nextErrors.images = imageValidationError;
-    if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
-      nextErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
+
+    if (shouldValidateImages) {
+      const imageValidationError = validateSelectedFiles(
+        formData.images.filter((image) => image instanceof File),
+        {
+          label: 'Product images',
+          maxCount: PRODUCT_IMAGE_SLOT_COUNT,
+          maxFileSizeBytes: MAX_PRODUCT_IMAGE_BYTES,
+          allowedMimePrefixes: ['image/'],
+        }
+      );
+
+      if (imageValidationError) {
+        nextErrors.images = imageValidationError;
+      } else if (normalizeImages(formData.images).length === 0) {
+        nextErrors.images = 'Add at least one product image';
+      }
     }
 
-    if (formData.flashSaleEnabled) {
+    if (shouldValidateDetails) {
+      const attributeErrors = validateAttributes(formData.attributes, formData.category);
+      Object.entries(attributeErrors).forEach(([key, value]) => {
+        nextErrors[`attr_${key}`] = value;
+      });
+
+      const productDescriptionError = validateProductDescription(
+        buildProductDescription(formData.attributes, formData.category)
+      );
+      if (productDescriptionError && !nextErrors.attr_description) {
+        nextErrors.attr_description = productDescriptionError;
+      }
+    }
+
+    if (step === 'all' && formData.flashSaleEnabled) {
       Object.assign(
         nextErrors,
         getFlashSaleValidationErrors({
+          enabled: formData.flashSaleEnabled,
+          eligibility: normalizedFlashSaleEligibility,
           isTrustedSeller: currentUser?.is_trusted_seller,
           accountStatus: currentUser?.account_status || currentUser?.status,
           isApproved: productRecord?.is_approved,
@@ -496,19 +758,33 @@ export default function EditProduct() {
     }
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return nextErrors;
   };
 
-  const uploadReplacementImages = async () => {
-    const nextImageUrls = [...formData.images];
+  const handleNextStep = () => {
+    const validationErrors = validateForm(currentStep);
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
 
-    for (let index = 0; index < formData.imageFiles.length; index += 1) {
-      const file = formData.imageFiles[index];
-      if (!file) {
+    setCurrentStep((previousStep) => Math.min(previousStep + 1, EDIT_PRODUCT_STEPS.length));
+  };
+
+  const uploadPreparedImages = async () => {
+    const uploadedUrls = [];
+
+    for (let index = 0; index < formData.images.length; index += 1) {
+      const image = formData.images[index];
+      if (!image) {
         continue;
       }
 
-      const fileExt = String(file.name.split('.').pop() || 'jpg')
+      if (typeof image === 'string') {
+        uploadedUrls.push(image);
+        continue;
+      }
+
+      const fileExt = String(image.name.split('.').pop() || 'jpg')
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '')
         .slice(0, 8) || 'jpg';
@@ -516,34 +792,41 @@ export default function EditProduct() {
 
       const { error: uploadError } = await supabase.storage
         .from('product-images')
-        .upload(fileName, file);
+        .upload(fileName, image);
 
       if (uploadError) {
         throw uploadError;
       }
 
       const { data } = supabase.storage.from('product-images').getPublicUrl(fileName);
-
-      if (index < nextImageUrls.length) {
-        nextImageUrls[index] = data.publicUrl;
-      } else {
-        nextImageUrls.push(data.publicUrl);
-      }
+      uploadedUrls.push(data.publicUrl);
     }
 
-    return nextImageUrls;
+    return uploadedUrls;
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!validate() || !productRecord) {
+  const handleSave = async () => {
+    if (!productRecord) {
+      return;
+    }
+
+    const validationErrors = validateForm('all');
+    if (Object.keys(validationErrors).length > 0) {
+      const nextStep = getFirstInvalidStep(validationErrors);
+      setCurrentStep(nextStep);
+      showWarning(
+        'Complete required fields',
+        nextStep === currentStep
+          ? 'Please fix the highlighted fields before saving your changes.'
+          : `Please review step ${nextStep} and fix the highlighted fields before saving your changes.`
+      );
       return;
     }
 
     setIsSaving(true);
 
     try {
-      const imageUrls = await uploadReplacementImages();
+      const imageUrls = await uploadPreparedImages();
       const generalUpdates = buildGeneralUpdates(formData, imageUrls);
       const flashSaleUpdates = buildFlashSalePayload(formData);
       const generalChanged = hasGeneralChanges(productRecord, generalUpdates);
@@ -551,7 +834,6 @@ export default function EditProduct() {
 
       if (!generalChanged && !flashSaleChanged) {
         showWarning('No Changes', 'There are no new changes to save.');
-        setIsSaving(false);
         return;
       }
 
@@ -567,7 +849,6 @@ export default function EditProduct() {
         updatedProduct = await productService.updateFlashSale(id, flashSaleUpdates);
       }
 
-      setProductRecord(updatedProduct);
       await loadProduct();
 
       if (reapprovalTriggered) {
@@ -601,15 +882,11 @@ export default function EditProduct() {
 
     try {
       const nextStock = Number(productRecord.stock_quantity || 0) + amount;
-      const updatedProduct = await productService.updateProduct(id, {
+      await productService.updateProduct(id, {
         stock_quantity: nextStock,
         updated_at: new Date().toISOString(),
       });
-
-      setProductRecord((current) => ({
-        ...current,
-        ...updatedProduct,
-      }));
+      await loadProduct();
       setRestockAmount('');
       showSuccess('Stock Updated', `${amount} unit${amount === 1 ? '' : 's'} added to stock.`);
     } catch (error) {
@@ -620,9 +897,350 @@ export default function EditProduct() {
     }
   };
 
+  const renderStepContent = () => {
+    if (currentStep === 1) {
+      return (
+        <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+              Step 1
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Basic Info</h2>
+            <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+              Product naming, category, pricing, and delivery settings.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="mb-2 block text-sm font-semibold">
+                Product Name <span className="text-orange-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g., Wireless Headphones"
+                className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                  errors.name ? 'border-orange-500 focus:border-orange-500' : ''
+                }`}
+              />
+              <FieldError message={errors.name} />
+              {reapprovalWarningFields.has('name') ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {REAPPROVAL_WARNING_MESSAGE}
+                </div>
+              ) : null}
+            </div>
+
+            <div title={categoryLocked ? categoryLockReason : ''}>
+              <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                Category <span className="text-orange-500">*</span>
+                {categoryLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
+              </label>
+
+              {categoryLocked ? (
+                <input
+                  type="text"
+                  value={formData.category}
+                  disabled
+                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} opacity-70`}
+                />
+              ) : (
+                <div ref={categoryDropdownRef} className="relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={showCategoryDropdown ? categorySearch : formData.category}
+                      onChange={(event) => {
+                        setCategorySearch(event.target.value);
+                        setShowCategoryDropdown(true);
+                        clearErrorFields(['category']);
+                      }}
+                      onFocus={() => {
+                        setCategorySearch(formData.category || '');
+                        setShowCategoryDropdown(true);
+                      }}
+                      placeholder="Search categories..."
+                      className={`w-full rounded-xl px-4 py-3 pr-11 text-sm ${theme.input} ${
+                        errors.category ? 'border-orange-500 focus:border-orange-500' : ''
+                      }`}
+                    />
+                    <Search
+                      className={`absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 ${theme.softText}`}
+                    />
+                  </div>
+
+                  {showCategoryDropdown ? (
+                    <div className={`absolute z-20 mt-2 w-full overflow-hidden rounded-xl ${theme.panelSoft}`}>
+                      <div className="max-h-60 overflow-auto py-2">
+                        {filteredCategories.length > 0 ? (
+                          filteredCategories.map((category) => (
+                            <button
+                              key={category}
+                              type="button"
+                              onClick={() => handleCategorySelect(category)}
+                              className={`w-full px-4 py-3 text-left text-sm transition ${theme.rowHover}`}
+                            >
+                              {category}
+                            </button>
+                          ))
+                        ) : (
+                          <div className={`px-4 py-3 text-sm ${theme.mutedText}`}>No categories found</div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <FieldError message={errors.category} />
+              {reapprovalWarningFields.has('category') ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {REAPPROVAL_WARNING_MESSAGE}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div title={priceLocked ? priceLockReason : ''}>
+                <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  Selling Price (₦) <span className="text-orange-500">*</span>
+                  {priceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
+                </label>
+                <input
+                  type="number"
+                  name="price"
+                  value={formData.price}
+                  onChange={handleChange}
+                  disabled={priceLocked}
+                  min="0"
+                  step="0.01"
+                  placeholder="What buyers currently pay"
+                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                    errors.price ? 'border-orange-500 focus:border-orange-500' : ''
+                  } ${priceLocked ? 'opacity-70' : ''}`}
+                />
+                <FieldError message={errors.price} />
+                {reapprovalWarningFields.has('price') ? (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {REAPPROVAL_WARNING_MESSAGE}
+                  </div>
+                ) : null}
+              </div>
+
+              <div title={originalPriceLocked ? priceLockReason : ''}>
+                <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  Original Price (₦)
+                  {originalPriceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
+                </label>
+                <input
+                  type="number"
+                  name="originalPrice"
+                  value={formData.originalPrice}
+                  onChange={handleChange}
+                  disabled={originalPriceLocked}
+                  min="0"
+                  step="0.01"
+                  placeholder="Leave blank if no discount"
+                  className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                    errors.originalPrice || discountPreview.error
+                      ? 'border-orange-500 focus:border-orange-500'
+                      : ''
+                  } ${originalPriceLocked ? 'opacity-70' : ''}`}
+                />
+                <p className={`mt-2 text-xs ${theme.softText}`}>
+                  Original price before discount. Leave blank if this product is not discounted.
+                </p>
+                <FieldError message={errors.originalPrice} />
+                {reapprovalWarningFields.has('original_price') ? (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {REAPPROVAL_WARNING_MESSAGE}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {!errors.originalPrice && discountPreview.error ? (
+              <p className="text-sm text-orange-600">{discountPreview.error}</p>
+            ) : null}
+
+            <div className={`rounded-xl border p-4 ${theme.panelMuted}`}>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em]">
+                Pricing Summary
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className={theme.softText}>Buyer pays</span>
+                  <span className="font-semibold">
+                    {parsePriceInput(formData.price) != null
+                      ? formatSellerCurrency(parsePriceInput(formData.price))
+                      : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className={theme.softText}>Mafdesh fee (5%)</span>
+                  <span className="font-semibold text-red-500">
+                    {platformFee != null ? `- ${formatSellerCurrency(platformFee)}` : '—'}
+                  </span>
+                </div>
+                <div className={`border-t pt-2 ${theme.softText}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">You receive</span>
+                    <span className="text-lg font-bold text-orange-500">
+                      {sellerReceives != null ? formatSellerCurrency(sellerReceives) : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {!discountPreview.error && discountPreview.discountPercent !== null ? (
+                <div className="mt-3 border-t pt-3">
+                  <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                    {discountPreview.discountPercent}% off original price
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="mb-3 block text-sm font-semibold">Delivery and Pickup</label>
+              <div className={`space-y-4 rounded-2xl border p-4 ${theme.panelMuted}`}>
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+                    <Truck className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="font-semibold">Delivery is included automatically</p>
+                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                      Delivery fees stay auto-calculated from your location to the buyer&apos;s location.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-3 rounded-xl border border-transparent p-1">
+                  <input
+                    type="checkbox"
+                    checked={formData.pickupEnabled}
+                    onChange={(event) => {
+                      updateFormField('pickupEnabled', event.target.checked);
+                      clearErrorFields(['pickupEnabled']);
+                    }}
+                    className="mt-1"
+                  />
+                  <div>
+                    <p className="font-semibold">Enable pickup for this product</p>
+                  </div>
+                </label>
+
+                {formData.pickupEnabled && sellerPickupLocations.length === 0 ? (
+                  <div className={`rounded-xl border border-dashed p-4 ${theme.empty}`}>
+                    <p className="text-sm leading-6">Add a seller pickup location first.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/seller/delivery')}
+                      className="mt-3 text-sm font-semibold text-orange-600 underline underline-offset-2"
+                    >
+                      Open delivery settings
+                    </button>
+                  </div>
+                ) : null}
+
+                {formData.pickupEnabled && sellerPickupLocations.length > 0 ? (
+                  <p className={`text-sm ${theme.mutedText}`}>
+                    Pickup will use {sellerPickupLocations.length} active seller location
+                    {sellerPickupLocations.length === 1 ? '' : 's'}.
+                  </p>
+                ) : null}
+
+                <FieldError message={errors.pickupEnabled} />
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (currentStep === 2) {
+      return (
+        <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+              Step 2
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Images</h2>
+            <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+              Replace or remove listing images using the same slot layout as add-product.
+            </p>
+          </div>
+
+          <ProductImageGrid
+            images={formData.images}
+            darkMode={themeState.darkMode}
+            error={errors.images}
+            onSelect={handleImageSelect}
+            onRemove={handleImageRemove}
+          />
+
+          <div className={`mt-5 rounded-xl border p-4 ${theme.panelMuted}`}>
+            <p className="text-sm font-semibold">Image requirements</p>
+            <p className={`mt-2 text-sm ${theme.mutedText}`}>
+              Existing images stay in place until you replace or remove them. New uploads must be under 3MB.
+            </p>
+          </div>
+
+          {reapprovalWarningFields.has('images') ? (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {REAPPROVAL_WARNING_MESSAGE}
+            </div>
+          ) : null}
+        </section>
+      );
+    }
+
+    return (
+      <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+        <div className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+            Step 3
+          </p>
+          <h2 className="mt-2 text-2xl font-bold">Product Details</h2>
+          <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+            Update the buyer-facing details using the same category-specific fields as add-product.
+          </p>
+        </div>
+
+        <ProductAttributeForm
+          category={formData.category}
+          values={formData.attributes}
+          onChange={(key, value) => {
+            setFormData((previousData) => ({
+              ...previousData,
+              attributes: { ...previousData.attributes, [key]: value },
+            }));
+            clearErrorFields([`attr_${key}`]);
+          }}
+          errors={Object.fromEntries(
+            Object.entries(errors)
+              .filter(([key]) => key.startsWith('attr_'))
+              .map(([key, value]) => [key.replace('attr_', ''), value])
+          )}
+          darkMode={themeState.darkMode}
+        />
+
+        {reapprovalWarningFields.has('details') ? (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {REAPPROVAL_WARNING_MESSAGE}
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
   if (isLoading) {
     return (
-      <div className={`min-h-screen transition-colors duration-300 ${theme.shell}`}>
+      <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
         <Navbar
           theme={themeState.darkMode ? 'dark' : 'light'}
           themeToggle={
@@ -634,8 +1252,8 @@ export default function EditProduct() {
               : null
           }
         />
-        <div className="mx-auto max-w-4xl px-4 py-8">
-          <div className={`rounded-lg p-6 ${theme.panel}`}>Loading product...</div>
+        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+          <div className={`rounded-2xl p-6 ${theme.panel}`}>Loading product...</div>
         </div>
         <Footer />
         <ModalComponent />
@@ -644,7 +1262,7 @@ export default function EditProduct() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${theme.shell}`}>
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
       <Navbar
         theme={themeState.darkMode ? 'dark' : 'light'}
         themeToggle={
@@ -656,509 +1274,325 @@ export default function EditProduct() {
             : null
         }
       />
-      <div className="max-w-4xl mx-auto px-4 py-8">
+
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
         <button
+          type="button"
           onClick={() => navigate('/seller/products')}
-          className={`flex items-center gap-2 mb-6 ${theme.actionGhost}`}
+          className={`mb-6 inline-flex items-center gap-2 self-start rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${theme.actionGhost}`}
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft className="h-5 w-5" />
           Back to Products
         </button>
 
-        <div className={`rounded-lg p-6 ${theme.panel}`}>
-          <h1 className="text-3xl font-bold mb-6">Edit Product</h1>
+        <div className="space-y-6">
+          <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                  Seller Workspace
+                </p>
+                <h1 className="mt-2 text-3xl font-bold tracking-tight">Edit Product</h1>
+                <p className={`mt-3 max-w-2xl text-sm leading-7 ${theme.mutedText}`}>
+                  Update this listing with the same category-driven standards used in add-product.
+                </p>
+              </div>
+              <div className={`rounded-xl px-4 py-3 text-sm ${theme.panelMuted}`}>
+                Step {currentStep} of {EDIT_PRODUCT_STEPS.length}
+              </div>
+            </div>
+          </section>
 
-          {hasActiveOrders && (
-            <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4 text-orange-800">
+          {hasActiveOrders ? (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-orange-800">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                 <div>
                   <p className="font-semibold">
-                    This product has active orders. Price and category cannot be changed until all orders are completed.
+                    This product has active orders. Price and category cannot be changed until those orders are completed.
                   </p>
-                  <p className="mt-1 text-sm">
-                    Active order count: {activeOrderCount}
-                  </p>
+                  <p className="mt-1 text-sm">Active order count: {activeOrderCount}</p>
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {productRecord?.deleted_at && (
-            <div className="mb-6 rounded-xl border border-slate-300 bg-slate-100 p-4 text-slate-700">
+          {productRecord?.deleted_at ? (
+            <div className={`rounded-2xl border p-4 ${theme.panelMuted}`}>
               <p className="font-semibold">This product is currently archived.</p>
-              <p className="mt-1 text-sm">Unarchive it from the product list to show it to buyers again.</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Product Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                maxLength={PRODUCT_NAME_MAX_LENGTH}
-                className={`w-full px-4 py-2 border rounded-lg ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-              {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name}</p>}
-              {reapprovalWarningFields.has('name') && (
-                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {REAPPROVAL_WARNING_MESSAGE}
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div title={categoryLocked ? categoryLockReason : ''}>
-                <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  Category <span className="text-red-500">*</span>
-                  {categoryLocked && <Lock className="h-4 w-4 text-gray-500" />}
-                </label>
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  disabled={categoryLocked}
-                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg ${
-                    categoryLocked ? 'bg-gray-100 text-gray-500' : ''
-                  }`}
-                >
-                  <option value="">Select a category</option>
-                  {PRODUCT_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-                {errors.category && <p className="text-sm text-red-600 mt-1">{errors.category}</p>}
-                {reapprovalWarningFields.has('category') && (
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    {REAPPROVAL_WARNING_MESSAGE}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <div title={priceLocked ? priceLockReason : ''}>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    Selling Price (₦) <span className="text-red-500">*</span>
-                    {priceLocked && <Lock className="h-4 w-4 text-gray-500" />}
-                  </label>
-                  <input
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleChange}
-                    disabled={priceLocked}
-                    min="0"
-                    step="0.01"
-                    className={`w-full px-4 py-2 border rounded-lg ${
-                      errors.price ? 'border-red-500' : 'border-gray-300'
-                    } ${priceLocked ? 'bg-gray-100 text-gray-500' : ''}`}
-                  />
-                  {errors.price && <p className="text-sm text-red-600 mt-1">{errors.price}</p>}
-                  {reapprovalWarningFields.has('price') && (
-                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                      {REAPPROVAL_WARNING_MESSAGE}
-                    </div>
-                  )}
-                </div>
-
-                <div title={originalPriceLocked ? priceLockReason : ''}>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    Original Price (₦)
-                    {originalPriceLocked && <Lock className="h-4 w-4 text-gray-500" />}
-                  </label>
-                  <input
-                    type="number"
-                    name="originalPrice"
-                    value={formData.originalPrice}
-                    onChange={handleChange}
-                    disabled={originalPriceLocked}
-                    min="0"
-                    step="0.01"
-                    placeholder="Leave blank if no discount"
-                    className={`w-full px-4 py-2 border rounded-lg ${
-                      errors.originalPrice || discountPreview.error ? 'border-red-500' : 'border-gray-300'
-                    } ${originalPriceLocked ? 'bg-gray-100 text-gray-500' : ''}`}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Original price before discount (optional) — leave blank if no discount
-                  </p>
-                  {errors.originalPrice && (
-                    <p className="text-sm text-red-600 mt-1">{errors.originalPrice}</p>
-                  )}
-                  {reapprovalWarningFields.has('original_price') && (
-                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                      {REAPPROVAL_WARNING_MESSAGE}
-                    </div>
-                  )}
-                </div>
-
-                {!errors.originalPrice && discountPreview.error && (
-                  <p className="text-sm text-red-600">{discountPreview.error}</p>
-                )}
-
-                {!discountPreview.error && discountPreview.discountPercent !== null && (
-                  <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
-                    {discountPreview.discountPercent}% off
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <label className="block text-sm font-semibold text-gray-700">Current Stock</label>
-              <p className="mt-2 text-2xl font-bold text-blue-900">
-                {Number(productRecord?.stock_quantity || 0)} units
+              <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                Unarchive it from the product list to make it visible to buyers again.
               </p>
-              <p className="mt-2 text-sm text-gray-600">
-                Orders reduce stock automatically. Restock below.
+            </div>
+          ) : null}
+
+          <StepIndicator currentStep={currentStep} theme={theme} darkMode={themeState.darkMode} />
+
+          {renderStepContent()}
+
+          <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                Inventory
+              </p>
+              <h2 className="mt-2 text-2xl font-bold">Stock Management</h2>
+              <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+                Orders reduce stock automatically. Use this section to top up available units.
               </p>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">Restock</label>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className={`rounded-xl border p-4 ${theme.panelMuted}`}>
+                <p className="text-sm font-semibold">Current Stock</p>
+                <p className="mt-2 text-3xl font-bold text-orange-500">
+                  {Number(productRecord?.stock_quantity || 0)} units
+                </p>
+                <p className={`mt-2 text-sm ${theme.mutedText}`}>
+                  Stock updates do not change the buyer-facing listing details above.
+                </p>
+              </div>
+
+              <div className={`rounded-xl border p-4 ${theme.panelMuted}`}>
+                <label className="mb-2 block text-sm font-semibold">Add stock</label>
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-gray-700">
-                      Add stock
-                    </label>
-                    <div className="flex items-center overflow-hidden rounded-lg border border-gray-300 bg-white">
-                      <span className="px-4 py-2 text-lg font-bold text-orange-600">+</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={restockAmount}
-                        onChange={(event) => setRestockAmount(event.target.value)}
-                        className="w-full px-4 py-2 outline-none"
-                        placeholder="Enter units to add"
-                      />
-                    </div>
+                  <div className={`flex items-center overflow-hidden rounded-xl border ${theme.input}`}>
+                    <span className="px-4 py-3 text-lg font-bold text-orange-600">+</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={restockAmount}
+                      onChange={(event) => setRestockAmount(event.target.value)}
+                      className="w-full bg-transparent px-4 py-3 text-sm outline-none"
+                      placeholder="Enter units to add"
+                    />
                   </div>
                   <button
                     type="button"
                     onClick={handleRestock}
                     disabled={isRestocking}
-                    className="rounded-lg bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                    className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${theme.actionPrimary} disabled:opacity-50`}
                   >
                     {isRestocking ? 'Updating Stock...' : 'Update Stock'}
                   </button>
                 </div>
               </div>
             </div>
+          </section>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Flash Sale
-              </label>
-
-              {canManageFlashSales ? (
-                <div className="space-y-4 rounded-lg border border-orange-200 bg-orange-50/40 p-4">
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.flashSaleEnabled}
-                      onChange={(event) => {
-                        const enabled = event.target.checked;
-                        setFormData((prev) => ({
-                          ...prev,
-                          flashSaleEnabled: enabled,
-                          salePrice: enabled ? prev.salePrice : '',
-                          saleStart: enabled ? prev.saleStart : '',
-                          saleEnd: enabled ? prev.saleEnd : '',
-                          saleQuantityLimit: enabled ? prev.saleQuantityLimit : '',
-                        }));
-                        setErrors((prev) => ({
-                          ...prev,
-                          flashSale: '',
-                          salePrice: '',
-                          saleStart: '',
-                          saleEnd: '',
-                          saleQuantityLimit: '',
-                        }));
-                      }}
-                      className="mt-1"
-                    />
-                    <div>
-                      <span className="flex items-center gap-2 font-semibold text-gray-800">
-                        <Zap className="h-4 w-4 text-orange-500" />
-                        Enable flash sale pricing for this product
-                      </span>
-                      <p className="text-sm text-gray-600">
-                        Flash sale changes are saved separately from the main product update.
-                      </p>
-                    </div>
-                  </label>
-
-                  {errors.flashSale && (
-                    <p className="text-sm text-red-600">{errors.flashSale}</p>
-                  )}
-
-                  {activeFlashSale && (
-                    <p className="text-sm text-orange-700">
-                      Live now until {new Date(productRecord.sale_end).toLocaleString()}.
-                    </p>
-                  )}
-
-                  {productRecord?.admin_approved_discount && (
-                    <p className="text-sm text-green-700">
-                      Approved for discounts above 50%.
-                    </p>
-                  )}
-
-                  {formData.flashSaleEnabled && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          Sale Price <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="number"
-                          name="salePrice"
-                          min="0"
-                          step="0.01"
-                          value={formData.salePrice}
-                          onChange={handleChange}
-                          className={`w-full rounded-lg border px-4 py-2 ${
-                            errors.salePrice ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                        />
-                        {errors.salePrice && (
-                          <p className="mt-1 text-sm text-red-600">{errors.salePrice}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          Sale Quantity Limit
-                        </label>
-                        <input
-                          type="number"
-                          name="saleQuantityLimit"
-                          min="1"
-                          step="1"
-                          value={formData.saleQuantityLimit}
-                          onChange={handleChange}
-                          placeholder="Optional"
-                          className={`w-full rounded-lg border px-4 py-2 ${
-                            errors.saleQuantityLimit ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                        />
-                        {errors.saleQuantityLimit && (
-                          <p className="mt-1 text-sm text-red-600">{errors.saleQuantityLimit}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          Start Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="datetime-local"
-                          name="saleStart"
-                          value={formData.saleStart}
-                          onChange={handleChange}
-                          className={`w-full rounded-lg border px-4 py-2 ${
-                            errors.saleStart ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                        />
-                        {errors.saleStart && (
-                          <p className="mt-1 text-sm text-red-600">{errors.saleStart}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-gray-700">
-                          End Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="datetime-local"
-                          name="saleEnd"
-                          value={formData.saleEnd}
-                          onChange={handleChange}
-                          className={`w-full rounded-lg border px-4 py-2 ${
-                            errors.saleEnd ? 'border-red-500' : 'border-gray-300'
-                          }`}
-                        />
-                        {errors.saleEnd && (
-                          <p className="mt-1 text-sm text-red-600">{errors.saleEnd}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-700">
-                  Unlocks after 5+ successful orders and a 4.0+ rating.
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Delivery and Pickup
-              </label>
-              <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div>
-                  <span className="flex items-center gap-2 font-semibold text-gray-800">
-                    <Truck className="h-4 w-4 text-orange-500" />
-                    Delivery is included automatically
-                  </span>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Delivery fee is auto-calculated from your ship-from state to the buyer's state.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.pickupEnabled}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          pickupEnabled: event.target.checked,
-                        }))
-                      }
-                      className="mt-1"
-                    />
-                    <div>
-                      <span className="font-semibold text-gray-800">
-                        Enable pickup for this product
-                      </span>
-                    </div>
-                  </label>
-                  {formData.pickupEnabled && sellerPickupLocations.length === 0 && (
-                    <div className="mt-3 rounded-lg border border-dashed border-orange-300 bg-white p-4 text-sm text-orange-700">
-                      <p>Add a seller pickup location first.</p>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/seller/delivery')}
-                        className="mt-3 font-semibold text-orange-700 underline underline-offset-2"
-                      >
-                        Open delivery settings
-                      </button>
-                    </div>
-                  )}
-                  {formData.pickupEnabled && sellerPickupLocations.length > 0 && (
-                    <p className="mt-3 text-sm text-gray-600">
-                      Pickup will use {sellerPickupLocations.length} active seller location
-                      {sellerPickupLocations.length === 1 ? '' : 's'}.
-                    </p>
-                  )}
-                  {errors.pickupEnabled && (
-                    <p className="text-sm text-red-600 mt-1">{errors.pickupEnabled}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Product Images
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {formData.images.map((url, index) => (
-                  <div key={index} className="border rounded p-2">
-                    {url && (
-                      <img
-                        src={url}
-                        alt={`Product ${index + 1}`}
-                        className="w-full h-24 object-contain mb-2"
-                      />
-                    )}
-                    <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleImageChange(index, e.target.files[0])}
-                  />
-                </div>
-              ))}
-              </div>
-              {errors.images && <p className="text-sm text-red-600 mt-2">{errors.images}</p>}
-              {reapprovalWarningFields.has('images') && (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {REAPPROVAL_WARNING_MESSAGE}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Product Overview <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                name="overview"
-                value={formData.overview}
-                onChange={handleChange}
-                rows="4"
-                maxLength={PRODUCT_OVERVIEW_MAX_LENGTH}
-                className={`w-full px-4 py-2 border rounded-lg ${
-                  errors.overview ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-              {errors.overview && <p className="text-sm text-red-600 mt-1">{errors.overview}</p>}
-              <p className="text-xs text-gray-500 mt-2">
-                {normalizeMultilineText(formData.overview).length}/{PRODUCT_OVERVIEW_MAX_LENGTH} characters
+          <section className={`rounded-2xl p-5 sm:p-6 ${theme.panel}`}>
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
+                Promotions
+              </p>
+              <h2 className="mt-2 text-2xl font-bold">Flash Sale</h2>
+              <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
+                Manage promotional pricing without losing the cleaner add-product listing experience.
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Key Features
-              </label>
-              <textarea
-                name="features"
-                value={formData.features}
-                onChange={handleChange}
-                rows="4"
-                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
+            {canManageFlashSales ? (
+              <div className={`space-y-4 rounded-2xl border p-4 ${theme.panelMuted}`}>
+                <label className="flex items-start gap-3 rounded-xl border border-transparent p-1">
+                  <input
+                    type="checkbox"
+                    checked={formData.flashSaleEnabled}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setFormData((previousData) => ({
+                        ...previousData,
+                        flashSaleEnabled: enabled,
+                        salePrice: enabled ? previousData.salePrice : '',
+                        saleStart: enabled ? previousData.saleStart : '',
+                        saleEnd: enabled ? previousData.saleEnd : '',
+                        saleQuantityLimit: enabled ? previousData.saleQuantityLimit : '',
+                      }));
+                      clearErrorFields([
+                        'flashSale',
+                        'salePrice',
+                        'saleStart',
+                        'saleEnd',
+                        'saleQuantityLimit',
+                      ]);
+                    }}
+                    className="mt-1"
+                  />
+                  <div>
+                    <span className="flex items-center gap-2 font-semibold">
+                      <Zap className="h-4 w-4 text-orange-500" />
+                      Enable flash sale pricing for this product
+                    </span>
+                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                      Flash sale changes are saved alongside the main product update.
+                    </p>
+                  </div>
+                </label>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Specifications (Optional)
-              </label>
-              <textarea
-                name="specs"
-                value={formData.specs}
-                onChange={handleChange}
-                rows="3"
-                maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
+                <FieldError message={errors.flashSale} />
 
-            <div className="flex gap-4 pt-4">
+                {activeFlashSale ? (
+                  <p className="text-sm text-orange-700">
+                    Live now until {new Date(productRecord.sale_end).toLocaleString()}.
+                  </p>
+                ) : null}
+
+                {productRecord?.admin_approved_discount ? (
+                  <p className="text-sm text-green-700">Approved for discounts above 50%.</p>
+                ) : null}
+
+                {formData.flashSaleEnabled ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold">
+                        Sale Price <span className="text-orange-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="salePrice"
+                        min="0"
+                        step="0.01"
+                        value={formData.salePrice}
+                        onChange={handleChange}
+                        className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                          errors.salePrice ? 'border-orange-500 focus:border-orange-500' : ''
+                        }`}
+                      />
+                      <FieldError message={errors.salePrice} />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold">Sale Quantity Limit</label>
+                      <input
+                        type="number"
+                        name="saleQuantityLimit"
+                        min="1"
+                        step="1"
+                        value={formData.saleQuantityLimit}
+                        onChange={handleChange}
+                        placeholder="Optional"
+                        className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                          errors.saleQuantityLimit ? 'border-orange-500 focus:border-orange-500' : ''
+                        }`}
+                      />
+                      <FieldError message={errors.saleQuantityLimit} />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold">
+                        Start Time <span className="text-orange-500">*</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        name="saleStart"
+                        value={formData.saleStart}
+                        onChange={handleChange}
+                        className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                          errors.saleStart ? 'border-orange-500 focus:border-orange-500' : ''
+                        }`}
+                      />
+                      <FieldError message={errors.saleStart} />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold">
+                        End Time <span className="text-orange-500">*</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        name="saleEnd"
+                        value={formData.saleEnd}
+                        onChange={handleChange}
+                        className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                          errors.saleEnd ? 'border-orange-500 focus:border-orange-500' : ''
+                        }`}
+                      />
+                      <FieldError message={errors.saleEnd} />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className={`rounded-xl border border-dashed p-4 text-sm ${theme.mutedText}`}>
+                <p className="font-semibold">Flash sales are locked for this product right now.</p>
+
+                {flashSaleBlockingMessages.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {flashSaleBlockingMessages.map((message) => (
+                      <li key={message} className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                        <span>{message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {normalizedFlashSaleEligibility?.trust_reasons?.length ? (
+                  <div className={`mt-4 rounded-xl border p-3 ${theme.panel}`}>
+                    <p className="font-semibold">Current trust metrics</p>
+                    <p className="mt-2">
+                      Completed orders: {normalizedFlashSaleEligibility.completed_orders}
+                    </p>
+                    <p>Seller rating: {normalizedFlashSaleEligibility.average_rating.toFixed(1)}</p>
+                    <p>
+                      Dispute rate: {(normalizedFlashSaleEligibility.dispute_rate * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                ) : null}
+
+                {flashSaleBlockingMessages.length === 0 ? (
+                  <p className="mt-3">
+                    Flash-sale eligibility is still loading. Refresh the page if this does not update.
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </section>
+
+          <div className={`flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:justify-between ${theme.panel}`}>
+            <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => navigate('/seller/products')}
-                className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50"
+                className={`rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${theme.action}`}
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="flex-1 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : 'Save Changes'}
-              </button>
+
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep((previousStep) => Math.max(previousStep - 1, 1))}
+                  className={`rounded-xl px-5 py-3 text-sm font-semibold transition-colors ${theme.action}`}
+                >
+                  Back
+                </button>
+              ) : null}
             </div>
-          </form>
+
+            <div className="flex gap-3">
+              {currentStep < EDIT_PRODUCT_STEPS.length ? (
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${theme.actionPrimary}`}
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className={`rounded-xl px-6 py-3 text-sm font-semibold transition-colors ${theme.actionPrimary} disabled:opacity-50`}
+                >
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
       <Footer />
       <ModalComponent />
     </div>

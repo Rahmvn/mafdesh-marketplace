@@ -80,7 +80,27 @@ describe('authSessionService.signOutAndClearAuthState', () => {
 
     expect(localStorage.getItem('mafdesh_user')).toBeNull();
     expect(localStorage.getItem('marketplace_draft')).toBe(JSON.stringify({ keep: true }));
-    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
+    expect(mockSignOut).toHaveBeenNthCalledWith(1, { scope: 'global' });
+    expect(mockSignOut).toHaveBeenNthCalledWith(2, { scope: 'local' });
+  });
+
+  it('still clears local auth state when the global sign-out request fails', async () => {
+    mockSignOut
+      .mockResolvedValueOnce({
+        error: new Error('Failed to revoke refresh token'),
+      })
+      .mockResolvedValueOnce({
+        error: null,
+      });
+
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'user-1', role: 'buyer' }));
+
+    const { signOutAndClearAuthState } = await import('./authSessionService');
+
+    await expect(signOutAndClearAuthState()).resolves.toBeUndefined();
+    expect(localStorage.getItem('mafdesh_user')).toBeNull();
+    expect(mockSignOut).toHaveBeenCalledTimes(2);
   });
 
   it('routes admins to the admin dashboard instead of buyer return URLs', async () => {

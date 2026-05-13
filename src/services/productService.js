@@ -3,8 +3,174 @@ import {
   enrichProductsWithPublicSellerData,
   isSellerMarketplaceActive,
 } from "./publicSellerService";
+import { getOrderItemsMap } from "../utils/orderItems";
 
 const FINAL_ORDER_STATUSES = ["CANCELLED", "COMPLETED", "REFUNDED"];
+const ACTIVE_SELLER_ORDER_STATUSES = new Set([
+  "PAID_ESCROW",
+  "SHIPPED",
+  "READY_FOR_PICKUP",
+  "DELIVERED",
+]);
+
+function normalizeRpcRows(data) {
+  if (Array.isArray(data)) {
+    return data.filter(Boolean);
+  }
+
+  return data ? [data] : [];
+}
+
+function createEmptyProductInsight() {
+  return {
+    successfulUnitsSold: 0,
+    completedOrders: 0,
+    openOrders: 0,
+    successfulRevenue: 0,
+    lastCompletedSaleAt: null,
+  };
+}
+
+function getComparableTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function getOrCreateProductInsight(map, productId) {
+  if (!productId) {
+    return null;
+  }
+
+  if (!map[productId]) {
+    map[productId] = {
+      ...createEmptyProductInsight(),
+      completedOrderIds: new Set(),
+      openOrderIds: new Set(),
+      lastCompletedSaleTimestamp: null,
+    };
+  }
+
+  return map[productId];
+}
+
+export function buildSellerProductInsights(orders = [], orderItemsMap = {}, sellerId = null) {
+  const sellerIdString = sellerId == null ? null : String(sellerId);
+  const insightMap = {};
+
+  (orders || []).forEach((order) => {
+    const orderStatus = String(order?.status || "");
+    const isCompletedOrder = orderStatus === "COMPLETED";
+    const isActiveOrder = ACTIVE_SELLER_ORDER_STATUSES.has(orderStatus);
+    const completionTimestamp = getComparableTimestamp(
+      order?.completed_at || order?.updated_at || order?.created_at
+    );
+    const items = Array.isArray(orderItemsMap?.[order?.id]) ? orderItemsMap[order.id] : [];
+
+    if (items.length > 0) {
+      items.forEach((item) => {
+        const productId = item?.product?.id;
+        const itemSellerId = item?.product?.seller_id;
+        if (!productId) {
+          return;
+        }
+
+        if (
+          sellerIdString &&
+          itemSellerId != null &&
+          String(itemSellerId) !== sellerIdString
+        ) {
+          return;
+        }
+
+        const insight = getOrCreateProductInsight(insightMap, productId);
+        if (!insight) {
+          return;
+        }
+
+        const quantity = Math.max(0, Number(item?.quantity || 0));
+        const unitPrice = Math.max(
+          0,
+          Number(item?.price_at_time ?? item?.product?.price ?? 0)
+        );
+
+        if (isCompletedOrder) {
+          insight.successfulUnitsSold += quantity;
+          insight.successfulRevenue += quantity * unitPrice;
+          insight.completedOrderIds.add(order.id);
+
+          if (
+            completionTimestamp != null &&
+            (
+              insight.lastCompletedSaleTimestamp == null ||
+              completionTimestamp > insight.lastCompletedSaleTimestamp
+            )
+          ) {
+            insight.lastCompletedSaleTimestamp = completionTimestamp;
+            insight.lastCompletedSaleAt =
+              order?.completed_at || order?.updated_at || order?.created_at || null;
+          }
+        }
+
+        if (isActiveOrder) {
+          insight.openOrderIds.add(order.id);
+        }
+      });
+
+      return;
+    }
+
+    if (!order?.product_id) {
+      return;
+    }
+
+    const insight = getOrCreateProductInsight(insightMap, order.product_id);
+    if (!insight) {
+      return;
+    }
+
+    const quantity = Math.max(0, Number(order?.quantity || 0));
+    const unitPrice = Math.max(0, Number(order?.product_price || 0));
+
+    if (isCompletedOrder) {
+      insight.successfulUnitsSold += quantity;
+      insight.successfulRevenue += quantity * unitPrice;
+      insight.completedOrderIds.add(order.id);
+
+      if (
+        completionTimestamp != null &&
+        (
+          insight.lastCompletedSaleTimestamp == null ||
+          completionTimestamp > insight.lastCompletedSaleTimestamp
+        )
+      ) {
+        insight.lastCompletedSaleTimestamp = completionTimestamp;
+        insight.lastCompletedSaleAt =
+          order?.completed_at || order?.updated_at || order?.created_at || null;
+      }
+    }
+
+    if (isActiveOrder) {
+      insight.openOrderIds.add(order.id);
+    }
+  });
+
+  return Object.fromEntries(
+    Object.entries(insightMap).map(([productId, insight]) => [
+      productId,
+      {
+        successfulUnitsSold: insight.successfulUnitsSold,
+        completedOrders: insight.completedOrderIds.size,
+        openOrders: insight.openOrderIds.size,
+        successfulRevenue: insight.successfulRevenue,
+        lastCompletedSaleAt: insight.lastCompletedSaleAt,
+      },
+    ])
+  );
+}
 
 function isMissingDeletedAtColumn(error) {
   return (
@@ -129,6 +295,22 @@ export const productService = {
 
     if (error) throw error;
     return data || [];
+  },
+
+  async getSellerProductInsights(sellerId) {
+    const { data: ordersData, error: ordersError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("seller_id", sellerId)
+      .neq("status", "PENDING")
+      .order("created_at", { ascending: false });
+
+    if (ordersError) {
+      throw ordersError;
+    }
+
+    const itemsMap = await getOrderItemsMap(ordersData || []);
+    return buildSellerProductInsights(ordersData || [], itemsMap, sellerId);
   },
 
   async getProductById(id) {
@@ -263,6 +445,15 @@ export const productService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async getFlashSaleEligibility(productId) {
+    const { data, error } = await supabase.rpc("get_flash_sale_eligibility", {
+      p_product_id: productId,
+    });
+
+    if (error) throw error;
+    return normalizeRpcRows(data)[0] || null;
   },
 
   async getProductActiveOrderSummary(productId) {

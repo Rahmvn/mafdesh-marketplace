@@ -15,6 +15,7 @@ const {
   mockRouteAuthenticatedUser,
   mockSignOutAndClearAuthState,
   mockStoreAuthenticatedUser,
+  mockConsumeIntentionalLogoutRedirect,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockSignInWithPassword: vi.fn(),
@@ -26,6 +27,7 @@ const {
   mockRouteAuthenticatedUser: vi.fn(),
   mockSignOutAndClearAuthState: vi.fn(),
   mockStoreAuthenticatedUser: vi.fn(),
+  mockConsumeIntentionalLogoutRedirect: vi.fn(),
 }));
 
 vi.mock('../supabaseClient', () => ({
@@ -53,6 +55,7 @@ vi.mock('../services/cartService', () => ({
 
 vi.mock('../services/authSessionService', () => ({
   ensureCurrentUserContext: mockEnsureCurrentUserContext,
+  consumeIntentionalLogoutRedirect: mockConsumeIntentionalLogoutRedirect,
   loadAuthenticatedUserContext: mockLoadAuthenticatedUserContext,
   routeAuthenticatedUser: mockRouteAuthenticatedUser,
   signOutAndClearAuthState: mockSignOutAndClearAuthState,
@@ -115,6 +118,7 @@ describe('Login', () => {
     mockRouteAuthenticatedUser.mockReset();
     mockSignOutAndClearAuthState.mockReset();
     mockStoreAuthenticatedUser.mockReset();
+    mockConsumeIntentionalLogoutRedirect.mockReset();
 
     mockGetSession.mockResolvedValue({
       data: { session: null },
@@ -137,6 +141,7 @@ describe('Login', () => {
     });
     mockSignOutAndClearAuthState.mockResolvedValue();
     mockStoreAuthenticatedUser.mockImplementation(() => {});
+    mockConsumeIntentionalLogoutRedirect.mockReturnValue(false);
     mockRouteAuthenticatedUser.mockImplementation((navigate, profile, options = {}) => {
       if (options.returnUrl) {
         navigate(options.returnUrl, { replace: true });
@@ -244,6 +249,7 @@ describe('Login', () => {
     expect(await screen.findByText('Marketplace')).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'buyer-1' }),
+      desiredRole: 'buyer',
     });
     expect(mockStoreAuthenticatedUser).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'buyer' })
@@ -279,6 +285,7 @@ describe('Login', () => {
     expect(screen.getByText('Welcome back! Please login to continue')).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
+      desiredRole: 'buyer',
     });
     expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
     expect(mockRouteAuthenticatedUser).not.toHaveBeenCalled();
@@ -310,6 +317,7 @@ describe('Login', () => {
     expect(await screen.findByText('Admin Dashboard')).toBeInTheDocument();
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'admin-1' }),
+      desiredRole: 'admin',
     });
   });
 
@@ -343,6 +351,7 @@ describe('Login', () => {
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledTimes(1);
     expect(mockEnsureCurrentUserContext).toHaveBeenCalledWith({
       authUser: expect.objectContaining({ id: 'seller-1' }),
+      desiredRole: 'buyer',
     });
     expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
     expect(mockRouteAuthenticatedUser).not.toHaveBeenCalled();
@@ -416,5 +425,48 @@ describe('Login', () => {
 
     expect(await screen.findByText('Seller Dashboard')).toBeInTheDocument();
     expect(mockMergeGuestCart).not.toHaveBeenCalled();
+  });
+
+  it('cleans up the session if account bootstrap fails after password sign-in', async () => {
+    mockEnsureCurrentUserContext.mockRejectedValue(
+      new Error('Failed to send a request to the Edge Function')
+    );
+
+    renderLoginRoute();
+    fillAndSubmitLoginForm();
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalled();
+    });
+
+    expect(mockSignOutAndClearAuthState).toHaveBeenCalledWith({
+      localOnly: true,
+      intentional: false,
+    });
+    expect(mockRouteAuthenticatedUser).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-restore a session immediately after an intentional logout', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: 'seller-1' },
+        },
+      },
+      error: null,
+    });
+    mockConsumeIntentionalLogoutRedirect.mockReturnValue(true);
+
+    renderLoginRoute();
+
+    await waitFor(() => {
+      expect(mockSignOutAndClearAuthState).toHaveBeenCalledWith({
+        localOnly: true,
+        intentional: false,
+      });
+    });
+
+    expect(mockLoadAuthenticatedUserContext).not.toHaveBeenCalled();
+    expect(screen.getByText('Welcome back! Please login to continue')).toBeInTheDocument();
   });
 });

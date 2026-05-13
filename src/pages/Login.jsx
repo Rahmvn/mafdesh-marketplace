@@ -7,6 +7,7 @@ import { supabase } from "../supabaseClient";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 import {
+  consumeIntentionalLogoutRedirect,
   ensureCurrentUserContext,
   loadAuthenticatedUserContext,
   routeAuthenticatedUser,
@@ -106,6 +107,12 @@ export default function Login() {
           data: { session },
         } = await runAuthOperationWithRetry(() => supabase.auth.getSession());
 
+        if (consumeIntentionalLogoutRedirect()) {
+          await signOutAndClearAuthState({ localOnly: true, intentional: false });
+          clearStoredUser();
+          return;
+        }
+
         if (!session) {
           clearStoredUser();
           return;
@@ -148,6 +155,7 @@ export default function Login() {
 
     submitInFlightRef.current = true;
     setLoadingSafely(true);
+    let authenticatedUser = null;
 
     try {
       await Promise.resolve(initialSessionCheckRef.current).catch((error) => {
@@ -170,8 +178,11 @@ export default function Login() {
         throw new Error("Login failed");
       }
 
+      authenticatedUser = user;
+
       const profile = await ensureCurrentUserContext({
         authUser: user,
+        desiredRole: userType,
       });
 
       const role = profile.role;
@@ -188,6 +199,14 @@ export default function Login() {
 
       await storeAndRouteUser(profile, user.id, { mergeGuestCart: true });
     } catch (error) {
+      if (authenticatedUser?.id) {
+        try {
+          await signOutAndClearAuthState({ localOnly: true, intentional: false });
+        } catch (cleanupError) {
+          console.warn('Login cleanup failed after partial authentication:', cleanupError);
+        }
+      }
+
       console.error('Login error:', error);
       const feedback = getAuthFeedback('log in', error);
       showError(feedback.title, feedback.message);

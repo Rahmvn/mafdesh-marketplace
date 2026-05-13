@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Archive,
+  CheckCircle2,
+  Clock3,
   Edit,
   Package,
   Plus,
   RotateCcw,
   Search,
   Star,
+  TrendingUp,
   Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -26,13 +29,85 @@ import {
 } from '../components/seller/SellerShell';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 
+function createEmptyProductInsight() {
+  return {
+    successfulUnitsSold: 0,
+    completedOrders: 0,
+    openOrders: 0,
+    successfulRevenue: 0,
+    lastCompletedSaleAt: null,
+  };
+}
+
+function getProductInsight(product) {
+  return product?.insight || createEmptyProductInsight();
+}
+
+function formatInsightDate(value) {
+  if (!value) {
+    return 'No completed sale yet';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'No completed sale yet';
+  }
+
+  return date.toLocaleDateString();
+}
+
+function getLifecycleMeta(product) {
+  if (product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)) {
+    return {
+      key: 'ARCHIVED',
+      label: 'Admin archived',
+      className: 'bg-red-100 text-red-700',
+      note: product.deletion_reason || 'This listing can only be restored by admin.',
+    };
+  }
+
+  if (product.deleted_at) {
+    return {
+      key: 'ARCHIVED',
+      label: 'Archived',
+      className: 'bg-slate-200 text-slate-600',
+      note: '',
+    };
+  }
+
+  if (!product.is_approved && product.reapproval_reason) {
+    return {
+      key: 'PENDING_REVIEW',
+      label: 'Pending Review',
+      className: 'bg-orange-100 text-orange-700',
+      note: 'Updated - awaiting re-approval',
+    };
+  }
+
+  if (product.is_approved) {
+    return {
+      key: 'ACTIVE_STATUS',
+      label: 'Active',
+      className: 'bg-emerald-100 text-emerald-700',
+      note: '',
+    };
+  }
+
+  return {
+    key: 'PENDING',
+    label: 'Pending',
+    className: 'bg-amber-100 text-amber-700',
+    note: '',
+  };
+}
+
 export default function SellerProducts() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [stockFilter, setStockFilter] = useState('ALL');
+  const [catalogFilter, setCatalogFilter] = useState('ALL');
   const themeState = useSellerTheme(
     currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
   );
@@ -51,8 +126,17 @@ export default function SellerProducts() {
   const loadProducts = useCallback(async (sellerId) => {
     try {
       setLoading(true);
-      const sellerProducts = await productService.getSellerProducts(sellerId);
-      setProducts(sellerProducts);
+      const [sellerProducts, productInsights] = await Promise.all([
+        productService.getSellerProducts(sellerId),
+        productService.getSellerProductInsights(sellerId).catch(() => ({})),
+      ]);
+
+      setProducts(
+        (sellerProducts || []).map((product) => ({
+          ...product,
+          insight: productInsights?.[product.id] || createEmptyProductInsight(),
+        }))
+      );
     } catch (error) {
       console.error('Error loading products:', error);
       showError('Load Failed', 'Failed to load products.');
@@ -93,13 +177,17 @@ export default function SellerProducts() {
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const quantity = Number(product.stock_quantity || 0);
-      const isArchived = Boolean(product.deleted_at);
+      const lifecycle = getLifecycleMeta(product);
+      const isArchived = lifecycle.key === 'ARCHIVED';
       const matchesStockFilter =
-        stockFilter === 'ALL' ||
-        (stockFilter === 'ARCHIVED' && isArchived) ||
-        (!isArchived && stockFilter === 'ACTIVE' && quantity > 0) ||
-        (!isArchived && stockFilter === 'LOW_STOCK' && quantity > 0 && quantity < 10) ||
-        (!isArchived && stockFilter === 'OUT_OF_STOCK' && quantity === 0);
+        catalogFilter === 'ALL' ||
+        (catalogFilter === 'ACTIVE_STATUS' && lifecycle.key === 'ACTIVE_STATUS') ||
+        (catalogFilter === 'PENDING_REVIEW' && lifecycle.key === 'PENDING_REVIEW') ||
+        (catalogFilter === 'PENDING' && lifecycle.key === 'PENDING') ||
+        (catalogFilter === 'IN_STOCK' && !isArchived && quantity > 0) ||
+        (!isArchived && catalogFilter === 'LOW_STOCK' && quantity > 0 && quantity < 10) ||
+        (!isArchived && catalogFilter === 'OUT_OF_STOCK' && quantity === 0) ||
+        (catalogFilter === 'ARCHIVED' && isArchived);
 
       if (!matchesStockFilter) {
         return false;
@@ -115,14 +203,14 @@ export default function SellerProducts() {
         (product.category || '').toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [products, searchTerm, stockFilter]);
+  }, [catalogFilter, products, searchTerm]);
 
   const stats = useMemo(() => {
-    const active = products.filter(
-      (product) => !product.deleted_at && Number(product.stock_quantity || 0) > 0
+    const activeStatus = products.filter(
+      (product) => getLifecycleMeta(product).key === 'ACTIVE_STATUS'
     ).length;
     const lowStock = products.filter((product) => {
-      if (product.deleted_at) {
+      if (getLifecycleMeta(product).key === 'ARCHIVED') {
         return false;
       }
 
@@ -132,10 +220,15 @@ export default function SellerProducts() {
     const outOfStock = products.filter(
       (product) => !product.deleted_at && Number(product.stock_quantity || 0) === 0
     ).length;
+    const successfulSales = products.reduce(
+      (total, product) => total + getProductInsight(product).successfulUnitsSold,
+      0
+    );
 
     return {
       total: products.length,
-      active,
+      activeStatus,
+      successfulSales,
       lowStock,
       outOfStock,
     };
@@ -189,9 +282,12 @@ export default function SellerProducts() {
     }
   };
 
-  const stockFilters = [
+  const catalogFilters = [
     { value: 'ALL', label: 'All' },
-    { value: 'ACTIVE', label: 'Live' },
+    { value: 'ACTIVE_STATUS', label: 'Active' },
+    { value: 'PENDING_REVIEW', label: 'Pending review' },
+    { value: 'PENDING', label: 'Pending' },
+    { value: 'IN_STOCK', label: 'In stock' },
     { value: 'LOW_STOCK', label: 'Low stock' },
     { value: 'OUT_OF_STOCK', label: 'Out of stock' },
     { value: 'ARCHIVED', label: 'Archived' },
@@ -208,47 +304,7 @@ export default function SellerProducts() {
       return { label: 'Low stock', className: 'bg-orange-100 text-orange-700' };
     }
 
-    return { label: 'Live', className: 'bg-emerald-100 text-emerald-700' };
-  };
-
-  const getLifecycleLabel = (product) => {
-    if (product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)) {
-      return {
-        label: 'Admin archived',
-        className: 'bg-red-100 text-red-700',
-        note: product.deletion_reason || 'This listing can only be restored by admin.',
-      };
-    }
-
-    if (product.deleted_at) {
-      return {
-        label: 'Archived',
-        className: 'bg-slate-200 text-slate-600',
-        note: '',
-      };
-    }
-
-    if (!product.is_approved && product.reapproval_reason) {
-      return {
-        label: 'Pending Review',
-        className: 'bg-orange-100 text-orange-700',
-        note: 'Updated - awaiting re-approval',
-      };
-    }
-
-    if (product.is_approved) {
-      return {
-        label: 'Active',
-        className: 'bg-emerald-100 text-emerald-700',
-        note: '',
-      };
-    }
-
-    return {
-      label: 'Pending',
-      className: 'bg-amber-100 text-amber-700',
-      note: '',
-    };
+    return { label: 'In stock', className: 'bg-emerald-100 text-emerald-700' };
   };
 
   if (loading) {
@@ -261,7 +317,7 @@ export default function SellerProducts() {
       onLogout={handleLogout}
       themeState={themeState}
     >
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SellerStatCard
           theme={theme}
           label="All listings"
@@ -272,15 +328,22 @@ export default function SellerProducts() {
         <SellerStatCard
           theme={theme}
           label="Active"
-          value={stats.active}
-          icon={Plus}
+          value={stats.activeStatus}
+          icon={CheckCircle2}
           accentClass="bg-gradient-to-br from-orange-500 to-orange-600"
+        />
+        <SellerStatCard
+          theme={theme}
+          label="Successful sales"
+          value={stats.successfulSales}
+          icon={TrendingUp}
+          accentClass="bg-gradient-to-br from-emerald-500 to-green-600"
         />
         <SellerStatCard
           theme={theme}
           label="Low stock"
           value={stats.lowStock}
-          icon={Search}
+          icon={Clock3}
           accentClass="bg-gradient-to-br from-amber-500 to-orange-500"
         />
         <SellerStatCard
@@ -320,14 +383,14 @@ export default function SellerProducts() {
         }
       >
         <div className="mb-5 flex flex-wrap gap-2">
-          {stockFilters.map((filter) => {
-            const active = stockFilter === filter.value;
+          {catalogFilters.map((filter) => {
+            const active = catalogFilter === filter.value;
 
             return (
               <button
                 key={filter.value}
                 type="button"
-                onClick={() => setStockFilter(filter.value)}
+                onClick={() => setCatalogFilter(filter.value)}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
                   active ? theme.actionPrimary : theme.action
                 }`}
@@ -365,7 +428,8 @@ export default function SellerProducts() {
           <>
             <div className="space-y-4 md:hidden">
               {filteredProducts.map((product) => {
-                const lifecycle = getLifecycleLabel(product);
+                const lifecycle = getLifecycleMeta(product);
+                const insight = getProductInsight(product);
                 const adminArchived = Boolean(
                   product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)
                 );
@@ -407,6 +471,29 @@ export default function SellerProducts() {
                         </p>
                         <p className={`mt-1 text-sm ${theme.mutedText}`}>
                           Stock: {product.stock_quantity}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div className={`rounded-md px-3 py-2 ${theme.panel}`}>
+                            <p className={theme.softText}>Sold</p>
+                            <p className="mt-1 font-semibold">Sold {insight.successfulUnitsSold} units</p>
+                          </div>
+                          <div className={`rounded-md px-3 py-2 ${theme.panel}`}>
+                            <p className={theme.softText}>Completed orders</p>
+                            <p className="mt-1 font-semibold">{insight.completedOrders}</p>
+                          </div>
+                          <div className={`rounded-md px-3 py-2 ${theme.panel}`}>
+                            <p className={theme.softText}>Successful revenue</p>
+                            <p className="mt-1 font-semibold">
+                              {formatSellerCurrency(insight.successfulRevenue)}
+                            </p>
+                          </div>
+                          <div className={`rounded-md px-3 py-2 ${theme.panel}`}>
+                            <p className={theme.softText}>Open orders</p>
+                            <p className="mt-1 font-semibold">{insight.openOrders}</p>
+                          </div>
+                        </div>
+                        <p className={`mt-3 text-xs ${theme.softText}`}>
+                          Last completed sale: {formatInsightDate(insight.lastCompletedSaleAt)}
                         </p>
                       </div>
                     </div>
@@ -465,13 +552,15 @@ export default function SellerProducts() {
                       <th className="px-4 py-3 text-left text-sm font-semibold">Category</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Price</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Stock</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold">Performance</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Updated</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredProducts.map((product) => {
-                      const lifecycle = getLifecycleLabel(product);
+                      const lifecycle = getLifecycleMeta(product);
+                      const insight = getProductInsight(product);
                       const adminArchived = Boolean(
                         product.deleted_at && (product.deleted_by_admin_id || product.deletion_reason)
                       );
@@ -517,10 +606,27 @@ export default function SellerProducts() {
                             <p className={`mt-2 text-xs ${theme.softText}`}>{lifecycle.note}</p>
                           )}
                         </td>
+                        <td className="px-4 py-4 text-sm">
+                          <p className="font-semibold">Sold {insight.successfulUnitsSold} units</p>
+                          <p className={`mt-1 ${theme.mutedText}`}>
+                            Completed orders: {insight.completedOrders}
+                          </p>
+                          <p className={`mt-1 ${theme.mutedText}`}>
+                            Revenue: {formatSellerCurrency(insight.successfulRevenue)}
+                          </p>
+                          <p className={`mt-1 ${theme.softText}`}>
+                            Open orders: {insight.openOrders}
+                          </p>
+                        </td>
                         <td className={`px-4 py-4 text-sm ${theme.mutedText}`}>
-                          {product.updated_at
-                            ? new Date(product.updated_at).toLocaleDateString()
-                            : 'Recently'}
+                          <p>
+                            {product.updated_at
+                              ? new Date(product.updated_at).toLocaleDateString()
+                              : 'Recently'}
+                          </p>
+                          <p className={`mt-1 text-xs ${theme.softText}`}>
+                            Last completed sale: {formatInsightDate(insight.lastCompletedSaleAt)}
+                          </p>
                         </td>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">

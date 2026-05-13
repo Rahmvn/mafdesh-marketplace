@@ -206,11 +206,7 @@ export default function SellerProductReviews() {
                   })}
                 </span>
               </div>
-              <div className={`mt-4 rounded-lg px-4 py-3 text-sm ${theme.badge}`}>
-                Reviewer identities are hidden for privacy. Sellers can read ratings
-                and feedback, but cannot see buyer names or purchase as buyers from
-                this page.
-              </div>
+             
             </div>
           </div>
         </div>
@@ -265,7 +261,7 @@ export default function SellerProductReviews() {
               <div>
                 <h2 className="text-xl font-bold">Customer Feedback</h2>
                 <p className={`text-sm mt-1 ${theme.mutedText}`}>
-                  Read what buyers are saying without exposing their identities.
+                  Read what buyers are saying 
                 </p>
               </div>
 

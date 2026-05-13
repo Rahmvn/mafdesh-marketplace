@@ -468,6 +468,97 @@ export function getAttributesForCategory(category) {
   return ATTRIBUTE_GROUPS[getGroupNameForCategory(category)] || ATTRIBUTE_GROUPS.default;
 }
 
+function normalizeAttributeInputValue(attribute, value) {
+  if (value === null || value === undefined) {
+    return attribute.type === 'multiselect' ? [] : '';
+  }
+
+  if (attribute.type === 'multiselect') {
+    const values = Array.isArray(value)
+      ? value
+      : String(value)
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+
+    return values.filter((entry) => attribute.options.includes(entry));
+  }
+
+  const normalizedValue = String(value).trim();
+
+  if (attribute.type === 'select') {
+    return attribute.options.includes(normalizedValue) ? normalizedValue : '';
+  }
+
+  return normalizedValue;
+}
+
+function parseDescriptionDetailMap(description = '') {
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedDescription) {
+    return {
+      summary: '',
+      detailMap: new Map(),
+    };
+  }
+
+  if (!normalizedDescription.includes('Product Details:')) {
+    return {
+      summary: normalizedDescription,
+      detailMap: new Map(),
+    };
+  }
+
+  const [summaryPart, detailsPart = ''] = normalizedDescription.split('Product Details:');
+  const detailMap = new Map();
+
+  detailsPart
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const separatorIndex = line.indexOf(':');
+      if (separatorIndex <= 0) {
+        return;
+      }
+
+      const label = line.slice(0, separatorIndex).trim().toLowerCase();
+      const value = line.slice(separatorIndex + 1).trim();
+      if (label && value) {
+        detailMap.set(label, value);
+      }
+    });
+
+  return {
+    summary: summaryPart.trim(),
+    detailMap,
+  };
+}
+
+export function deriveStructuredAttributes({ category, attributes, description }) {
+  const schema = getAttributesForCategory(category);
+  const safeAttributes =
+    attributes && typeof attributes === 'object' && !Array.isArray(attributes) ? attributes : {};
+  const { summary, detailMap } = parseDescriptionDetailMap(description);
+  const derivedAttributes = {};
+
+  schema.forEach((attribute) => {
+    const fromStoredAttributes = safeAttributes[attribute.key];
+    const fromDescription =
+      attribute.key === 'description'
+        ? summary
+        : detailMap.get(String(attribute.label || '').trim().toLowerCase());
+    const nextValue = !isEmptyValue(fromStoredAttributes, attribute.type)
+      ? fromStoredAttributes
+      : fromDescription;
+
+    derivedAttributes[attribute.key] = normalizeAttributeInputValue(attribute, nextValue);
+  });
+
+  return derivedAttributes;
+}
+
 export function validateAttributes(attributes, category) {
   const schema = getAttributesForCategory(category);
   const values = attributes && typeof attributes === 'object' ? attributes : {};
