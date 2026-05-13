@@ -1286,10 +1286,11 @@ export default function Profile() {
   const hasPendingRequest = profile.bank_details_pending != null && Object.keys(profile.bank_details_pending || {}).length > 0;
   const sellerUniversityPolicyLocked = isSeller && !sellerUniversityEditAccess.canEdit;
   const universityFieldsLocked = sellerUniversityPolicyLocked || (Boolean(profile.university_name) && !isEditingUniversity);
+  const resolvedProfileFullName = getResolvedFullName(profile);
   const profileDisplayName = getProfileDisplayName(profile);
   const profileAge = getProfileAge(profile?.date_of_birth);
   const missingCoreDetails = {
-    full_name: !String(profile?.full_name || '').trim(),
+    full_name: !String(resolvedProfileFullName || '').trim(),
     phone_number: !String(profile?.phone_number || '').trim(),
     date_of_birth: !String(profile?.date_of_birth || '').trim(),
   };

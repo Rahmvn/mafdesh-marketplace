@@ -530,17 +530,17 @@ export default function SellerOrderDetails() {
       </div>
     );
   } else if (isRefundProcessing) {
-    infoBox = (
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
-          <AlertCircle size={18} /> Refund review in progress
-        </h3>
-        <p className="text-sm text-amber-800">
-          This order is on hold while admin reviews the buyer's refund request. Fulfillment stays paused during the review window.
-          {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
-        </p>
-      </div>
-    );
+      infoBox = (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+            <AlertCircle size={18} /> Refund review in progress
+          </h3>
+          <p className="text-sm text-amber-800">
+            Admin review is in progress. Fulfillment is paused.
+            {refundReviewDeadline ? ` A decision is due by ${new Date(refundReviewDeadline).toLocaleString()}.` : ""}
+          </p>
+        </div>
+      );
   } else if (order.status === "PAID_ESCROW") {
     if (effectiveShipDeadlineExpired) {
       infoBox = (
@@ -557,11 +557,10 @@ export default function SellerOrderDetails() {
       infoBox = (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
-            <Clock size={18} /> Your next steps
+            <Clock size={18} /> Action needed
           </h3>
           <p className="text-sm text-blue-700">
-            You have <strong className={effectiveShipUrgencyClass}>{effectiveShipTimerLabel}</strong> to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
-            If you don't act by then, the order will be automatically cancelled and the buyer will be refunded.
+            <strong className={effectiveShipUrgencyClass}>{effectiveShipTimerLabel}</strong> left to {isDelivery ? "ship this order" : "mark it ready for pickup"}.
           </p>
         </div>
       );
@@ -574,7 +573,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Pickup Window Closed
           </h3>
           <p className="text-sm text-red-700">
-            The buyer did not pick up within 2 business days. The order will be cancelled and the buyer refunded.
+            Buyer missed pickup. Order will be cancelled and refunded.
           </p>
         </div>
       );
@@ -585,8 +584,7 @@ export default function SellerOrderDetails() {
             <Package size={18} /> Awaiting pickup
           </h3>
           <p className="text-sm text-purple-700">
-            The buyer has <strong className={pickupUrgencyClass}>{pickupTimerLabel}</strong> to pick up the items.
-            If they don't pick up in time, the order will be cancelled and the buyer refunded.
+            Buyer has <strong className={pickupUrgencyClass}>{pickupTimerLabel}</strong> to pick up the items.
           </p>
         </div>
       );
@@ -599,7 +597,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Delivery Deadline Passed
           </h3>
           <p className="text-sm text-red-700">
-            The 14-day delivery target has passed. Admin has 24 hours to review before the order is automatically refunded, and you can still mark it delivered during that buffer.
+            Delivery target passed. Admin now has a 24-hour review buffer before auto-refund.
           </p>
         </div>
       );
@@ -621,8 +619,7 @@ export default function SellerOrderDetails() {
             <Truck size={18} /> Delivery in progress
           </h3>
           <p className="text-sm text-blue-700">
-            You have <strong className={getUrgencyClass(order.delivery_deadline, now)}>{formatRemaining(order.delivery_deadline, now)}</strong> to mark this order as delivered.
-            If you do not mark it delivered within 14 days, admin will get a 24-hour review window before the buyer is automatically refunded.
+            <strong className={getUrgencyClass(order.delivery_deadline, now)}>{formatRemaining(order.delivery_deadline, now)}</strong> left to mark this order delivered.
           </p>
         </div>
       );
@@ -635,7 +632,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Dispute Window Closed
           </h3>
           <p className="text-sm text-gray-700">
-            The buyer did not confirm or dispute within 5 days. The order will auto-complete and funds will be released to you.
+            Order will auto-complete and release funds.
           </p>
         </div>
       );
@@ -646,8 +643,7 @@ export default function SellerOrderDetails() {
             <AlertCircle size={18} /> Waiting for confirmation
           </h3>
           <p className="text-sm text-yellow-700">
-            The buyer has <strong className={getUrgencyClass(order.dispute_deadline, now)}>{formatRemaining(order.dispute_deadline, now)}</strong> to confirm delivery or open a dispute.
-            After that, the order will auto-complete and funds will be released to you.
+            Buyer has <strong className={getUrgencyClass(order.dispute_deadline, now)}>{formatRemaining(order.dispute_deadline, now)}</strong> to confirm or dispute.
           </p>
         </div>
       );
@@ -687,10 +683,10 @@ export default function SellerOrderDetails() {
         {pendingRefundRequest && !activeAdminHold && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-5">
             <h2 className="font-semibold text-red-800 mb-2">
-              This order is processing a refund request.
+              Refund review in progress
             </h2>
             <p className="text-sm text-red-700">
-              You cannot mark it as shipped or ready for pickup until admin finishes the review. Admin has up to 10 days to decide.
+              Shipping and pickup updates are locked until admin finishes review.
               {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
             </p>
           </div>

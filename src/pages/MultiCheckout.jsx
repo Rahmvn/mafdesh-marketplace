@@ -787,7 +787,7 @@ export default function MultiCheckout() {
 
         <h1 className="mb-2 text-2xl font-bold text-blue-900">Checkout</h1>
         <p className="mb-6 text-sm text-blue-700">
-          Delivery groups share one address.
+          One address for delivery groups.
         </p>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -798,7 +798,7 @@ export default function MultiCheckout() {
                 <div>
                   <h2 className="font-semibold text-blue-900">Delivery Address</h2>
                   <p className="text-sm text-blue-700">
-                    One address for all delivery groups.
+                    Shared across delivery groups.
                   </p>
                 </div>
               </div>
@@ -819,7 +819,7 @@ export default function MultiCheckout() {
 
               {hasAnyDeliverySelection && !selectedDeliveryAddress?.state ? (
                 <p className="mt-4 text-sm text-blue-600">
-                  Select your state to calculate fees.
+                  Select your state.
                 </p>
               ) : null}
 
@@ -968,7 +968,7 @@ export default function MultiCheckout() {
                     <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
                       {!selectedDeliveryAddress?.state ? (
                         <p className="text-sm text-blue-700">
-                          Select your state to quote delivery.
+                          Select your state.
                         </p>
                       ) : deliveryUnavailable ? (
                         <div className="flex items-start gap-2 text-sm text-red-700">
@@ -1102,7 +1102,7 @@ export default function MultiCheckout() {
             </button>
 
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Your orders will be confirmed after payment is completed.
+              Orders confirm after payment.
             </p>
           </aside>
         </div>

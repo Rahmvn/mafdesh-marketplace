@@ -774,7 +774,7 @@ export default function Support() {
               </form>
 
               <div className="mt-4 rounded-2xl bg-blue-50/70 p-4 text-sm text-slate-600">
-                Support tickets are now saved in-app. You can still use email for direct follow-up if a file upload fails or you need to continue outside the platform.
+                Tickets are saved in-app. Use email if file upload fails or you need direct follow-up.
                 <a
                   href={mailtoHref}
                   className="ml-1 font-semibold text-orange-600 hover:text-orange-700"
@@ -786,19 +786,19 @@ export default function Support() {
             </section>
 
             <section className="rounded-[28px] border border-blue-100 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-bold text-blue-950">What to include</h2>
+              <h2 className="text-xl font-bold text-blue-950">Helpful details</h2>
               <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
                 <li className="flex gap-3">
                   <span className="mt-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
-                  Add the order number if your issue is tied to a transaction.
+                  Add the order number for transaction issues.
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
-                  Mention your role so support knows whether you are a buyer, seller, or admin.
+                  Mention whether you are a buyer, seller, or admin.
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-1 h-2.5 w-2.5 rounded-full bg-orange-500" />
-                  Add screenshots, PDFs, timestamps, and the exact page where the problem happened.
+                  Add screenshots, PDFs, timestamps, and the page name.
                 </li>
               </ul>
             </section>

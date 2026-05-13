@@ -396,8 +396,7 @@ export default function Checkout() {
 
               {!pickupEnabled ? (
                 <p className="mt-3 text-sm text-blue-600">
-                  Delivery is always available. Pickup only appears when this seller has active
-                  pickup locations for the product.
+                  Pickup appears only when this seller has active pickup locations.
                 </p>
               ) : null}
 
@@ -417,7 +416,7 @@ export default function Checkout() {
                     required
                   />
                   <p className="mt-2 text-sm text-gray-500">
-                    Seller has 2 business days to prepare. You&apos;ll be notified when ready.
+                    You&apos;ll be notified when pickup is ready.
                   </p>
                 </div>
               ) : null}
@@ -433,8 +432,7 @@ export default function Checkout() {
                 {quoteLoading ? <InlineLoadingSkeleton className="max-w-40" /> : null}
                 {!selectedDeliveryAddress?.state ? (
                   <p className="text-sm text-blue-600">
-                    Select your delivery state and we will calculate the delivery fee
-                    automatically.
+                    Select your delivery state to calculate the fee.
                   </p>
                 ) : null}
                 {deliveryQuote ? (
@@ -478,7 +476,7 @@ export default function Checkout() {
               {isSubmitting ? 'Preparing...' : 'Continue to Payment'}
             </button>
             <p className="mt-4 text-center text-xs text-blue-600">
-              Your order will be confirmed after you complete payment.
+              Order confirms after payment.
             </p>
           </div>
         </div>

@@ -439,4 +439,21 @@ describe('Profile', () => {
     expect(screen.queryByText('Missing details')).not.toBeInTheDocument();
     expect(screen.queryByText('seller-1')).not.toBeInTheDocument();
   });
+
+  it('does not ask for full name when a legacy users.name value exists', async () => {
+    mockUsersSingle.mockResolvedValueOnce({
+      data: createSellerProfile({
+        full_name: '',
+        name: 'Legacy Row Name',
+        phone_number: '08012345678',
+        date_of_birth: '1999-04-10',
+      }),
+      error: null,
+    });
+
+    renderProfile();
+
+    expect(await screen.findByText('Legacy Row Name')).toBeInTheDocument();
+    expect(screen.queryByText('Missing details')).not.toBeInTheDocument();
+  });
 });
