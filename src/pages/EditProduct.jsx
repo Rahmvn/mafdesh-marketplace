@@ -466,7 +466,9 @@ export default function EditProduct() {
   const activeFlashSale = currentPricing.isFlashSaleActive;
   const hasActiveOrders = activeOrderCount > 0;
   const canManageFlashSales = Boolean(
-    normalizedFlashSaleEligibility?.eligible || formData.flashSaleEnabled
+    normalizedFlashSaleEligibility?.eligible ||
+      isFlashSaleEligibilityTemporarilyUnavailable ||
+      formData.flashSaleEnabled
   );
   const categoryLocked = hasActiveOrders;
   const priceLocked = hasActiveOrders;
@@ -754,6 +756,7 @@ export default function EditProduct() {
         getFlashSaleValidationErrors({
           enabled: formData.flashSaleEnabled,
           eligibility: normalizedFlashSaleEligibility,
+          eligibilityUnavailable: isFlashSaleEligibilityTemporarilyUnavailable,
           isTrustedSeller: currentUser?.is_trusted_seller,
           accountStatus: currentUser?.account_status || currentUser?.status,
           isApproved: productRecord?.is_approved,
@@ -1405,6 +1408,13 @@ export default function EditProduct() {
 
             {canManageFlashSales ? (
               <div className={`space-y-4 rounded-2xl border p-4 ${theme.panelMuted}`}>
+                {isFlashSaleEligibilityTemporarilyUnavailable ? (
+                  <div className={`rounded-xl border border-dashed p-3 text-sm ${theme.mutedText}`}>
+                    We could not verify flash-sale eligibility right now. You can still set up the
+                    promotion here, and the final seller/product checks will run when you save.
+                  </div>
+                ) : null}
+
                 <label className="flex items-start gap-3 rounded-xl border border-transparent p-1">
                   <input
                     type="checkbox"

@@ -196,6 +196,7 @@ export function formatCompactCountdown({ hours = 0, minutes = 0, seconds = 0, ex
 export function getFlashSaleValidationErrors({
   enabled,
   eligibility,
+  eligibilityUnavailable = false,
   isTrustedSeller,
   accountStatus,
   isApproved,
@@ -226,7 +227,7 @@ export function getFlashSaleValidationErrors({
 
   if (blockingSummary) {
     errors.flashSale = blockingSummary;
-  } else {
+  } else if (!eligibilityUnavailable) {
     if (!isTrustedSeller) {
       errors.flashSale = 'Only trusted sellers can create flash sales.';
     }

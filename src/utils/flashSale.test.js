@@ -131,4 +131,28 @@ describe('flashSale utils', () => {
     expect(errors.saleStart).toBe('Start time is required.');
     expect(errors.saleEnd).toBe('End time is required.');
   });
+
+  it('skips stale fallback trust gating when eligibility is temporarily unavailable', () => {
+    const errors = getFlashSaleValidationErrors({
+      enabled: true,
+      eligibility: null,
+      eligibilityUnavailable: true,
+      isTrustedSeller: false,
+      accountStatus: 'inactive',
+      isApproved: false,
+      stockQuantity: 0,
+      deletedAt: '2026-04-19T12:00:00Z',
+      price: 10000,
+      salePrice: '',
+      saleStart: '',
+      saleEnd: '',
+      saleQuantityLimit: '',
+      adminApprovedDiscount: false,
+    });
+
+    expect(errors.flashSale).toBeUndefined();
+    expect(errors.salePrice).toBe('Sale price is required.');
+    expect(errors.saleStart).toBe('Start time is required.');
+    expect(errors.saleEnd).toBe('End time is required.');
+  });
 });

@@ -309,12 +309,12 @@ describe('EditProduct flash-sale eligibility', () => {
 
     expect(await screen.findByDisplayValue('Studio Headphones')).toBeInTheDocument();
     expect(
-      screen.getByText('Flash-sale eligibility is temporarily unavailable.')
+      screen.getByText(
+        'We could not verify flash-sale eligibility right now. You can still set up the promotion here, and the final seller/product checks will run when you save.'
+      )
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'You can keep editing this product. Refresh the page in a moment to re-check flash-sale access.'
-      )
+      screen.getByLabelText(/enable flash sale pricing for this product/i)
     ).toBeInTheDocument();
     expect(mockShowError).not.toHaveBeenCalledWith(
       'Load Failed',
