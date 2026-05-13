@@ -208,6 +208,28 @@ function getProfileDisplayName(profile) {
   );
 }
 
+function getMissingCoreDetailsSummary(missingDetails) {
+  const labels = [];
+
+  if (missingDetails?.full_name) {
+    labels.push('full name');
+  }
+
+  if (missingDetails?.phone_number) {
+    labels.push('phone number');
+  }
+
+  if (missingDetails?.date_of_birth) {
+    labels.push('date of birth');
+  }
+
+  if (!labels.length) {
+    return '';
+  }
+
+  return `Add ${labels.join(', ')}.`;
+}
+
 function normalizeCoreProfileDetails(values = {}) {
   return {
     full_name: normalizeHumanName(values.full_name),
@@ -1272,6 +1294,7 @@ export default function Profile() {
     date_of_birth: !String(profile?.date_of_birth || '').trim(),
   };
   const hasMissingCoreDetails = Object.values(missingCoreDetails).some(Boolean);
+  const missingCoreDetailsSummary = getMissingCoreDetailsSummary(missingCoreDetails);
   const avatarGradientClass = isSeller
     ? 'bg-gradient-to-br from-orange-500 to-orange-600'
     : 'bg-gradient-to-br from-blue-800 to-blue-500';
@@ -1388,10 +1411,10 @@ export default function Profile() {
       {hasMissingCoreDetails ? (
         <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
           <div className="mb-3">
-            <h2 className="text-sm font-bold text-slate-900">Complete your profile</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Add your missing account details.
-            </p>
+            <h2 className="text-sm font-bold text-slate-900">Missing details</h2>
+            {missingCoreDetailsSummary ? (
+              <p className="mt-1 text-sm text-slate-600">{missingCoreDetailsSummary}</p>
+            ) : null}
           </div>
 
           <form onSubmit={submitCoreDetails} className="space-y-4">
@@ -1481,8 +1504,8 @@ export default function Profile() {
               </p>
                 <p className="mt-2 text-sm text-slate-600">
                   {isVerified
-                    ? 'Your badge is live.'
-                    : 'Finish university and payout setup.'}
+                    ? 'Badge active.'
+                    : 'Finish setup.'}
                 </p>
             </div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-5">
@@ -1492,10 +1515,10 @@ export default function Profile() {
               <p className="mt-2 text-lg font-bold text-slate-900">{payoutStatus}</p>
                 <p className="mt-2 text-sm text-slate-600">
                   {hasPendingRequest
-                    ? 'Current account stays active during review.'
+                    ? 'Current account stays active.'
                     : hasActiveDetails
-                      ? 'Open Payout to make changes.'
-                      : 'Add bank details to get paid.'}
+                      ? 'Open Payout to edit.'
+                      : 'Add bank details.'}
                 </p>
             </div>
           </div>
@@ -1519,7 +1542,7 @@ export default function Profile() {
                   <p className="font-semibold text-green-700">Verified Seller</p>
                 </div>
                 <p className="mt-1 text-sm text-green-600">
-                  Your Verified Seller badge is active.
+                  Badge active.
                 </p>
                 {profile.verification_approved_at ? (
                   <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
@@ -1536,10 +1559,10 @@ export default function Profile() {
                 </div>
                 <p className="mt-1 text-sm text-orange-600">
                   {verificationLabel === 'Pending review'
-                    ? 'Awaiting admin review.'
+                    ? 'In review.'
                     : verificationLabel === 'Rejected'
                       ? 'Update details and resubmit.'
-                      : 'Get verified for more visibility.'}
+                      : 'Submit to verify.'}
                 </p>
                 <button
                   type="button"
@@ -1563,17 +1586,17 @@ export default function Profile() {
             >
                 {sellerUniversityPolicyLocked ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    Campus identity is locked after verification starts. Contact support if you need to change it.
+                    Campus identity locked after verification starts.
                   </div>
                 ) : universityFieldsLocked ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    Click Edit to update these details.
+                    Edit to update.
                   </div>
                 ) : (
                   <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                     {sellerUniversityEditAccess.status === 'rejected'
-                      ? 'Correct your campus identity before resubmitting verification.'
-                      : 'Set your campus identity before starting verification.'}
+                      ? 'Correct campus identity.'
+                      : 'Set campus identity.'}
                   </div>
                 )}
 
@@ -1584,7 +1607,7 @@ export default function Profile() {
                 value={universityForm.university_name}
                 onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
                 placeholder="Search or choose your university"
-                helperText="Select from list, or choose Other."
+                helperText="Search list or use Other."
                 disabled={universityFieldsLocked}
                 loading={isSearchingUniversities}
                 options={universitySuggestions}
@@ -1594,7 +1617,7 @@ export default function Profile() {
                 getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' â€¢ ')}
                 allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
                 showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
-                customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other university`}
+                customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other`}
                 onCustomAction={useCustomUniversityName}
                 selectedBadgeText={universityForm.university_id ? 'Catalog match' : universityForm.university_name ? 'Other' : ''}
                 tone="orange"
@@ -1629,7 +1652,7 @@ export default function Profile() {
               </div>
 
               <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                <span className="font-semibold">University zone:</span>{' '}
+                <span className="font-semibold">Zone:</span>{' '}
                 {universityForm.university_zone || 'Auto-fills from state.'}
               </div>
 
@@ -1693,7 +1716,7 @@ export default function Profile() {
                   {profile.business_name || 'Business name not set'}
                 </p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Search to find your bank.
+                  Search your bank.
                 </p>
               </div>
             </div>

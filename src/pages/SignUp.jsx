@@ -36,17 +36,17 @@ const SIGNUP_STEPS = [
   {
     id: 1,
     label: 'Account',
-    description: 'Choose your role and account details.',
+    description: 'Role and basics.',
   },
   {
     id: 2,
     label: 'Contact & Security',
-    description: 'Add contact details and password.',
+    description: 'Contact and password.',
   },
   {
     id: 3,
     label: 'Details',
-    description: 'Finish university and account details.',
+    description: 'University and final details.',
   },
 ];
 const EMPTY_SIGNUP_FORM = {
@@ -803,7 +803,7 @@ export default function SignUp() {
                         >
                           <span className="block text-base">Buyer</span>
                           <span className={`mt-1 block text-xs ${!isSeller ? 'text-blue-100' : 'text-slate-500'}`}>
-                            Browse products, save addresses, and check out faster.
+                            Shop and check out.
                           </span>
                         </button>
                         <button
@@ -815,7 +815,7 @@ export default function SignUp() {
                         >
                           <span className="block text-base">Seller</span>
                           <span className={`mt-1 block text-xs ${isSeller ? 'text-orange-100' : 'text-slate-500'}`}>
-                            Open your campus store and complete verification later.
+                            Open your campus store.
                           </span>
                         </button>
                       </div>
@@ -986,9 +986,9 @@ export default function SignUp() {
                       <>
                         {formData.university_id ? (
                           <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
-                            <span className="font-semibold">University State:</span>{' '}
+                            <span className="font-semibold">State:</span>{' '}
                             {formData.university_state}
-                            <span className="ml-2 text-xs text-orange-600">(Auto-filled)</span>
+                            <span className="ml-2 text-xs text-orange-600">(Auto)</span>
                           </div>
                         ) : (
                           <SelectField
@@ -1004,7 +1004,7 @@ export default function SignUp() {
                         )}
 
                         <div className="rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 text-sm text-orange-900">
-                          <span className="font-semibold">University zone:</span>{' '}
+                          <span className="font-semibold">Zone:</span>{' '}
                           {formData.university_zone || 'Auto-fills from state.'}
                         </div>
                       </>

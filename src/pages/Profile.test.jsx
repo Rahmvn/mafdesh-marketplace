@@ -339,7 +339,7 @@ describe('Profile', () => {
     });
 
     expect(
-      screen.getByText(/correct your campus identity before resubmitting verification/i)
+      screen.getByText(/correct campus identity/i)
     ).toBeInTheDocument();
   });
 
@@ -377,7 +377,7 @@ describe('Profile', () => {
 
     renderProfile();
 
-    expect(await screen.findByText('Complete your profile')).toBeInTheDocument();
+    expect(await screen.findByText('Missing details')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/full name/i), {
       target: { value: 'Jane Seller' },
@@ -436,7 +436,7 @@ describe('Profile', () => {
     renderProfile();
 
     expect(await screen.findByText('Legacy Jane Seller')).toBeInTheDocument();
-    expect(screen.queryByText('Complete your profile')).not.toBeInTheDocument();
+    expect(screen.queryByText('Missing details')).not.toBeInTheDocument();
     expect(screen.queryByText('seller-1')).not.toBeInTheDocument();
   });
 });

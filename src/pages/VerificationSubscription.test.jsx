@@ -87,7 +87,7 @@ describe('VerificationSubscription', () => {
     );
 
     expect(
-      await screen.findByText(/submit your university details for early-access seller verification/i)
+      await screen.findByText(/submit your university details for verification/i)
     ).toBeInTheDocument();
     expect(screen.getAllByText(/early verification fee/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/73%/i)).not.toBeInTheDocument();

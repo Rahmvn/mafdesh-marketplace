@@ -314,7 +314,7 @@ describe('BuyerOrderDetails', () => {
 
     await screen.findByText('Campus Desk Lamp');
 
-    expect(screen.getByText(/important: inspect before confirming/i)).toBeInTheDocument();
+    expect(screen.getByText(/inspect before confirming/i)).toBeInTheDocument();
     expect(screen.queryByText(/pickup deadline:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/contact them for arrangement/i)).not.toBeInTheDocument();
   });

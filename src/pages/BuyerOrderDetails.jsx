@@ -770,21 +770,21 @@ export default function BuyerOrderDetails() {
       infoBox = (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Pickup window closed</h3>
-          <p className="text-sm text-red-700">You did not pick up your order in time. The order will be cancelled and you will be refunded.</p>
+          <p className="text-sm text-red-700">Order will be cancelled and refunded.</p>
         </div>
       );
     } else {
       infoBox = (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-orange-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Important: Inspect Before Confirming</h3>
+          <h3 className="font-semibold text-orange-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Inspect before confirming</h3>
           <p className="text-sm text-orange-700 mb-2">
-            Before you confirm pickup, <strong>carefully inspect all items</strong> for damage, correctness, and condition.
+            Inspect the items before confirming pickup.
           </p>
           <p className="text-sm text-orange-700">
-            <strong>Once you confirm, the sale is final.</strong> You will not be able to open a dispute or request a refund for any issues discovered after confirmation.
+            <strong>After confirmation, the sale is final.</strong>
           </p>
           <p className="text-sm text-orange-700 mt-2">
-            If anything is wrong, use the <strong>"Report a Problem"</strong> button below instead of confirming.
+            Use <strong>Report a Problem</strong> if anything is wrong.
           </p>
         </div>
       );
@@ -800,9 +800,9 @@ export default function BuyerOrderDetails() {
     } else {
       infoBox = (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Confirm delivery or report an issue</h3>
+          <h3 className="font-semibold text-yellow-800 mb-2 flex items-center gap-2"><AlertCircle size={18} /> Confirm or report</h3>
           <p className="text-sm text-yellow-700">
-            Confirm delivery if everything arrived correctly, or report a problem if something is wrong. If you do nothing, the order will auto-complete.
+            Confirm if everything arrived correctly, or report a problem.
           </p>
         </div>
       );
@@ -892,7 +892,7 @@ export default function BuyerOrderDetails() {
             <div>
               <h3 className="font-semibold text-amber-900 mb-1">Refund request is processing</h3>
               <p className="text-sm text-amber-800">
-                Admin is now reviewing this order. The seller cannot ship or mark it ready for pickup until a decision is made, and the review can take up to 10 days.
+                Admin review is in progress. Fulfillment is paused.
                 {refundReviewDeadline ? ` Review deadline: ${new Date(refundReviewDeadline).toLocaleString()} (${formatTimeUntil(refundReviewDeadline, now)}).` : ""}
               </p>
             </div>
@@ -925,10 +925,10 @@ export default function BuyerOrderDetails() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-semibold text-yellow-900 mb-1">
-                Your seller hasn't shipped yet. You can request a refund.
+                Refund available
               </h3>
               <p className="text-sm text-yellow-800">
-                Payment is still in escrow. You can request a refund any time before the seller marks this order as shipped or ready for pickup.
+                Request a refund before shipment or pickup.
               </p>
             </div>
             <button

@@ -50,19 +50,19 @@ const MAX_PROOF_SIZE_BYTES = 10 * 1024 * 1024;
 const STATUS_META = {
   [SELLER_VERIFICATION_STATUSES.NOT_SUBMITTED]: {
     label: 'Not submitted',
-    description: 'Not submitted yet.',
+    description: 'Ready to submit.',
     accent: 'bg-slate-100 text-slate-700',
     icon: FileText,
   },
   [SELLER_VERIFICATION_STATUSES.PENDING]: {
     label: 'Pending review',
-    description: 'Waiting for review.',
+    description: 'In review.',
     accent: 'bg-amber-100 text-amber-800',
     icon: Clock3,
   },
   [SELLER_VERIFICATION_STATUSES.APPROVED]: {
     label: 'Approved',
-    description: 'Verification approved.',
+    description: 'Badge active.',
     accent: 'bg-emerald-100 text-emerald-700',
     icon: CheckCircle2,
   },
@@ -487,7 +487,7 @@ export default function SellerVerificationPage() {
           theme={theme}
           eyebrow="Verification journey"
           title="Track your current review state"
-          description="Latest submission and status."
+          description="Status and latest submission."
         >
           {loadError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -560,7 +560,7 @@ export default function SellerVerificationPage() {
 
               {latestSubmission ? (
                 <div className={`rounded-xl p-4 ${theme.panelMuted}`}>
-                  <p className="font-semibold">Latest submission snapshot</p>
+                  <p className="font-semibold">Latest submission</p>
                   <div className={`mt-3 grid gap-3 text-sm ${theme.mutedText} sm:grid-cols-2`}>
                     <p>University: {latestSubmission.university_name}</p>
                     <p>State: {latestSubmission.university_state || 'Not provided'}</p>
@@ -571,12 +571,12 @@ export default function SellerVerificationPage() {
                   </div>
                   {latestSubmission.proof_notes ? (
                     <p className={`mt-3 text-sm ${theme.mutedText}`}>
-                      Evidence notes: {latestSubmission.proof_notes}
+                      Notes: {latestSubmission.proof_notes}
                     </p>
                   ) : null}
                   {proofLabel ? (
                     <p className={`mt-3 text-sm ${theme.mutedText}`}>
-                      Proof file: {proofLabel}
+                      File: {proofLabel}
                     </p>
                   ) : null}
                 </div>
@@ -589,7 +589,7 @@ export default function SellerVerificationPage() {
           theme={theme}
           eyebrow="Submit details"
           title={verificationStatus === SELLER_VERIFICATION_STATUSES.REJECTED ? 'Update and resubmit' : 'University verification form'}
-          description="Submit school details and proof."
+          description="School details and proof."
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -601,7 +601,7 @@ export default function SellerVerificationPage() {
                   onChange={(nextValue) => handleFieldChange('universityName', nextValue)}
                   placeholder="Search or choose your university"
                   disabled={!canSubmit}
-                  helperText="Select from list, or choose Other."
+                  helperText="Search list or use Other."
                   loading={isSearchingUniversities}
                   options={universitySuggestions}
                   onSelectOption={handleUniversitySuggestionSelect}
@@ -610,7 +610,7 @@ export default function SellerVerificationPage() {
                   getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
                   allowCustomAction={Boolean(String(formState.universityName || '').trim())}
                   showCustomAction={Boolean(String(formState.universityName || '').trim())}
-                  customActionLabel={`Use "${String(formState.universityName || '').trim()}" as Other university`}
+                  customActionLabel={`Use "${String(formState.universityName || '').trim()}" as Other`}
                   onCustomAction={useCustomUniversityName}
                   selectedBadgeText={formState.universityId ? 'Catalog match' : formState.universityName ? 'Other' : ''}
                   tone="orange"
@@ -695,7 +695,7 @@ export default function SellerVerificationPage() {
                 <div>
                   <p className="font-semibold">Proof upload</p>
                   <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                    Upload school proof in image or PDF.
+                    Upload proof in image or PDF.
                   </p>
                 </div>
                 <label
@@ -721,7 +721,7 @@ export default function SellerVerificationPage() {
                 </p>
               ) : (
                 <p className={`mt-3 text-sm ${theme.softText}`}>
-                  No proof file selected yet.
+                  No proof selected.
                 </p>
               )}
             </div>
@@ -755,8 +755,8 @@ export default function SellerVerificationPage() {
             {!canSubmit ? (
               <div className={`rounded-xl p-4 text-sm ${theme.panelMuted}`}>
                 {verificationStatus === SELLER_VERIFICATION_STATUSES.PENDING
-                  ? 'Your submission is already pending review. You can update it after a decision is made.'
-                  : 'Your seller verification is approved. No new submission is needed right now.'}
+                  ? 'Submission already pending review.'
+                  : 'Verification already approved.'}
               </div>
             ) : null}
 
