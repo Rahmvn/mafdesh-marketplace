@@ -1,4 +1,5 @@
 import React from 'react';
+import { Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useCountdown from '../hooks/useCountdown';
 import {
@@ -38,19 +39,19 @@ export default function FlashSaleCard({ product, onOpen }) {
           alt={product.name}
           className="h-full w-full object-contain"
         />
-        <span className="absolute left-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-[10px] font-bold text-white">
-          {'\u26A1 Flash'}
+        <span className="absolute left-2 top-2 inline-flex items-center justify-center rounded-full bg-white/70 p-1.5 text-blue-900 shadow-sm backdrop-blur-sm">
+          <Zap className="h-3.5 w-3.5" />
         </span>
-        <span className="absolute right-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm">
+        <span className="absolute bottom-2 right-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-slate-700 shadow-sm">
           {formatCompactCountdown(countdown)}
         </span>
       </div>
 
-      <div className="space-y-1.5 p-3">
-        <h3 className="line-clamp-2 min-h-[36px] text-xs font-semibold leading-4 text-slate-900">
+      <div className="space-y-1 p-3">
+        <h3 className="line-clamp-2 min-h-[32px] text-xs font-semibold leading-4 text-slate-900">
           {product.name}
         </h3>
-        <div>
+        <div className="space-y-0.5">
           <p className="text-sm font-bold text-orange-600">{formatPrice(pricing.displayPrice)}</p>
           <p className="text-xs text-slate-400 line-through">{formatPrice(pricing.regularPrice)}</p>
         </div>
