@@ -30,8 +30,10 @@ import {
   validateAddProductForm,
 } from '../utils/addProductFlow';
 import { getStoredUser, setStoredUser } from '../utils/storage';
+import { formatNumericInput } from '../utils/numberFormatting';
 
 const ADD_PRODUCT_PREVIEW_ROUTE = '/seller/products/add/preview';
+const ADD_PRODUCT_FORMATTED_PRICE_FIELDS = new Set(['marketPrice']);
 
 function FieldError({ message }) {
   if (!message) {
@@ -270,7 +272,10 @@ export default function AddProduct() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    updateFormField(name, value);
+    const nextValue = ADD_PRODUCT_FORMATTED_PRICE_FIELDS.has(name)
+      ? formatNumericInput(value)
+      : value;
+    updateFormField(name, nextValue);
     clearErrorFields([name]);
   };
 
@@ -471,13 +476,13 @@ export default function AddProduct() {
                   Market Price (₦) <span className="text-orange-500">*</span>
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   name="marketPrice"
                   value={formData.marketPrice}
                   onChange={handleChange}
-                  min="1"
-                  step="1"
-                  placeholder="What the product normally costs"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="e.g., 25,000"
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
                     errors.marketPrice ? 'border-orange-500 focus:border-orange-500' : ''
                   }`}

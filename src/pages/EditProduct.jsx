@@ -51,6 +51,7 @@ import {
   validateProductName,
   validateSelectedFiles,
 } from '../utils/accountValidation';
+import { formatNumericInput, parseFormattedNumber } from '../utils/numberFormatting';
 
 const REAPPROVAL_WARNING_MESSAGE =
   'Changing this field will require admin re-approval. Your product will be temporarily hidden from buyers.';
@@ -71,6 +72,7 @@ const EDIT_PRODUCT_BASIC_STEP_FIELDS = new Set([
   'saleDurationDays',
   'saleQuantityLimit',
 ]);
+const EDIT_PRODUCT_FORMATTED_PRICE_FIELDS = new Set(['price', 'originalPrice', 'salePrice']);
 
 function FieldError({ message }) {
   if (!message) {
@@ -132,17 +134,7 @@ function StepIndicator({ currentStep, theme, darkMode }) {
 }
 
 function parsePriceInput(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const normalized = String(value).replace(/[^0-9.]/g, '');
-  if (!normalized) {
-    return null;
-  }
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseFormattedNumber(value);
 }
 
 function getDiscountPreview(priceValue, originalPriceValue) {
@@ -274,7 +266,7 @@ function buildFlashSalePayload(formData, productRecord) {
 
   return {
     is_flash_sale: true,
-    sale_price: parseFloat(formData.salePrice),
+    sale_price: parsePriceInput(formData.salePrice),
     sale_start: flashSaleWindow.saleStart,
     sale_end: flashSaleWindow.saleEnd,
     sale_quantity_limit: formData.saleQuantityLimit
@@ -317,12 +309,7 @@ function hasFlashSaleChanges(productRecord, payload) {
 }
 
 function parseComparableNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const normalized = Number(value);
-  return Number.isFinite(normalized) ? normalized : null;
+  return parseFormattedNumber(value);
 }
 
 function getChangedReapprovalFields(productRecord, formData) {
@@ -521,10 +508,10 @@ export default function EditProduct() {
       setFormData({
         name: data.name || '',
         category: data.category || '',
-        price: String(data.price ?? ''),
+        price: data.price != null ? formatNumericInput(String(data.price), { allowDecimal: true }) : '',
         originalPrice:
           Object.prototype.hasOwnProperty.call(data, 'original_price') && data.original_price != null
-            ? String(data.original_price)
+            ? formatNumericInput(String(data.original_price), { allowDecimal: true })
             : '',
         attributes: deriveStructuredAttributes({
           category: data.category,
@@ -534,7 +521,10 @@ export default function EditProduct() {
         images: buildImageSlots(data.images || []),
         pickupEnabled: (data.pickup_mode || PICKUP_MODE.DISABLED) !== PICKUP_MODE.DISABLED,
         flashSaleEnabled: hasFlashSaleConfiguration(data),
-        salePrice: data.sale_price != null ? String(data.sale_price) : '',
+        salePrice:
+          data.sale_price != null
+            ? formatNumericInput(String(data.sale_price), { allowDecimal: true })
+            : '',
         saleDurationDays: deriveFlashSaleDurationDays(data.sale_start, data.sale_end),
         saleQuantityLimit: data.sale_quantity_limit != null ? String(data.sale_quantity_limit) : '',
       });
@@ -611,7 +601,10 @@ export default function EditProduct() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    updateFormField(name, value);
+    const nextValue = EDIT_PRODUCT_FORMATTED_PRICE_FIELDS.has(name)
+      ? formatNumericInput(value, { allowDecimal: true })
+      : value;
+    updateFormField(name, nextValue);
     clearErrorFields([name]);
   };
 
@@ -1018,14 +1011,14 @@ export default function EditProduct() {
                   {priceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   name="price"
                   value={formData.price}
                   onChange={handleChange}
                   disabled={priceLocked}
-                  min="0"
-                  step="0.01"
-                  placeholder="What buyers currently pay"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="e.g., 25,000"
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
                     errors.price ? 'border-orange-500 focus:border-orange-500' : ''
                   } ${priceLocked ? 'opacity-70' : ''}`}
@@ -1044,14 +1037,14 @@ export default function EditProduct() {
                   {originalPriceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   name="originalPrice"
                   value={formData.originalPrice}
                   onChange={handleChange}
                   disabled={originalPriceLocked}
-                  min="0"
-                  step="0.01"
-                  placeholder="Leave blank if no discount"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="e.g., 30,000"
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
                     errors.originalPrice || discountPreview.error
                       ? 'border-orange-500 focus:border-orange-500'
@@ -1460,12 +1453,13 @@ export default function EditProduct() {
                         Sale Price <span className="text-orange-500">*</span>
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         name="salePrice"
-                        min="0"
-                        step="0.01"
+                        inputMode="decimal"
+                        autoComplete="off"
                         value={formData.salePrice}
                         onChange={handleChange}
+                        placeholder="e.g., 18,500"
                         className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
                           errors.salePrice ? 'border-orange-500 focus:border-orange-500' : ''
                         }`}

@@ -304,6 +304,28 @@ describe('EditProduct flash-sale eligibility', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('formats seller price inputs with commas while typing', async () => {
+    mockGetFlashSaleEligibility.mockResolvedValue(
+      createEligibility({
+        eligible: true,
+        seller_eligible: true,
+        product_eligible: true,
+        blocking_reasons: [],
+        trust_reasons: [],
+        completed_orders: 9,
+        average_rating: 4.8,
+        is_trusted_seller: true,
+      })
+    );
+
+    renderEditProduct();
+
+    const priceInput = await screen.findByDisplayValue('45,000');
+    fireEvent.change(priceInput, { target: { name: 'price', value: '12500' } });
+
+    expect(priceInput).toHaveValue('12,500');
+  });
+
   it('still loads the edit page when flash-sale eligibility cannot be fetched', async () => {
     mockGetFlashSaleEligibility.mockRejectedValue(new Error('Edge function unavailable'));
 

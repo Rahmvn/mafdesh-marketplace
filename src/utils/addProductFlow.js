@@ -12,6 +12,7 @@ import {
   validateProductName,
   validateSelectedFiles,
 } from './accountValidation';
+import { formatNumericInput, parseFormattedNumber } from './numberFormatting';
 
 export const ADD_PRODUCT_DRAFT_KEY = 'mafdesh_add_product_draft';
 export const PLATFORM_FEE_RATE = 0.05;
@@ -37,12 +38,7 @@ export const ADD_PRODUCT_STEPS = [
 let previewFormCache = null;
 
 function toFiniteNumber(value) {
-  if (value === '' || value === null || value === undefined) {
-    return null;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseFormattedNumber(value);
 }
 
 function cloneSpecRows(specs = []) {
@@ -88,7 +84,7 @@ export function getInitialAddProductFormData(overrides = {}) {
   const baseFormData = {
     name: '',
     category: '',
-    marketPrice: '',
+    marketPrice: formatNumericInput(overrides.marketPrice),
     discountPercent: '',
     stock: '',
     attributes: {},
@@ -102,6 +98,7 @@ export function getInitialAddProductFormData(overrides = {}) {
   return {
     ...baseFormData,
     ...overrides,
+    marketPrice: formatNumericInput(overrides.marketPrice ?? baseFormData.marketPrice),
     attributes: normalizedAttributes,
     features: normalizedFeatures,
     specs: normalizedSpecs,
@@ -110,16 +107,16 @@ export function getInitialAddProductFormData(overrides = {}) {
 }
 
 export function calculatePlatformFee(sellingPrice) {
-  const price = Number(sellingPrice);
+  const price = parseFormattedNumber(sellingPrice);
   if (!price || price <= 0) return null;
   return Math.round(price * PLATFORM_FEE_RATE);
 }
 
 export function calculateSellingPrice(marketPrice, discountPercent) {
-  const price = Number(marketPrice);
+  const price = parseFormattedNumber(marketPrice);
   if (!price || price <= 0) return null;
 
-  const discount = Number(discountPercent);
+  const discount = parseFormattedNumber(discountPercent);
   if (!discount || discount <= 0) {
     return Math.round(price);
   }
@@ -128,14 +125,14 @@ export function calculateSellingPrice(marketPrice, discountPercent) {
 }
 
 export function calculateSellerReceives(sellingPrice) {
-  const price = Number(sellingPrice);
+  const price = parseFormattedNumber(sellingPrice);
   if (!price || price <= 0) return null;
   return price - calculatePlatformFee(price);
 }
 
 export function calculateMarketDiscount(sellingPrice, marketPrice) {
-  const sp = Number(sellingPrice);
-  const mp = Number(marketPrice);
+  const sp = parseFormattedNumber(sellingPrice);
+  const mp = parseFormattedNumber(marketPrice);
   if (!sp || !mp || sp <= 0 || mp <= 0 || mp <= sp) return null;
   const percent = Math.round((1 - sp / mp) * 100);
   return percent > 70 ? null : percent;
@@ -213,12 +210,12 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
       newErrors.category = 'Category is required';
     }
 
-    if (!formData.marketPrice || Number(formData.marketPrice) <= 0) {
+    if (!formData.marketPrice || toFiniteNumber(formData.marketPrice) <= 0) {
       newErrors.marketPrice = 'Enter a valid market price';
     }
 
     if (formData.discountPercent !== '' && formData.discountPercent !== null && formData.discountPercent !== undefined) {
-      const discount = Number(formData.discountPercent);
+      const discount = toFiniteNumber(formData.discountPercent);
       if (!Number.isInteger(discount) || discount < 1 || discount > 70) {
         newErrors.discountPercent = 'Discount must be a whole number between 1 and 70';
       }
@@ -319,11 +316,11 @@ export function parseDraftPayload(value) {
     }
 
     if (draft.sellingPrice !== undefined) {
-      const sellingPrice = Number(draft.sellingPrice);
-      const marketPrice = Number(draft.marketPrice);
+      const sellingPrice = toFiniteNumber(draft.sellingPrice);
+      const marketPrice = toFiniteNumber(draft.marketPrice);
 
       if (!draft.marketPrice && Number.isFinite(sellingPrice)) {
-        draft.marketPrice = draft.sellingPrice;
+        draft.marketPrice = formatNumericInput(draft.sellingPrice);
       } else if (
         draft.discountPercent === undefined &&
         Number.isFinite(sellingPrice) &&

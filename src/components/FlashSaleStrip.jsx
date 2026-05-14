@@ -1,3 +1,4 @@
+import React from 'react';
 import FlashSaleCard from './FlashSaleCard';
 import useCountdown from '../hooks/useCountdown';
 

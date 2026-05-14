@@ -34,6 +34,7 @@ import {
   submitAddProductForm,
   validateAddProductForm,
 } from './addProductFlow';
+import { formatNumericInput, parseFormattedNumber } from './numberFormatting';
 
 describe('submitAddProductForm', () => {
   beforeEach(() => {
@@ -47,7 +48,7 @@ describe('submitAddProductForm', () => {
       formData: {
         name: 'Wireless Headphones',
         category: 'Electronics',
-        marketPrice: '20000',
+        marketPrice: '20,000',
         discountPercent: '',
         stock: '8',
         attributes: {
@@ -103,7 +104,7 @@ describe('validateAddProductForm', () => {
       {
         name: 'Wireless Headphones',
         category: 'Electronics',
-        marketPrice: '20000',
+        marketPrice: '20,000',
         discountPercent: '',
         stock: '8',
         pickupEnabled: false,
@@ -131,7 +132,7 @@ describe('validateAddProductForm', () => {
       {
         name: 'Wireless Headphones',
         category: 'Electronics',
-        marketPrice: '20000',
+        marketPrice: '20,000',
         discountPercent: '',
         stock: '8',
         pickupEnabled: false,
@@ -148,5 +149,17 @@ describe('validateAddProductForm', () => {
     );
 
     expect(validationErrors.attr_description).toMatch(/description/i);
+  });
+});
+
+describe('numberFormatting helpers', () => {
+  it('formats seller-entered prices with commas', () => {
+    expect(formatNumericInput('25000')).toBe('25,000');
+    expect(formatNumericInput('18500.75', { allowDecimal: true })).toBe('18,500.75');
+  });
+
+  it('parses formatted seller-entered prices back to numbers', () => {
+    expect(parseFormattedNumber('25,000')).toBe(25000);
+    expect(parseFormattedNumber('18,500.75')).toBe(18500.75);
   });
 });
