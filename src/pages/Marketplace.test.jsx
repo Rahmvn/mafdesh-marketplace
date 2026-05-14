@@ -65,6 +65,10 @@ vi.mock('../utils/flashSale', () => ({
   excludeActiveFlashSaleProducts: vi.fn((products) => products),
   getActiveFlashSaleProducts: vi.fn(() => []),
   getNearestFlashSaleExpiry: vi.fn(() => null),
+  getProductPricing: vi.fn((product) => ({
+    displayPrice: Number(product?.sale_price ?? product?.price ?? 0),
+    originalPrice: Number(product?.original_price ?? product?.price ?? 0),
+  })),
 }));
 
 function renderMarketplace() {
@@ -80,21 +84,24 @@ function buildProduct({
   name,
   description,
   category = 'Fashion',
+  rating = 0,
   universityId = '',
   universityName = '',
   universityState = '',
+  stockQuantity = 8,
 }) {
   return {
     id,
     name,
     description,
     category,
-    stock_quantity: 8,
+    stock_quantity: stockQuantity,
     price: 12000,
     original_price: 12000,
     images: [],
     seller: {
       display_name: `${name} Seller`,
+      average_rating: rating,
       university_id: universityId,
       university_name: universityName,
       university_state: universityState,
@@ -406,5 +413,23 @@ describe('Marketplace seller-derived campus filters', () => {
     expect(screen.getByText('UNILAG Hoodie')).toBeInTheDocument();
     expect(screen.getByText('LASU Notebook')).toBeInTheDocument();
     expect(screen.getByText('ABU Lab Coat')).toBeInTheDocument();
+  });
+
+  it('shows marketplace cards with compact rating and low-stock messaging', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-rated',
+        name: 'Rated Backpack',
+        description: 'Popular campus backpack',
+        rating: 4.3,
+        stockQuantity: 3,
+      }),
+    ]);
+
+    renderMarketplace();
+
+    expect(await screen.findByText('Rated Backpack')).toBeInTheDocument();
+    expect(screen.getByLabelText('Seller rating 4.3 out of 5')).toBeInTheDocument();
+    expect(screen.getByText('Only 3 left')).toBeInTheDocument();
   });
 });

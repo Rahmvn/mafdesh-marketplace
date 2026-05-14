@@ -13,6 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import AuthNavbarWrapper from "../components/AuthNavbarWrapper";
+import BuyerProductCard from "../components/BuyerProductCard";
 import Footer from "../components/FooterSlim";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import SafeImage from "../components/SafeImage";
@@ -266,56 +267,6 @@ function ReviewStars({ value, size = 18, compact = false }) {
         />
       ))}
     </div>
-  );
-}
-
-function RelatedProductCard({ product, onOpen }) {
-  const hasDiscount =
-    product.original_price != null &&
-    product.price != null &&
-    Number(product.original_price) > Number(product.price);
-  const sellerName = getSellerBusinessName(product.seller);
-  const campusLabel = getPublicSellerCampusLabel(product.seller);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group overflow-hidden rounded-[22px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
-    >
-      <div className="relative aspect-square overflow-hidden bg-slate-50 p-4">
-        <SafeImage
-          src={product.images?.[0] || "https://placehold.co/600x600"}
-          alt={product.name}
-          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
-        />
-      </div>
-
-      <div className="space-y-3 p-4">
-        <p className="line-clamp-2 min-h-[2.8rem] text-sm font-semibold leading-5 text-slate-900">
-          {product.name}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base font-bold text-orange-600">{formatPrice(product.price)}</span>
-          {hasDiscount && (
-            <span className="text-xs font-medium text-slate-400 line-through">
-              {formatPrice(product.original_price)}
-            </span>
-          )}
-        </div>
-
-        {(sellerName || product.seller?.is_verified) && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            {sellerName ? <span className="font-medium text-slate-700">{sellerName}</span> : null}
-            {product.seller?.is_verified && <VerificationBadge />}
-          </div>
-        )}
-        {campusLabel ? (
-          <p className="text-xs text-slate-500">{campusLabel}</p>
-        ) : null}
-      </div>
-    </button>
   );
 }
 
@@ -1158,7 +1109,7 @@ export default function ProductDetail() {
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               {relatedProducts.map((relatedProduct) => (
-                <RelatedProductCard
+                <BuyerProductCard
                   key={relatedProduct.id}
                   product={relatedProduct}
                   onOpen={() => navigate(`/product/${relatedProduct.id}`)}

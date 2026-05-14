@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import BuyerProductCard from "../components/BuyerProductCard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
-import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle, Star } from "lucide-react";
+import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle } from "lucide-react";
 import DisputeThread from "../components/DisputeThread";
 import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
 import useModal from "../hooks/useModal";
@@ -37,7 +38,6 @@ import {
   getOrderAdminHoldTitle,
 } from "../services/orderAdminHoldService";
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
-import { getProductPricing } from "../utils/flashSale";
 import {
   enrichProductsWithPublicSellerData,
   isSellerMarketplaceActive,
@@ -83,74 +83,8 @@ function isMissingDeletedAtColumn(error) {
   );
 }
 
-function ProductRatingStars({ rating }) {
-  const normalizedRating = Number(rating || 0);
-
-  if (!Number.isFinite(normalizedRating) || normalizedRating <= 0) {
-    return null;
-  }
-
-  const filledStars = Math.max(0, Math.min(5, Math.round(normalizedRating)));
-
-  return (
-    <div
-      className="flex items-center gap-0.5 text-amber-400"
-      aria-label={`Seller rating ${normalizedRating.toFixed(1)} out of 5`}
-    >
-      {Array.from({ length: 5 }).map((_, index) => (
-        <Star
-          key={index}
-          className={`h-3 w-3 ${index < filledStars ? "fill-current" : "text-slate-200"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
 function OrderRecommendationCard({ product, onOpen }) {
-  const pricing = getProductPricing(product);
-  const sellerRating = Number(product?.seller?.average_rating || 0);
-  const hasDiscount =
-    pricing.originalPrice != null &&
-    Number(pricing.originalPrice) > Number(pricing.displayPrice);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group overflow-hidden rounded-[22px] border border-gray-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
-    >
-      <div className="aspect-square overflow-hidden bg-slate-50 p-4">
-        <img
-          src={product.images?.[0] || "/placeholder.svg"}
-          alt={product.name}
-          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
-        />
-      </div>
-
-      <div className="space-y-2.5 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
-          <span>{product.category}</span>
-          <ProductRatingStars rating={sellerRating} />
-        </div>
-
-        <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
-          {product.name}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base font-bold text-orange-600">
-            {formatPrice(pricing.displayPrice)}
-          </span>
-          {hasDiscount ? (
-            <span className="text-xs font-medium text-slate-400 line-through">
-              {formatPrice(pricing.originalPrice)}
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </button>
-  );
+  return <BuyerProductCard product={product} onOpen={onOpen} />;
 }
 
 export default function BuyerOrderDetails() {
@@ -635,6 +569,7 @@ export default function BuyerOrderDetails() {
   const showPickupAddressLine = shouldShowDistinctPickupAddress(pickupLabel, pickupAddress);
   const isSingleItem = order.product_price !== null && items.length === 1;
   const orderAmounts = getBuyerOrderAmounts(order, items);
+  const orderTotalLabel = formatPrice(orderAmounts.total);
   const isFinalState = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'DISPUTED'].includes(order.status);
   const latestRefundRequest = getLatestRefundRequest(refundRequests);
   const latestRejectedRefundRequest =
@@ -963,7 +898,10 @@ export default function BuyerOrderDetails() {
         </div>
 
         {/* Order Summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6"
+          aria-label={`Payment summary total ${orderTotalLabel}`}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <span className="text-sm text-gray-500">
               Order #{order.order_number || order.id.slice(0,8)}

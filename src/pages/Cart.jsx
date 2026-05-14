@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Minus, Plus, ShoppingBag, Star } from "lucide-react";
+import { Trash2, Minus, Plus, ShoppingBag } from "lucide-react";
+import BuyerProductCard from "../components/BuyerProductCard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { supabase } from "../supabaseClient";
@@ -32,74 +33,8 @@ function isMissingDeletedAtColumn(error) {
   );
 }
 
-function ProductRatingStars({ rating }) {
-  const normalizedRating = Number(rating || 0);
-
-  if (!Number.isFinite(normalizedRating) || normalizedRating <= 0) {
-    return null;
-  }
-
-  const filledStars = Math.max(0, Math.min(5, Math.round(normalizedRating)));
-
-  return (
-    <div
-      className="flex items-center gap-0.5 text-amber-400"
-      aria-label={`Seller rating ${normalizedRating.toFixed(1)} out of 5`}
-    >
-      {Array.from({ length: 5 }).map((_, index) => (
-        <Star
-          key={index}
-          className={`h-3 w-3 ${index < filledStars ? "fill-current" : "text-slate-200"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
 function CartRecommendationCard({ product, onOpen }) {
-  const pricing = getProductPricing(product);
-  const sellerRating = Number(product?.seller?.average_rating || 0);
-  const hasDiscount =
-    pricing.originalPrice != null &&
-    Number(pricing.originalPrice) > Number(pricing.displayPrice);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group overflow-hidden rounded-[22px] border border-blue-100 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-orange-300 hover:shadow-lg"
-    >
-      <div className="aspect-square overflow-hidden bg-slate-50 p-4">
-        <img
-          src={product.images?.[0] || "/placeholder.svg"}
-          alt={product.name}
-          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
-        />
-      </div>
-
-      <div className="space-y-2.5 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-500">
-          <span>{product.category}</span>
-          <ProductRatingStars rating={sellerRating} />
-        </div>
-
-        <p className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
-          {product.name}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base font-bold text-orange-600">
-            {formatPrice(pricing.displayPrice)}
-          </span>
-          {hasDiscount ? (
-            <span className="text-xs font-medium text-slate-400 line-through">
-              {formatPrice(pricing.originalPrice)}
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </button>
-  );
+  return <BuyerProductCard product={product} onOpen={onOpen} />;
 }
 
 export default function Cart() {
@@ -423,6 +358,7 @@ export default function Cart() {
     : isAuthenticated === false
       ? "Log In to Checkout"
       : "Proceed to Checkout";
+  const checkoutTotalLabel = formatPrice(getTotal());
 
   if (loading) {
     return (
@@ -599,29 +535,18 @@ export default function Cart() {
                 <button
                   onClick={handleCheckout}
                   disabled={checkoutLoading || cartItems.length === 0}
+                  aria-label={`${checkoutButtonLabel} - ${checkoutTotalLabel}`}
                   className="mt-6 w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-lg font-semibold transition disabled:opacity-50"
                 >
                   {checkoutButtonLabel}
                 </button>
 
-                {isAuthenticated === false && (
-                  <p className="mt-3 text-center text-xs text-gray-500">
-                    You can browse and manage your cart as a guest, but payment requires a buyer account.
-                  </p>
-                )}
+               
               </div>
             </div>
 
             <section>
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <div>
-                  <h2 className="text-xl font-bold text-blue-900 sm:text-2xl">
-                    Similar products you may like
-                  </h2>
-              
-                </div>
-                <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
-              </div>
+       
 
               {recommendationLoading ? (
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">

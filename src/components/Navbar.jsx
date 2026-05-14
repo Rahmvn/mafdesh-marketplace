@@ -140,6 +140,8 @@ export default function Navbar({
   ];
 
   async function loadCartCount() {
+    const cachedCount = readCachedCartCount();
+
     try {
       const user = getStoredUser();
       if (!user) {
@@ -159,7 +161,7 @@ export default function Navbar({
       const cart = carts?.[0];
 
       if (!cart) {
-        setCartCount(0);
+        setCartCount(cachedCount);
         return;
       }
 
@@ -169,10 +171,10 @@ export default function Navbar({
         .eq('cart_id', cart.id);
 
       const count = (items || []).reduce((sum, item) => sum + item.quantity, 0);
-      setCartCount(count);
+      setCartCount(count > 0 ? count : cachedCount);
     } catch (error) {
       console.error('Cart count error:', error);
-      setCartCount(0);
+      setCartCount(cachedCount);
     }
   }
 

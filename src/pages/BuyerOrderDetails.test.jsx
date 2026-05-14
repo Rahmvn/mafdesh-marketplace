@@ -4,7 +4,12 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BuyerOrderDetails from './BuyerOrderDetails';
 
-const { mockData, mockNavigate } = vi.hoisted(() => ({
+const {
+  mockData,
+  mockNavigate,
+  mockPickRecommendations,
+  mockScoreRecommendationProducts,
+} = vi.hoisted(() => ({
   mockData: {
     order: null,
     items: [],
@@ -14,6 +19,8 @@ const { mockData, mockNavigate } = vi.hoisted(() => ({
     adminHolds: [],
   },
   mockNavigate: vi.fn(),
+  mockPickRecommendations: vi.fn(() => []),
+  mockScoreRecommendationProducts: vi.fn((products) => products),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -196,11 +203,11 @@ vi.mock('../services/orderDeadlineService', () => ({
 }));
 
 vi.mock('../utils/cartRecommendations', () => ({
-  pickCartRecommendationProducts: vi.fn(() => []),
+  pickCartRecommendationProducts: mockPickRecommendations,
 }));
 
 vi.mock('../utils/recommendationScoring', () => ({
-  scoreRecommendationProducts: vi.fn((products) => products),
+  scoreRecommendationProducts: mockScoreRecommendationProducts,
 }));
 
 vi.mock('../utils/timeUtils', () => ({
@@ -275,12 +282,16 @@ function renderBuyerOrderDetails() {
 describe('BuyerOrderDetails', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
+    mockPickRecommendations.mockReset();
+    mockScoreRecommendationProducts.mockReset();
     mockData.order = buildOrder();
     mockData.items = [buildItem()];
     mockData.reviews = [];
     mockData.recommendationProducts = [];
     mockData.refundRequests = [];
     mockData.adminHolds = [];
+    mockPickRecommendations.mockImplementation(() => []);
+    mockScoreRecommendationProducts.mockImplementation((products) => products);
   });
 
   afterEach(() => {
@@ -331,5 +342,32 @@ describe('BuyerOrderDetails', () => {
 
     expect(screen.queryByText(/within the dispute window/i)).not.toBeInTheDocument();
     expect(confirmButton.compareDocumentPosition(similarHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders standardized recommendation cards with rating details', async () => {
+    mockData.recommendationProducts = [
+      {
+        id: 'product-2',
+        name: 'Wireless Keyboard',
+        images: [],
+        category: 'Electronics',
+        description: 'Quiet typing',
+        seller_id: 'seller-2',
+        price: 14000,
+        original_price: 16000,
+        stock_quantity: 3,
+        seller: {
+          average_rating: 4.2,
+          is_verified: true,
+        },
+      },
+    ];
+    mockPickRecommendations.mockImplementation((products) => products);
+
+    renderBuyerOrderDetails();
+
+    expect(await screen.findByText('Wireless Keyboard')).toBeInTheDocument();
+    expect(screen.getByLabelText('Seller rating 4.2 out of 5')).toBeInTheDocument();
+    expect(screen.getByText('Only 3 left')).toBeInTheDocument();
   });
 });

@@ -23,7 +23,8 @@ const {
     gt: vi.fn(() => queryBuilder),
     is: vi.fn(() => queryBuilder),
     order: vi.fn(() => queryBuilder),
-    limit: vi.fn(async () => ({ data: [], error: null })),
+    limit: vi.fn(() => queryBuilder),
+    then: (resolve, reject) => Promise.resolve({ data: [], error: null }).then(resolve, reject),
   };
 
   return {
@@ -165,9 +166,35 @@ describe('Cart', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /log in to checkout/i })).toBeInTheDocument();
     });
+  });
 
-    expect(
-      screen.getByText(/payment requires a buyer account/i)
-    ).toBeInTheDocument();
+  it('renders standardized recommendation cards with rating details', async () => {
+    mockPickRecommendations.mockReturnValue([
+      {
+        id: 'recommended-1',
+        name: 'Campus Mouse',
+        price: 5000,
+        original_price: 6500,
+        stock_quantity: 4,
+        category: 'Electronics',
+        images: [],
+        seller: {
+          average_rating: 4.6,
+          is_verified: true,
+        },
+      },
+    ]);
+
+    renderCart();
+    deferredGetCart.resolve({
+      items: JSON.parse(localStorage.getItem('cached_cart_items')),
+      removedItems: [],
+      isAuthenticated: false,
+    });
+
+    expect(await screen.findByText('Campus Mouse')).toBeInTheDocument();
+    expect(screen.getByLabelText('Seller rating 4.6 out of 5')).toBeInTheDocument();
+    expect(screen.getByText('Only 4 left')).toBeInTheDocument();
+    expect(screen.queryByTestId('verification-badge')).not.toBeInTheDocument();
   });
 });

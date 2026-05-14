@@ -3,9 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
 import { Search, X } from 'lucide-react';
 import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
+import BuyerProductCard from '../components/BuyerProductCard';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
-import SafeImage from '../components/SafeImage';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { getCanonicalStateName } from '../utils/nigeriaStates';
 import { supabase } from '../supabaseClient';
@@ -21,10 +21,6 @@ import {
 
 const CACHED_PRODUCTS_KEY = 'cached_products';
 const RECENTLY_VIEWED_KEY = 'recently_viewed';
-
-function formatPrice(value) {
-  return `\u20A6${Number(value).toLocaleString()}`;
-}
 
 function getCategoryPreviewLimit(width) {
   if (width >= 1024) return 12;
@@ -293,54 +289,6 @@ function sellerMatchesCampusGroup(seller, campusGroup) {
   }
 
   return aliasSetsIntersect(campusGroup.aliasKeys, sellerCampus.aliasKeys);
-}
-
-function ProductCard({ product, onOpen, featured = false }) {
-  const showLowStock = Number(product.stock_quantity) < 5;
-  const hasDiscount =
-    product.original_price != null &&
-    product.price != null &&
-    Number(product.original_price) !== Number(product.price);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={`w-full cursor-pointer overflow-hidden rounded-md border border-blue-100 bg-white text-left shadow-sm transition-all duration-200 hover:border-orange-400 hover:shadow-md ${
-        featured ? 'min-w-[160px]' : ''
-      }`}
-    >
-      <div className={`relative overflow-hidden bg-white p-0 ${featured ? 'aspect-video' : 'aspect-square'}`}>
-        <SafeImage
-          src={product.images?.[0] || 'https://placehold.co/600x600'}
-          alt={product.name}
-          className="h-full w-full object-contain transition-transform duration-200"
-        />
-        {showLowStock && (
-          <div className="absolute right-1.5 top-1.5 md:right-2 md:top-2">
-            <span className="rounded-full bg-orange-100 px-1 py-0.5 text-[9px] font-semibold text-orange-700">
-              Only {product.stock_quantity} left
-            </span>
-          </div>
-        )}
-      </div>
-      <div className="p-1.5 md:px-2 md:pb-1.5 md:pt-1.5">
-        <h3 className="line-clamp-2 text-[11px] font-semibold leading-4 text-blue-900 xs:text-xs md:text-xs lg:text-sm">
-          {product.name}
-        </h3>
-        <div className="mt-0.5 space-y-0.5">
-          {hasDiscount && (
-            <p className="text-[9px] font-medium text-slate-400 line-through md:text-xs lg:text-sm">
-              {formatPrice(product.original_price)}
-            </p>
-          )}
-          <p className="text-[11px] font-bold text-orange-600 xs:text-xs md:text-sm lg:text-base">
-            {formatPrice(product.price)}
-          </p>
-        </div>
-      </div>
-    </button>
-  );
 }
 
 function LoadingGrid() {
@@ -816,7 +764,7 @@ export default function Marketplace() {
             <div className="flex gap-3 overflow-x-auto pb-2">
               {featuredProducts.map((product) => (
                 <div key={product.id} className="w-[180px] flex-shrink-0">
-                  <ProductCard
+                  <BuyerProductCard
                     product={product}
                     featured
                     onOpen={() => handleProductOpen(product)}
@@ -850,7 +798,7 @@ export default function Marketplace() {
               <section key={section.category}>
                 <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6">
                   {section.products.map((product) => (
-                    <ProductCard
+                    <BuyerProductCard
                       key={product.id}
                       product={product}
                       onOpen={() => handleProductOpen(product)}
@@ -885,7 +833,7 @@ export default function Marketplace() {
 
             <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6 xl:grid-cols-7">
               {visibleProducts.map((product) => (
-                <ProductCard
+                <BuyerProductCard
                   key={product.id}
                   product={product}
                   onOpen={() => handleProductOpen(product)}
