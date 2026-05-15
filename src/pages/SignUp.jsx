@@ -50,7 +50,8 @@ const SIGNUP_STEPS = [
   },
 ];
 const EMPTY_SIGNUP_FORM = {
-  full_name: '',
+  first_name: '',
+  last_name: '',
   email: '',
   username: '',
   phone_number: '',
@@ -65,6 +66,24 @@ const EMPTY_SIGNUP_FORM = {
   university_state: '',
   university_zone: '',
 };
+
+function splitFullName(value) {
+  const normalized = normalizeHumanName(value);
+
+  if (!normalized) {
+    return {
+      first_name: '',
+      last_name: '',
+    };
+  }
+
+  const [firstName, ...rest] = normalized.split(/\s+/u);
+
+  return {
+    first_name: firstName || '',
+    last_name: rest.join(' '),
+  };
+}
 
 function hasSignupDraftContent({ formData, userType, agreedToTerms }) {
   return (
@@ -90,6 +109,12 @@ function readSignupDraft() {
       const fieldValue = parsedDraft.formData[fieldName];
       nextFormData[fieldName] = typeof fieldValue === 'string' ? fieldValue : EMPTY_SIGNUP_FORM[fieldName];
     });
+  }
+
+  if (!nextFormData.first_name && !nextFormData.last_name) {
+    const legacyNameParts = splitFullName(parsedDraft.formData?.full_name);
+    nextFormData.first_name = legacyNameParts.first_name;
+    nextFormData.last_name = legacyNameParts.last_name;
   }
 
   const parsedStep = Number(parsedDraft.currentStep);
@@ -457,8 +482,14 @@ export default function SignUp() {
   };
 
   const normalizeFormData = () => {
+    const firstName = normalizeHumanName(formData.first_name);
+    const lastName = normalizeHumanName(formData.last_name);
+    const fullName = normalizeHumanName([firstName, lastName].filter(Boolean).join(' '));
+
     const trimmed = {
-      fullName: normalizeHumanName(formData.full_name),
+      firstName,
+      lastName,
+      fullName,
       email: formData.email?.trim().toLowerCase() || '',
       username: formData.username?.trim().toLowerCase() || '',
       phone: normalizePhoneNumber(formData.phone_number),
@@ -473,6 +504,8 @@ export default function SignUp() {
 
     return {
       ...formData,
+      first_name: trimmed.firstName,
+      last_name: trimmed.lastName,
       full_name: trimmed.fullName,
       email: trimmed.email,
       username: trimmed.username,
@@ -488,9 +521,21 @@ export default function SignUp() {
   };
 
   const validateAccountStep = (normalizedFormData) => {
+    const firstNameError = validateHumanName(normalizedFormData.first_name, { label: 'First name' });
+    if (firstNameError) {
+      showWarning('First Name Required', firstNameError);
+      return false;
+    }
+
+    const lastNameError = validateHumanName(normalizedFormData.last_name, { label: 'Last name' });
+    if (lastNameError) {
+      showWarning('Last Name Required', lastNameError);
+      return false;
+    }
+
     const fullNameError = validateHumanName(normalizedFormData.full_name);
     if (fullNameError || !normalizedFormData.email) {
-      showWarning('Missing Details', 'Please fill in your full name and email.');
+      showWarning('Missing Details', 'Please fill in your first name, last name, and email.');
       return false;
     }
 
@@ -822,14 +867,26 @@ export default function SignUp() {
                     </div>
 
                     <div className="grid gap-5 sm:grid-cols-2">
-                      <div className="sm:col-span-2">
-                        <FieldLabel>Full name</FieldLabel>
+                      <div>
+                        <FieldLabel>First name</FieldLabel>
                         <input
                           type="text"
-                          placeholder="John Doe"
-                          value={formData.full_name}
-                          maxLength={100}
-                          onChange={(event) => setFieldValue('full_name', event.target.value)}
+                          placeholder="John"
+                          value={formData.first_name}
+                          maxLength={50}
+                          onChange={(event) => setFieldValue('first_name', event.target.value)}
+                          className={`${inputClass} ${inputFocusClass}`}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Last name</FieldLabel>
+                        <input
+                          type="text"
+                          placeholder="Doe"
+                          value={formData.last_name}
+                          maxLength={50}
+                          onChange={(event) => setFieldValue('last_name', event.target.value)}
                           className={`${inputClass} ${inputFocusClass}`}
                         />
                       </div>

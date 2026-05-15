@@ -14,7 +14,6 @@ import {
   Wallet,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalConfirm, showGlobalError } from '../hooks/modalService';
 import {
@@ -32,6 +31,7 @@ import {
   buildSellerPaymentRows,
   calculateSellerPaymentStats,
 } from '../utils/sellerPaymentHistory';
+import { performLogout } from '../utils/logout';
 
 const HOLDING_PERIOD_DAYS = Number(import.meta.env.VITE_SELLER_PAYOUT_HOLD_DAYS || 7);
 const STATUS_FILTER_OPTIONS = ['ALL', 'PAID', 'HELD', 'REFUNDED', 'CANCELLED'];
@@ -356,10 +356,12 @@ function normalizeVerificationRows(payments = []) {
     const status =
       rawStatus === 'SUCCESSFUL'
         ? 'PAID'
+        : rawStatus === 'MANUAL_PENDING' || rawStatus === 'PENDING'
+          ? 'PENDING'
         : rawStatus === 'FAILED'
           ? 'CANCELLED'
           : rawStatus;
-    const amount = -Math.abs(toAmount(payment.amount));
+    const amount = -Math.abs(toAmount(payment.amount ?? payment.payment_amount));
     const planType = payment.plan_type ? String(payment.plan_type).replace(/_/g, ' ') : 'subscription';
 
     return {
@@ -420,8 +422,7 @@ export default function SellerPayments() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

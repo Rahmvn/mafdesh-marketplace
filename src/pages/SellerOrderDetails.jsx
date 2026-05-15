@@ -98,14 +98,6 @@ export default function SellerOrderDetails() {
   );
   const theme = getSellerThemeClasses(themeState.darkMode);
 
-  const openProductDetails = (productId) => {
-    if (!productId) {
-      return;
-    }
-
-    navigate(`/product/${productId}`);
-  };
-
   const loadBuyerDetails = useCallback(async (orderId) => {
     const invokeCounterparty = async (accessToken) => {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -710,16 +702,9 @@ export default function SellerOrderDetails() {
                 const safeImageUrl = getSafeProductImage(item.product);
                 return (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
-  <button
-    type="button"
-    onClick={() => openProductDetails(item.product?.id)}
-    disabled={!item.product?.id}
-    className="h-16 w-16 overflow-hidden rounded border transition hover:border-orange-300 disabled:cursor-default"
-    aria-label={
-      item.product?.id
-        ? `View details for ${item.product?.name || "this product"}`
-        : "Product details unavailable"
-    }
+  <div
+    className="h-16 w-16 overflow-hidden rounded border"
+    aria-label={item.product?.name ? `${item.product.name} preview image` : "Product preview image"}
   >
     <img
       src={safeImageUrl}
@@ -727,7 +712,7 @@ export default function SellerOrderDetails() {
       className="h-full w-full object-contain"
       onError={(e) => { e.target.src = '/placeholder.png'; }}
     />
-  </button>
+  </div>
   <div className="flex-1 min-w-0">
     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
       <div className="min-w-0">

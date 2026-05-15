@@ -77,15 +77,24 @@ export default function BuyerProductCard({
           {product?.name}
         </h3>
         {showRating ? <ProductRating rating={sellerRating} /> : null}
-        <div className="mt-0.5 space-y-0.5">
+        <div className="mt-0.5">
           {hasDiscount ? (
-            <p className="text-[9px] font-medium text-slate-400 line-through md:text-xs lg:text-sm">
-              {formatPrice(pricing.originalPrice)}
+            <div
+              className="flex items-baseline gap-3.5"
+              data-testid="discount-price-row"
+            >
+              <p className="text-[11px] font-bold text-orange-600 xs:text-xs md:text-sm lg:text-base">
+                {formatPrice(pricing.displayPrice)}
+              </p>
+              <p className="text-[10px] font-semibold text-slate-500 line-through md:text-[13px] lg:text-sm">
+                {formatPrice(pricing.originalPrice)}
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] font-bold text-orange-600 xs:text-xs md:text-sm lg:text-base">
+              {formatPrice(pricing.displayPrice)}
             </p>
-          ) : null}
-          <p className="text-[11px] font-bold text-orange-600 xs:text-xs md:text-sm lg:text-base">
-            {formatPrice(pricing.displayPrice)}
-          </p>
+          )}
         </div>
       </div>
     </button>

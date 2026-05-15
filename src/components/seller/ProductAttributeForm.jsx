@@ -1,6 +1,6 @@
 import React from 'react';
 import { getSellerThemeClasses } from './SellerShell';
-import { getAttributesForCategory } from '../../utils/productAttributes';
+import { getVisibleAttributesForCategory } from '../../utils/productAttributes';
 
 function FieldError({ message }) {
   if (!message) {
@@ -27,7 +27,7 @@ export default function ProductAttributeForm({
     );
   }
 
-  const schema = getAttributesForCategory(category);
+  const schema = getVisibleAttributesForCategory(category, values);
   const descriptionAttribute = schema.find((attribute) => attribute.key === 'description');
   const orderedAttributes = [
     ...schema.filter((attribute) => attribute.key !== 'description'),
@@ -138,9 +138,9 @@ export default function ProductAttributeForm({
 
             {attribute.type === 'textarea' ? (
               <div className="mt-2 flex items-center justify-between gap-3">
-                <p className={`text-xs ${theme.softText}`}>
-                  {attribute.hint || ' '}
-                </p>
+                {attribute.hint ? (
+                  <p className={`text-xs ${theme.softText}`}>{attribute.hint}</p>
+                ) : null}
                 <p className={`text-xs ${theme.softText}`}>{String(value || '').length} characters</p>
               </div>
             ) : attribute.hint ? (

@@ -262,8 +262,10 @@ export function calculateSellerPaymentStats(rows = []) {
   (rows || []).forEach((row) => {
     const netAmount = toAmount(row?.netAmount ?? row?.amount);
 
-    if (row?.type === 'payout' && ['PENDING', 'HELD'].includes(row?.status)) {
-      pendingNet += Math.max(netAmount, 0);
+    if (['PENDING', 'HELD'].includes(row?.status)) {
+      if (row?.type === 'payout') {
+        pendingNet += Math.max(netAmount, 0);
+      }
       return;
     }
 

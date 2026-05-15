@@ -4,10 +4,19 @@ const { mockRpc } = vi.hoisted(() => ({
   mockRpc: vi.fn(),
 }));
 
+const fromHandlers = new Map();
+
 vi.mock('../supabaseClient', () => ({
   supabase: {
     rpc: mockRpc,
-    from: vi.fn(),
+    from: vi.fn((table) => {
+      const handler = fromHandlers.get(table);
+      if (!handler) {
+        throw new Error(`Unexpected table: ${table}`);
+      }
+
+      return handler();
+    }),
   },
 }));
 
@@ -25,6 +34,7 @@ import {
 describe('productService archive helpers', () => {
   beforeEach(() => {
     mockRpc.mockReset();
+    fromHandlers.clear();
   });
 
   afterEach(() => {
@@ -127,6 +137,57 @@ describe('productService archive helpers', () => {
       openOrders: 1,
       successfulRevenue: 30000,
       lastCompletedSaleAt: '2026-05-11T10:00:00.000Z',
+    });
+  });
+
+  it('deduplicates active orders across legacy order rows and order_items rows', async () => {
+    fromHandlers.set('orders', () => ({
+      select: vi.fn(() => ({
+        eq: vi.fn((field, value) => {
+          if (field === 'product_id' && value === 'product-1') {
+            return {
+              not: vi.fn(async () => ({
+                data: [{ id: 'order-1' }, { id: 'order-2' }],
+                error: null,
+              })),
+            };
+          }
+
+          throw new Error(`Unexpected eq filter: ${field}=${value}`);
+        }),
+        in: vi.fn((field, values) => {
+          if (field === 'id') {
+            expect(values).toEqual(['order-1', 'order-2']);
+            return {
+              not: vi.fn(async () => ({
+                data: [{ id: 'order-1' }, { id: 'order-2' }],
+                error: null,
+              })),
+            };
+          }
+
+          throw new Error(`Unexpected in filter: ${field}`);
+        }),
+      })),
+    }));
+    fromHandlers.set('order_items', () => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(async (field, value) => {
+          if (field === 'product_id' && value === 'product-1') {
+            return {
+              data: [{ order_id: 'order-1' }, { order_id: 'order-2' }, { order_id: 'order-1' }],
+              error: null,
+            };
+          }
+
+          throw new Error(`Unexpected eq filter: ${field}=${value}`);
+        }),
+      })),
+    }));
+
+    await expect(productService.getProductActiveOrderSummary('product-1')).resolves.toEqual({
+      activeOrderCount: 2,
+      hasActiveOrders: true,
     });
   });
 });

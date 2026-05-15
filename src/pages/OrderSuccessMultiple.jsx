@@ -8,6 +8,12 @@ import { getUserWithRetry } from '../utils/authResilience';
 import { getOrderItemsMap } from '../utils/orderItems';
 import { formatNaira } from '../utils/multiSellerCheckout';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
+import {
+  formatCampusPickupLocationLocality,
+  formatCampusPickupLocationReference,
+  formatCampusPickupLocationSummary,
+  formatCampusPickupLocationZone,
+} from '../services/deliveryService';
 
 function getHandlingCopy(order) {
   if (order.delivery_type === 'pickup') {
@@ -43,6 +49,7 @@ export default function OrderSuccessMultiple() {
   const [orders, setOrders] = useState([]);
   const [itemsByOrderId, setItemsByOrderId] = useState({});
   const [sellerNames, setSellerNames] = useState({});
+  const [sellerDirectory, setSellerDirectory] = useState({});
   const [loading, setLoading] = useState(true);
   const successState = React.useMemo(() => location.state || {}, [location.state]);
 
@@ -98,6 +105,7 @@ export default function OrderSuccessMultiple() {
       setOrders(orderRows);
       setItemsByOrderId(itemMap);
       setSellerNames(nextSellerNames);
+      setSellerDirectory(sellerDirectory);
       setLoading(false);
     };
 
@@ -146,6 +154,7 @@ export default function OrderSuccessMultiple() {
             {orders.map((order) => {
               const items = itemsByOrderId[order.id] || [];
               const sellerName = sellerNames[order.seller_id] || 'Seller';
+              const sellerProfile = sellerDirectory[String(order.seller_id)] || null;
               const productsTotal = getProductsTotal(order, items);
               const deliveryFee = toAmount(order.delivery_fee);
               const totalPaid = toAmount(order.total_amount) || productsTotal + deliveryFee;
@@ -197,16 +206,17 @@ export default function OrderSuccessMultiple() {
                         <p className="text-slate-600">
                           {order.delivery_type === 'pickup'
                             ? [
-                                order.selected_pickup_location,
-                                order.pickup_location_snapshot?.address_text,
-                                order.pickup_location_snapshot?.area_name || order.pickup_location_snapshot?.area,
-                                order.pickup_location_snapshot?.city_name || order.pickup_location_snapshot?.city,
-                                order.pickup_location_snapshot?.lga_name || order.pickup_location_snapshot?.lga,
-                                order.pickup_location_snapshot?.state_name,
-                                order.pickup_location_snapshot?.landmark_text || order.pickup_location_snapshot?.landmark,
+                                formatCampusPickupLocationSummary(
+                                  order.pickup_location_snapshot ||
+                                    { label: order.selected_pickup_location },
+                                  { universityName: sellerProfile?.university_name }
+                                ),
+                                formatCampusPickupLocationZone(order.pickup_location_snapshot),
+                                formatCampusPickupLocationLocality(order.pickup_location_snapshot),
+                                formatCampusPickupLocationReference(order.pickup_location_snapshot),
                               ]
                                 .filter(Boolean)
-                                .join(', ') || 'Pickup location selected'
+                                .join(' - ') || 'Pickup location selected'
                             : order.delivery_address || 'Delivery address confirmed'}
                         </p>
                       </div>

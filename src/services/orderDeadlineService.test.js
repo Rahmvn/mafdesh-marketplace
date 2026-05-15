@@ -247,4 +247,68 @@ describe("orderDeadlineService", () => {
       expect(onProcessed).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("retries an overdue order after a skipped catch-up result once the retry delay passes", async () => {
+    const processOrder = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        processed: false,
+        reason: "not_due",
+        results: [],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        processed: true,
+        reason: "processed",
+        results: ["Refunded 1 order"],
+      });
+    const onProcessed = vi.fn().mockResolvedValue(undefined);
+    const order = {
+      id: "order-10",
+      status: "PAID_ESCROW",
+      ship_deadline: "2026-05-03T10:00:00Z",
+    };
+
+    const { rerender } = renderHook(
+      ({ now }) =>
+        useOrderDeadlineAutoProcessing({
+          orders: [order],
+          now,
+          onProcessed,
+          processOrder,
+          retryDelayMs: 1000,
+          debugLabel: "test auto-processing",
+        }),
+      {
+        initialProps: {
+          now: new Date("2026-05-03T10:00:01Z"),
+        },
+      }
+    );
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(1);
+    });
+    expect(onProcessed).not.toHaveBeenCalled();
+
+    rerender({
+      now: new Date("2026-05-03T10:00:01.500Z"),
+    });
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({
+      now: new Date("2026-05-03T10:00:02.500Z"),
+    });
+
+    await waitFor(() => {
+      expect(processOrder).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(onProcessed).toHaveBeenCalledTimes(1);
+    });
+  });
 });

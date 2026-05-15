@@ -15,7 +15,6 @@ import {
   Wallet,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { productService } from '../services/productService';
 import { getOrderDisplayDetails, getOrderItemsMap } from '../utils/orderItems';
@@ -30,6 +29,7 @@ import {
 } from '../components/seller/SellerShell';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 import Footer from '../components/Footer';
+import { performLogout } from '../utils/logout';
 
 function statusTone(status, darkMode) {
   switch (status) {
@@ -165,8 +165,7 @@ export default function SellerDashboard() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

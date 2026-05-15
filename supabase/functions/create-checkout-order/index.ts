@@ -1,5 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  calculateMarketplacePlatformFee,
+  getEffectiveMarketplacePrice,
+} from '../../../src/utils/marketplacePricing.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -235,8 +239,8 @@ serve(async (req) => {
     }
 
     // Calculate fees
-    const productPrice = product.price;
-    const platformFee = Math.round(productPrice * 0.05);
+    const productPrice = getEffectiveMarketplacePrice(product);
+    const platformFee = calculateMarketplacePlatformFee(productPrice);
     const totalAmount = productPrice + deliveryFee;
     const orderNumber = Math.random().toString(36).substring(2, 10).toUpperCase();
 

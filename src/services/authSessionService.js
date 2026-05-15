@@ -6,6 +6,7 @@ import {
   runAuthOperationWithRetry,
   runReadOperationWithRetry,
 } from "../utils/authResilience";
+import { performLogout } from "../utils/logout";
 import { clearStoredUser, setStoredUser } from "../utils/storage";
 import { normalizeSelfServiceRole } from "./accountBootstrapService";
 
@@ -346,6 +347,17 @@ export async function ensureCurrentUserContext({
     });
 
     if (error) {
+      const isAuthError =
+        error?.message?.includes("401") ||
+        error?.message?.toLowerCase().includes("unauthorized") ||
+        error?.message?.toLowerCase().includes("invalid token") ||
+        error?.context?.status === 401;
+
+      if (isAuthError) {
+        await performLogout();
+        return null;
+      }
+
       throw error;
     }
 

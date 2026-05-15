@@ -477,11 +477,11 @@ export const productService = {
   async getProductActiveOrderSummary(productId) {
     const statusFilter = inFilter(FINAL_ORDER_STATUSES);
 
-    const [{ count: directActiveCount, error: directError }, { data: orderItems, error: orderItemsError }] =
+    const [{ data: directOrders, error: directError }, { data: orderItems, error: orderItemsError }] =
       await Promise.all([
         supabase
           .from("orders")
-          .select("id", { count: "exact", head: true })
+          .select("id")
           .eq("product_id", productId)
           .not("status", "in", statusFilter),
         supabase
@@ -493,21 +493,28 @@ export const productService = {
     if (directError) throw directError;
     if (orderItemsError) throw orderItemsError;
 
+    const activeOrderIds = new Set(
+      (directOrders || []).map((order) => order?.id).filter(Boolean)
+    );
     const orderIds = [...new Set((orderItems || []).map((item) => item.order_id).filter(Boolean))];
-    let groupedActiveCount = 0;
 
     if (orderIds.length > 0) {
-      const { count, error } = await supabase
+      const { data: groupedOrders, error } = await supabase
         .from("orders")
-        .select("id", { count: "exact", head: true })
+        .select("id")
         .in("id", orderIds)
         .not("status", "in", statusFilter);
 
       if (error) throw error;
-      groupedActiveCount = Number(count || 0);
+
+      (groupedOrders || []).forEach((order) => {
+        if (order?.id) {
+          activeOrderIds.add(order.id);
+        }
+      });
     }
 
-    const activeOrderCount = Number(directActiveCount || 0) + groupedActiveCount;
+    const activeOrderCount = activeOrderIds.size;
 
     return {
       activeOrderCount,

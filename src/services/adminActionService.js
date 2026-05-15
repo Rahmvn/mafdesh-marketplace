@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { performLogout } from "../utils/logout";
 import { signOutAndClearAuthState } from "./authSessionService";
 import {
   getSessionWithRetry,
@@ -154,6 +155,18 @@ async function invokeAdminEdgeFunction(functionName, body) {
   });
 
   if (error) {
+    const isAuthError =
+      error?.message?.includes("401") ||
+      error?.message?.toLowerCase().includes("unauthorized") ||
+      error?.message?.toLowerCase().includes("invalid token") ||
+      error?.context?.status === 401 ||
+      response?.status === 401;
+
+    if (isAuthError) {
+      await performLogout();
+      return null;
+    }
+
     const status = response?.status || error.context?.status;
     let errorBody = null;
 

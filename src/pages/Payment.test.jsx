@@ -129,4 +129,41 @@ describe('Payment', () => {
 
     expect(mockShowGlobalError).not.toHaveBeenCalled();
   });
+
+  it('redirects to login when there is no active session', async () => {
+    mockGetSession.mockResolvedValue({
+      data: {
+        session: null,
+      },
+    });
+
+    renderPaymentRoute();
+
+    fireEvent.click(await screen.findByRole('button', { name: /pay/i }));
+
+    expect(await screen.findByText('Login')).toBeInTheDocument();
+    expect(mockConfirmOrder).not.toHaveBeenCalled();
+  });
+
+  it('navigates to order success after a confirmed payment', async () => {
+    mockConfirmOrder.mockResolvedValue({
+      success: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/payment/order-1']}>
+        <Routes>
+          <Route path="/payment/:id" element={<Payment />} />
+          <Route path="/marketplace" element={<div>Marketplace</div>} />
+          <Route path="/login" element={<div>Login</div>} />
+          <Route path="/order-success/:id" element={<div>Order success</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /pay/i }));
+
+    expect(await screen.findByText('Order success')).toBeInTheDocument();
+    expect(mockShowGlobalError).not.toHaveBeenCalled();
+  });
 });

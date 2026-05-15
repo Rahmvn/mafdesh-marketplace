@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { performLogout } from '../utils/logout';
 import { buildProductSnapshot } from '../utils/productSnapshots';
 
 export const PRODUCT_EDIT_REQUEST_STATUS = {
@@ -199,6 +200,17 @@ export async function submitProductEditRequest({ productId, proposedSnapshot }) 
   });
 
   if (error) {
+    const isAuthError =
+      error?.message?.includes('401') ||
+      error?.message?.toLowerCase().includes('unauthorized') ||
+      error?.message?.toLowerCase().includes('invalid token') ||
+      error?.context?.status === 401;
+
+    if (isAuthError) {
+      await performLogout();
+      return null;
+    }
+
     throw error;
   }
 

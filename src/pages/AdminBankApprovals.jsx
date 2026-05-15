@@ -10,7 +10,7 @@ import {
   getCurrentAdminUser,
   reviewPendingBankChange,
 } from '../services/adminActionService';
-import { signOutAndClearAuthState } from '../services/authSessionService';
+import { performLogout } from '../utils/logout';
 
 const BANK_COMPARISON_FIELDS = [
   { key: 'bank_name', label: 'Bank Name' },
@@ -159,8 +159,7 @@ export default function AdminBankApprovals() {
 
   const handleLogout = async () => {
     showConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

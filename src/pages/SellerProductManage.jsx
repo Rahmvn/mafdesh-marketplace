@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock3, CreditCard, Wallet } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import { showGlobalConfirm } from '../hooks/modalService';
 import {
@@ -15,6 +14,7 @@ import {
   useSellerTheme,
 } from '../components/seller/SellerShell';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
+import { performLogout } from '../utils/logout';
 
 function payoutStatusTone(status, darkMode) {
   if (status === 'PAID') {
@@ -36,8 +36,7 @@ export default function SellerPayments() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

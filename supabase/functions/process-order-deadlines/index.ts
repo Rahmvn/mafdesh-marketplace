@@ -4,6 +4,8 @@ const SYSTEM_SOURCE = 'system_cron'
 const CRON_SCHEDULE = '*/5 * * * *'
 const DELIVERY_REVIEW_ACTION = 'DELIVERY_DEADLINE_REVIEW'
 const DELIVERY_REVIEW_BUFFER_MS = 24 * 60 * 60 * 1000
+const SELLER_RELIABILITY_WINDOW_DAYS = 45
+const SELLER_RELIABILITY_SUSPENSION_THRESHOLD = 3
 const ENABLE_EMBEDDED_CRON =
   String(Deno.env.get('ENABLE_PROCESS_ORDER_DEADLINES_CRON') || '').trim().toLowerCase() === 'true'
 const corsHeaders = {
@@ -108,6 +110,226 @@ async function notifyAdmins(
   if (error) {
     console.error(`Failed to notify admins for ${type}:`, error)
   }
+}
+
+async function notifyUser(
+  supabase: SupabaseClient,
+  userId: string,
+  type: string,
+  title: string,
+  body: string,
+  link: string,
+  metadata: Record<string, unknown>
+) {
+  const { error } = await supabase.rpc('create_notification', {
+    p_user_id: userId,
+    p_type: type,
+    p_title: title,
+    p_body: body,
+    p_link: link,
+    p_metadata: metadata,
+  })
+
+  if (error) {
+    console.error(`Failed to notify user ${userId} for ${type}:`, error)
+  }
+}
+
+async function countRecentSellerReliabilityFailures(
+  supabase: SupabaseClient,
+  sellerId: string,
+  now: string
+) {
+  const windowStart = new Date(
+    new Date(now).getTime() - SELLER_RELIABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString()
+
+  const { data, error } = await supabase
+    .from('admin_actions')
+    .select('id')
+    .eq('target_type', 'order')
+    .eq('action_type', 'AUTO_REFUND')
+    .eq('source', SYSTEM_SOURCE)
+    .eq('automated', true)
+    .contains('metadata', {
+      seller_id: sellerId,
+      seller_fault: true,
+    })
+    .gte('created_at', windowStart)
+
+  if (error) {
+    console.error(`Failed to count reliability failures for seller ${sellerId}:`, error)
+    return 0
+  }
+
+  return data?.length || 0
+}
+
+async function applySellerReliabilityConsequence(
+  supabase: SupabaseClient,
+  {
+    sellerId,
+    orderId,
+    orderNumber,
+    now,
+    trigger,
+  }: {
+    sellerId: string
+    orderId: string
+    orderNumber: string
+    now: string
+    trigger: string
+  }
+) {
+  const { data: seller, error: sellerError } = await supabase
+    .from('users')
+    .select('id, role, status, account_status')
+    .eq('id', sellerId)
+    .maybeSingle()
+
+  if (sellerError) {
+    console.error(`Failed to load seller ${sellerId} for reliability enforcement:`, sellerError)
+    return
+  }
+
+  if (!seller || seller.role !== 'seller') {
+    return
+  }
+
+  const failureCount = await countRecentSellerReliabilityFailures(supabase, sellerId, now)
+  if (failureCount <= 0) {
+    return
+  }
+
+  const sellerStatus = String(seller.account_status || seller.status || 'active').toLowerCase()
+  const sellerOrderLink = `/seller/orders/${orderId}`
+  const triggerLabel =
+    trigger === 'delivery_deadline_review_expired'
+      ? 'delivery deadline'
+      : 'shipping deadline'
+
+  if (failureCount < SELLER_RELIABILITY_SUSPENSION_THRESHOLD) {
+    await notifyUser(
+      supabase,
+      sellerId,
+      'seller_reliability_warning',
+      'Fulfillment reliability warning',
+      `Order ${orderNumber} missed the ${triggerLabel}. This is ${failureCount} seller-fault fulfillment miss${failureCount === 1 ? '' : 'es'} in the last ${SELLER_RELIABILITY_WINDOW_DAYS} days. Reaching ${SELLER_RELIABILITY_SUSPENSION_THRESHOLD} leads to automatic suspension and admin review.`,
+      sellerOrderLink,
+      {
+        order_id: orderId,
+        order_number: orderNumber,
+        failure_count: failureCount,
+        trigger,
+        policy_window_days: SELLER_RELIABILITY_WINDOW_DAYS,
+        suspension_threshold: SELLER_RELIABILITY_SUSPENSION_THRESHOLD,
+      }
+    )
+    return
+  }
+
+  if (sellerStatus !== 'active') {
+    return
+  }
+
+  const suspensionReason = `Seller missed ${failureCount} seller-fault fulfillment deadlines within ${SELLER_RELIABILITY_WINDOW_DAYS} days.`
+
+  const { error: suspendError } = await supabase
+    .from('users')
+    .update({
+      status: 'suspended',
+      account_status: 'suspended',
+    })
+    .eq('id', sellerId)
+    .eq('role', 'seller')
+
+  if (suspendError) {
+    console.error(`Failed to suspend seller ${sellerId}:`, suspendError)
+    return
+  }
+
+  const { data: holdResponse, error: holdError } = await supabase.rpc(
+    'create_seller_order_admin_holds',
+    {
+      p_seller_id: sellerId,
+      p_reason: suspensionReason,
+      p_created_by: null,
+    }
+  )
+
+  if (holdError) {
+    console.error(`Failed to create seller admin holds for ${sellerId}:`, holdError)
+  }
+
+  const holdCount = Number(holdResponse?.hold_count || 0)
+
+  const { error: actionError } = await supabase.from('admin_actions').insert({
+    admin_id: null,
+    target_type: 'user',
+    target_id: sellerId,
+    action_type: 'SELLER_RELIABILITY_SUSPEND',
+    reason: suspensionReason,
+    metadata: {
+      order_id: orderId,
+      order_number: orderNumber,
+      failure_count: failureCount,
+      hold_count: holdCount,
+      trigger,
+      policy_window_days: SELLER_RELIABILITY_WINDOW_DAYS,
+      suspension_threshold: SELLER_RELIABILITY_SUSPENSION_THRESHOLD,
+    },
+    previous_state: {
+      status: seller.status,
+      account_status: seller.account_status,
+    },
+    new_state: {
+      status: 'suspended',
+      account_status: 'suspended',
+    },
+    source: SYSTEM_SOURCE,
+    automated: true,
+    requires_reason: false,
+  })
+
+  if (actionError) {
+    console.error(`Failed to record reliability suspension for seller ${sellerId}:`, actionError)
+  }
+
+  await notifyUser(
+    supabase,
+    sellerId,
+    'seller_reliability_suspended',
+    'Seller account suspended for repeated missed fulfillment',
+    `Your seller account was suspended after ${failureCount} seller-fault fulfillment misses within ${SELLER_RELIABILITY_WINDOW_DAYS} days. ${holdCount > 0 ? `${holdCount} active order${holdCount === 1 ? '' : 's'} were placed on admin hold. ` : ''}Please contact support or wait for admin review before selling again.`,
+    '/seller/dashboard',
+    {
+      order_id: orderId,
+      order_number: orderNumber,
+      failure_count: failureCount,
+      hold_count: holdCount,
+      trigger,
+      policy_window_days: SELLER_RELIABILITY_WINDOW_DAYS,
+      suspension_threshold: SELLER_RELIABILITY_SUSPENSION_THRESHOLD,
+    }
+  )
+
+  await notifyAdmins(
+    supabase,
+    'seller_reliability_suspended',
+    'Seller suspended for repeated missed fulfillment',
+    `Seller ${sellerId} was automatically suspended after ${failureCount} seller-fault fulfillment misses within ${SELLER_RELIABILITY_WINDOW_DAYS} days. Latest order: ${orderNumber}.`,
+    '/admin/users',
+    {
+      seller_id: sellerId,
+      order_id: orderId,
+      order_number: orderNumber,
+      failure_count: failureCount,
+      hold_count: holdCount,
+      trigger,
+      policy_window_days: SELLER_RELIABILITY_WINDOW_DAYS,
+      suspension_threshold: SELLER_RELIABILITY_SUSPENSION_THRESHOLD,
+    }
+  )
 }
 
 async function processOrderDeadlines(supabase: SupabaseClient) {
@@ -222,7 +444,7 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
     refundQuery = refundQuery.not('id', 'in', pendingRefundFilter)
   }
 
-  const { data: refunded, error: err1 } = await refundQuery.select('id')
+  const { data: refunded, error: err1 } = await refundQuery.select('id, seller_id, order_number')
   if (err1) {
     console.error('Error in step 1:', err1)
   }
@@ -234,9 +456,24 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
         order.id,
         'AUTO_REFUND',
         'Seller did not prepare order within 2 business days',
-        { cancelled_at: now, trigger: 'ship_deadline_expired' },
+        {
+          cancelled_at: now,
+          trigger: 'ship_deadline_expired',
+          seller_id: order.seller_id,
+          order_number: order.order_number,
+          seller_fault: true,
+        },
         refundFields
       )
+      if (order.seller_id) {
+        await applySellerReliabilityConsequence(supabase, {
+          sellerId: order.seller_id,
+          orderId: order.id,
+          orderNumber: String(order.order_number || order.id.slice(0, 8)),
+          now,
+          trigger: 'ship_deadline_expired',
+        })
+      }
     }
   }
 
@@ -304,7 +541,7 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
   // 4. Flag delivery orders that missed the 14-day delivery target for admin review.
   let overdueDeliveryQuery = supabase
     .from('orders')
-    .select('id, order_number, delivery_deadline')
+    .select('id, order_number, seller_id, delivery_deadline')
     .eq('status', 'SHIPPED')
     .eq('delivery_type', 'delivery')
     .lte('delivery_deadline', now)
@@ -403,14 +640,30 @@ async function processOrderDeadlines(supabase: SupabaseClient) {
 
     refundedAfterReviewCount += 1
 
-    await logSystemOrderAction(
-      supabase,
-      order.id,
-      'AUTO_REFUND',
-      'Seller did not mark order as delivered within 14 days of shipping, and the 24-hour admin review buffer expired.',
-      { cancelled_at: now, trigger: 'delivery_deadline_review_expired' },
-      refundFields
-    )
+      await logSystemOrderAction(
+        supabase,
+        order.id,
+        'AUTO_REFUND',
+        'Seller did not mark order as delivered within 14 days of shipping, and the 24-hour admin review buffer expired.',
+        {
+          cancelled_at: now,
+          trigger: 'delivery_deadline_review_expired',
+          seller_id: order.seller_id,
+          order_number: order.order_number,
+          seller_fault: true,
+        },
+        refundFields
+      )
+
+    if (order.seller_id) {
+      await applySellerReliabilityConsequence(supabase, {
+        sellerId: order.seller_id,
+        orderId: order.id,
+        orderNumber: String(order.order_number || order.id.slice(0, 8)),
+        now,
+        trigger: 'delivery_deadline_review_expired',
+      })
+    }
   }
 
   if (flaggedForReviewCount > 0) {
@@ -532,9 +785,25 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
         orderId,
         'AUTO_REFUND',
         'Seller did not prepare order within 2 business days',
-        { cancelled_at: now, trigger: 'ship_deadline_expired' },
+        {
+          cancelled_at: now,
+          trigger: 'ship_deadline_expired',
+          seller_id: order.seller_id,
+          order_number: order.order_number,
+          seller_fault: true,
+        },
         refundFields
       )
+
+      if (order.seller_id) {
+        await applySellerReliabilityConsequence(supabase, {
+          sellerId: order.seller_id,
+          orderId,
+          orderNumber: String(order.order_number || orderNumberFallback),
+          now,
+          trigger: 'ship_deadline_expired',
+        })
+      }
     }
 
     return createSingleOrderProcessResult(refundedOrders?.length ? 'processed' : 'not_due', results)
@@ -716,9 +985,25 @@ async function processSingleOrderDeadline(supabase: SupabaseClient, orderId: str
         orderId,
         'AUTO_REFUND',
         'Seller did not mark order as delivered within 14 days of shipping, and the 24-hour admin review buffer expired.',
-        { cancelled_at: now, trigger: 'delivery_deadline_review_expired' },
+        {
+          cancelled_at: now,
+          trigger: 'delivery_deadline_review_expired',
+          seller_id: order.seller_id,
+          order_number: order.order_number,
+          seller_fault: true,
+        },
         refundFields
       )
+
+      if (order.seller_id) {
+        await applySellerReliabilityConsequence(supabase, {
+          sellerId: order.seller_id,
+          orderId,
+          orderNumber: String(order.order_number || orderNumberFallback),
+          now,
+          trigger: 'delivery_deadline_review_expired',
+        })
+      }
     }
 
     return createSingleOrderProcessResult(refundedOrders?.length ? 'processed' : 'not_due', results)

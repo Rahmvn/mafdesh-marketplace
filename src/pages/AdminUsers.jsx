@@ -18,7 +18,7 @@ import {
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from "../services/adminActionService";
-import { signOutAndClearAuthState } from "../services/authSessionService";
+import { performLogout } from '../utils/logout';
 
 function AdminPageSkeleton() {
   return (
@@ -103,8 +103,7 @@ export default function AdminUsers() {
 
   const handleLogout = async () => {
     showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await signOutAndClearAuthState();
-      window.location.href = "/login";
+      await performLogout();
     });
   };
 

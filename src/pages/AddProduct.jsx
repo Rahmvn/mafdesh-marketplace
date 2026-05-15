@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, CreditCard, Search, Truck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
+import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 import useModal from '../hooks/useModal';
 import {
   formatSellerCurrency,
@@ -589,26 +590,32 @@ export default function AddProduct() {
                     className="mt-1"
                   />
                   <div>
-                    <p className="font-semibold">Enable pickup for this product</p>
+                    <p className="font-semibold">Campus Pickup (recommended)</p>
+                    <p className="mt-1 text-sm">Offer campus meet-up for this product</p>
+                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                      Buyers can pick up from your saved campus locations.
+                    </p>
                   </div>
                 </label>
 
                 {formData.pickupEnabled && sellerPickupLocations.length === 0 ? (
                   <div className={`rounded-xl border border-dashed p-4 ${theme.empty}`}>
-                    <p className="text-sm leading-6">Add a seller pickup location first.</p>
+                    <p className="text-sm leading-6">
+                      You need at least one campus meet-up point before enabling pickup.
+                    </p>
                     <button
                       type="button"
                       onClick={() => navigate('/seller/delivery')}
                       className="mt-3 text-sm font-semibold text-orange-600 underline underline-offset-2"
                     >
-                      Open delivery settings
+                      Add one
                     </button>
                   </div>
                 ) : null}
 
                 {formData.pickupEnabled && sellerPickupLocations.length > 0 ? (
                   <p className={`text-sm ${theme.mutedText}`}>
-                    Pickup will use {sellerPickupLocations.length} active seller location
+                    Campus pickup will use {sellerPickupLocations.length} active saved location
                     {sellerPickupLocations.length === 1 ? '' : 's'}.
                   </p>
                 ) : null}
@@ -728,16 +735,15 @@ export default function AddProduct() {
           Back to Products
         </button>
 
-        {!checkingBank ? (
+        {checkingBank ? (
+          <SellerWorkspaceSkeleton darkMode={themeState.darkMode} mode="products" />
+        ) : (
           <div className="space-y-6">
             {draftPromptVisible ? (
               <div className={`rounded-2xl border p-4 sm:p-5 ${theme.badge}`}>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold">You have an unsaved draft. Resume?</p>
-                    <p className="mt-1 text-sm">
-                      Resume where you left off.
-                    </p>
                   </div>
                   <div className="flex gap-3">
                     <button
@@ -766,9 +772,6 @@ export default function AddProduct() {
                     Seller Workspace
                   </p>
                   <h1 className="mt-2 text-3xl font-bold tracking-tight">Add New Product</h1>
-                  <p className={`mt-3 max-w-2xl text-sm leading-7 ${theme.mutedText}`}>
-                    Build and preview your listing.
-                  </p>
                 </div>
                 <div className={`rounded-xl px-4 py-3 text-sm ${theme.panelMuted}`}>
                   Step {currentStep} of {ADD_PRODUCT_STEPS.length}
@@ -829,7 +832,7 @@ export default function AddProduct() {
               </div>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
 
       <Footer />

@@ -24,6 +24,13 @@ The Supabase edge functions expect these secrets:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `PAYSTACK_SECRET_KEY` or `PAYSTACK_SECRET` for live Paystack verification
 
+For the frontend app, use:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+`VITE_SUPABASE_PUBLISHABLE_KEY` is still accepted as a fallback for older local setups.
+
 For test-mode checkout, set:
 
 - `MOCK_PAYMENT=true`

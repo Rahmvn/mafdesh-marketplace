@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
+import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
 import ProductImageGrid from '../components/seller/add-product/ProductImageGrid';
 import ProductAttributeForm from '../components/seller/ProductAttributeForm';
 import {
@@ -23,9 +24,12 @@ import { productService } from '../services/productService';
 import { getSellerPickupLocations, PICKUP_MODE } from '../services/deliveryService';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import {
+  calculateMarketDiscount,
   calculatePlatformFee,
   calculateSellerReceives,
+  calculateSellingPrice,
   createEmptyImageSlots,
+  getProductPricing as getCatalogProductPricing,
   PRODUCT_IMAGE_SLOT_COUNT,
 } from '../utils/addProductFlow';
 import {
@@ -41,7 +45,7 @@ import {
   getFlashSaleBlockingMessages,
   getFlashSaleValidationErrors,
   normalizeFlashSaleEligibility,
-  getProductPricing,
+  getProductPricing as getFlashSaleProductPricing,
   hasFlashSaleConfiguration,
 } from '../utils/flashSale';
 import {
@@ -55,7 +59,6 @@ import { formatNumericInput, parseFormattedNumber } from '../utils/numberFormatt
 
 const REAPPROVAL_WARNING_MESSAGE =
   'Changing this field will require admin re-approval. Your product will be temporarily hidden from buyers.';
-const MAX_PRODUCT_DISCOUNT_PERCENT = 70;
 const EDIT_PRODUCT_STEPS = [
   { id: 1, label: 'Basic Info' },
   { id: 2, label: 'Images' },
@@ -64,15 +67,15 @@ const EDIT_PRODUCT_STEPS = [
 const EDIT_PRODUCT_BASIC_STEP_FIELDS = new Set([
   'name',
   'category',
-  'price',
-  'originalPrice',
+  'marketPrice',
+  'discountPercent',
   'pickupEnabled',
   'flashSale',
-  'salePrice',
+  'saleDiscountPercent',
   'saleDurationDays',
   'saleQuantityLimit',
 ]);
-const EDIT_PRODUCT_FORMATTED_PRICE_FIELDS = new Set(['price', 'originalPrice', 'salePrice']);
+const EDIT_PRODUCT_FORMATTED_PRICE_FIELDS = new Set(['marketPrice']);
 
 function FieldError({ message }) {
   if (!message) {
@@ -137,53 +140,15 @@ function parsePriceInput(value) {
   return parseFormattedNumber(value);
 }
 
-function getDiscountPreview(priceValue, originalPriceValue) {
-  const price = parsePriceInput(priceValue);
-  const originalPrice = parsePriceInput(originalPriceValue);
+function deriveFlashSaleDiscountPercent(priceValue, salePriceValue) {
+  const price = Number(priceValue || 0);
+  const salePrice = Number(salePriceValue || 0);
 
-  if (originalPriceValue === '' || originalPriceValue === null || originalPriceValue === undefined) {
-    return {
-      discountPercent: null,
-      error: '',
-      price,
-      originalPrice,
-    };
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(salePrice) || salePrice <= 0 || salePrice >= price) {
+    return '';
   }
 
-  if (price == null || price <= 0 || originalPrice == null || originalPrice <= 0) {
-    return {
-      discountPercent: null,
-      error: '',
-      price,
-      originalPrice,
-    };
-  }
-
-  if (originalPrice <= price) {
-    return {
-      discountPercent: null,
-      error: 'Original price must be higher than selling price',
-      price,
-      originalPrice,
-    };
-  }
-
-  const discountPercent = Math.round((1 - price / originalPrice) * 100);
-  if (discountPercent > MAX_PRODUCT_DISCOUNT_PERCENT) {
-    return {
-      discountPercent: null,
-      error: 'Maximum discount is 70%',
-      price,
-      originalPrice,
-    };
-  }
-
-  return {
-    discountPercent,
-    error: '',
-    price,
-    originalPrice,
-  };
+  return String(Math.round((1 - salePrice / price) * 100));
 }
 
 function buildImageSlots(images = []) {
@@ -222,10 +187,12 @@ function normalizeAttributesValue(attributes) {
 }
 
 function buildGeneralUpdates(formData, imageUrls) {
+  const pricing = getCatalogProductPricing(formData);
+
   const updates = {
     name: normalizeSingleLineText(formData.name),
     category: formData.category,
-    price: parsePriceInput(formData.price),
+    price: pricing.sellingPrice,
     description: buildProductDescription(formData.attributes, formData.category),
     attributes: normalizeAttributesValue(formData.attributes),
     images: imageUrls,
@@ -233,7 +200,7 @@ function buildGeneralUpdates(formData, imageUrls) {
     pickup_mode: formData.pickupEnabled ? PICKUP_MODE.SELLER_DEFAULT : PICKUP_MODE.DISABLED,
     pickup_locations: [],
     updated_at: new Date().toISOString(),
-    original_price: formData.originalPrice === '' ? null : parsePriceInput(formData.originalPrice),
+    original_price: pricing.hasDiscount ? pricing.originalPrice : null,
   };
 
   return updates;
@@ -266,7 +233,10 @@ function buildFlashSalePayload(formData, productRecord) {
 
   return {
     is_flash_sale: true,
-    sale_price: parsePriceInput(formData.salePrice),
+    sale_price: calculateSellingPrice(
+      getCatalogProductPricing(formData).sellingPrice,
+      formData.saleDiscountPercent
+    ),
     sale_start: flashSaleWindow.saleStart,
     sale_end: flashSaleWindow.saleEnd,
     sale_quantity_limit: formData.saleQuantityLimit
@@ -318,6 +288,8 @@ function getChangedReapprovalFields(productRecord, formData) {
   }
 
   const changedFields = [];
+  const pricing = getCatalogProductPricing(formData);
+  const nextOriginalPrice = pricing.hasDiscount ? pricing.originalPrice : null;
 
   if (String(productRecord.name || '').trim() !== String(formData.name || '').trim()) {
     changedFields.push('name');
@@ -327,13 +299,13 @@ function getChangedReapprovalFields(productRecord, formData) {
     changedFields.push('category');
   }
 
-  if (parseComparableNumber(productRecord.price) !== parseComparableNumber(formData.price)) {
+  if (parseComparableNumber(productRecord.price) !== parseComparableNumber(pricing.sellingPrice)) {
     changedFields.push('price');
   }
 
   if (
     Object.prototype.hasOwnProperty.call(productRecord, 'original_price') &&
-    parseComparableNumber(productRecord.original_price) !== parseComparableNumber(formData.originalPrice)
+    parseComparableNumber(productRecord.original_price) !== parseComparableNumber(nextOriginalPrice)
   ) {
     changedFields.push('original_price');
   }
@@ -410,13 +382,13 @@ export default function EditProduct() {
   const [formData, setFormData] = useState({
     name: '',
     category: '',
-    price: '',
-    originalPrice: '',
+    marketPrice: '',
+    discountPercent: '',
     attributes: {},
     images: createEmptyImageSlots(),
     pickupEnabled: false,
     flashSaleEnabled: false,
-    salePrice: '',
+    saleDiscountPercent: '',
     saleDurationDays: '',
     saleQuantityLimit: '',
   });
@@ -426,7 +398,8 @@ export default function EditProduct() {
       category.toLowerCase().includes(categorySearch.toLowerCase())
     );
   }, [categorySearch]);
-  const currentPricing = useMemo(() => getProductPricing(productRecord), [productRecord]);
+  const currentPricing = useMemo(() => getFlashSaleProductPricing(productRecord), [productRecord]);
+  const listingPricing = useMemo(() => getCatalogProductPricing(formData), [formData]);
   const normalizedFlashSaleEligibility = useMemo(
     () => normalizeFlashSaleEligibility(flashSaleEligibility),
     [flashSaleEligibility]
@@ -453,17 +426,20 @@ export default function EditProduct() {
       formData.flashSaleEnabled
   );
   const categoryLocked = hasActiveOrders;
-  const priceLocked = hasActiveOrders;
-  const originalPriceLocked = hasActiveOrders;
+  const marketPriceLocked = hasActiveOrders;
+  const discountLocked = hasActiveOrders;
   const categoryLockReason = hasActiveOrders
     ? 'This field is locked while the product has active orders.'
     : '';
-  const priceLockReason = hasActiveOrders
+  const pricingLockReason = hasActiveOrders
     ? 'This field is locked while the product has active orders.'
     : '';
-  const discountPreview = getDiscountPreview(formData.price, formData.originalPrice);
-  const platformFee = calculatePlatformFee(parsePriceInput(formData.price));
-  const sellerReceives = calculateSellerReceives(parsePriceInput(formData.price));
+  const platformFee = calculatePlatformFee(listingPricing.sellingPrice);
+  const sellerReceives = calculateSellerReceives(listingPricing.sellingPrice);
+  const flashSalePreviewPrice = calculateSellingPrice(
+    listingPricing.sellingPrice,
+    formData.saleDiscountPercent
+  );
   const reapprovalWarningFields = useMemo(
     () => new Set(getChangedReapprovalFields(productRecord, formData)),
     [formData, productRecord]
@@ -505,14 +481,18 @@ export default function EditProduct() {
       setProductRecord(data);
       setFlashSaleEligibility(eligibility);
       setActiveOrderCount(orderSummary.activeOrderCount || 0);
+      const marketPriceValue =
+        Object.prototype.hasOwnProperty.call(data, 'original_price') && data.original_price != null
+          ? data.original_price
+          : data.price;
+      const discountPercentValue = calculateMarketDiscount(data.price, marketPriceValue);
       setFormData({
         name: data.name || '',
         category: data.category || '',
-        price: data.price != null ? formatNumericInput(String(data.price), { allowDecimal: true }) : '',
-        originalPrice:
-          Object.prototype.hasOwnProperty.call(data, 'original_price') && data.original_price != null
-            ? formatNumericInput(String(data.original_price), { allowDecimal: true })
-            : '',
+        marketPrice:
+          marketPriceValue != null ? formatNumericInput(String(marketPriceValue)) : '',
+        discountPercent:
+          discountPercentValue == null ? '' : String(discountPercentValue),
         attributes: deriveStructuredAttributes({
           category: data.category,
           attributes: data.attributes,
@@ -521,10 +501,7 @@ export default function EditProduct() {
         images: buildImageSlots(data.images || []),
         pickupEnabled: (data.pickup_mode || PICKUP_MODE.DISABLED) !== PICKUP_MODE.DISABLED,
         flashSaleEnabled: hasFlashSaleConfiguration(data),
-        salePrice:
-          data.sale_price != null
-            ? formatNumericInput(String(data.sale_price), { allowDecimal: true })
-            : '',
+        saleDiscountPercent: deriveFlashSaleDiscountPercent(data.price, data.sale_price),
         saleDurationDays: deriveFlashSaleDurationDays(data.sale_start, data.sale_end),
         saleQuantityLimit: data.sale_quantity_limit != null ? String(data.sale_quantity_limit) : '',
       });
@@ -671,8 +648,6 @@ export default function EditProduct() {
 
   const validateForm = (step = 'all') => {
     const nextErrors = {};
-    const price = parsePriceInput(formData.price);
-    const originalPrice = parsePriceInput(formData.originalPrice);
     const shouldValidateBasic = step === 'all' || step === 1;
     const shouldValidateImages = step === 'all' || step === 2;
     const shouldValidateDetails = step === 'all' || step === 3;
@@ -688,20 +663,23 @@ export default function EditProduct() {
         nextErrors.category = 'Category is required';
       }
 
-      if (!price || price <= 0) {
-        nextErrors.price = 'Enter a valid selling price';
+      if (!formData.marketPrice || parsePriceInput(formData.marketPrice) <= 0) {
+        nextErrors.marketPrice = 'Enter a valid market price';
       }
 
-      if (formData.originalPrice !== '') {
-        if (!originalPrice || originalPrice <= 0) {
-          nextErrors.originalPrice = 'Enter a valid original price';
-        } else if (discountPreview.error) {
-          nextErrors.originalPrice = discountPreview.error;
+      if (
+        formData.discountPercent !== '' &&
+        formData.discountPercent !== null &&
+        formData.discountPercent !== undefined
+      ) {
+        const discount = Number(formData.discountPercent);
+        if (!Number.isInteger(discount) || discount < 1 || discount > 70) {
+          nextErrors.discountPercent = 'Discount must be a whole number between 1 and 70';
         }
       }
 
       if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
-        nextErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
+        nextErrors.pickupEnabled = 'You need at least one campus meet-up point before enabling pickup';
       }
     }
 
@@ -749,8 +727,8 @@ export default function EditProduct() {
           isApproved: productRecord?.is_approved,
           stockQuantity: productRecord?.stock_quantity,
           deletedAt: productRecord?.deleted_at,
-          price: formData.price,
-          salePrice: formData.salePrice,
+          price: listingPricing.sellingPrice,
+          saleDiscountPercent: formData.saleDiscountPercent,
           saleDurationDays: formData.saleDurationDays,
           saleQuantityLimit: formData.saleQuantityLimit,
           adminApprovedDiscount: productRecord?.admin_approved_discount,
@@ -908,7 +886,7 @@ export default function EditProduct() {
             </p>
             <h2 className="mt-2 text-2xl font-bold">Basic Info</h2>
             <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-              Product naming, category, pricing, and delivery settings.
+              Name, category, pricing, delivery.
             </p>
           </div>
 
@@ -1005,25 +983,25 @@ export default function EditProduct() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div title={priceLocked ? priceLockReason : ''}>
+              <div title={marketPriceLocked ? pricingLockReason : ''}>
                 <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                  Selling Price (₦) <span className="text-orange-500">*</span>
-                  {priceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
+                  Market Price (₦) <span className="text-orange-500">*</span>
+                  {marketPriceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
                 </label>
                 <input
                   type="text"
-                  name="price"
-                  value={formData.price}
+                  name="marketPrice"
+                  value={formData.marketPrice}
                   onChange={handleChange}
-                  disabled={priceLocked}
-                  inputMode="decimal"
+                  disabled={marketPriceLocked}
+                  inputMode="numeric"
                   autoComplete="off"
                   placeholder="e.g., 25,000"
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
-                    errors.price ? 'border-orange-500 focus:border-orange-500' : ''
-                  } ${priceLocked ? 'opacity-70' : ''}`}
+                    errors.marketPrice ? 'border-orange-500 focus:border-orange-500' : ''
+                  } ${marketPriceLocked ? 'opacity-70' : ''}`}
                 />
-                <FieldError message={errors.price} />
+                <FieldError message={errors.marketPrice} />
                 {reapprovalWarningFields.has('price') ? (
                   <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     {REAPPROVAL_WARNING_MESSAGE}
@@ -1031,41 +1009,36 @@ export default function EditProduct() {
                 ) : null}
               </div>
 
-              <div title={originalPriceLocked ? priceLockReason : ''}>
+              <div title={discountLocked ? pricingLockReason : ''}>
                 <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                  Original Price (₦)
-                  {originalPriceLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
+                  Discount percentage (optional)
+                  {discountLocked ? <Lock className="h-4 w-4 text-orange-500" /> : null}
                 </label>
                 <input
-                  type="text"
-                  name="originalPrice"
-                  value={formData.originalPrice}
+                  type="number"
+                  name="discountPercent"
+                  min="1"
+                  max="70"
+                  step="1"
+                  value={formData.discountPercent}
                   onChange={handleChange}
-                  disabled={originalPriceLocked}
-                  inputMode="decimal"
-                  autoComplete="off"
-                  placeholder="e.g., 30,000"
+                  disabled={discountLocked}
+                  placeholder="1 - 70"
                   className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
-                    errors.originalPrice || discountPreview.error
-                      ? 'border-orange-500 focus:border-orange-500'
-                      : ''
-                  } ${originalPriceLocked ? 'opacity-70' : ''}`}
+                    errors.discountPercent ? 'border-orange-500 focus:border-orange-500' : ''
+                  } ${discountLocked ? 'opacity-70' : ''}`}
                 />
                 <p className={`mt-2 text-xs ${theme.softText}`}>
-                  Original price before discount. Leave blank if this product is not discounted.
+                  We&apos;ll calculate the current selling price from your market price automatically.
                 </p>
-                <FieldError message={errors.originalPrice} />
-                {reapprovalWarningFields.has('original_price') ? (
+                <FieldError message={errors.discountPercent} />
+                {reapprovalWarningFields.has('price') || reapprovalWarningFields.has('original_price') ? (
                   <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     {REAPPROVAL_WARNING_MESSAGE}
                   </div>
                 ) : null}
               </div>
             </div>
-
-            {!errors.originalPrice && discountPreview.error ? (
-              <p className="text-sm text-orange-600">{discountPreview.error}</p>
-            ) : null}
 
             <div className={`rounded-xl border p-4 ${theme.panelMuted}`}>
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em]">
@@ -1075,8 +1048,8 @@ export default function EditProduct() {
                 <div className="flex items-center justify-between text-sm">
                   <span className={theme.softText}>Buyer pays</span>
                   <span className="font-semibold">
-                    {parsePriceInput(formData.price) != null
-                      ? formatSellerCurrency(parsePriceInput(formData.price))
+                    {listingPricing.sellingPrice != null
+                      ? formatSellerCurrency(listingPricing.sellingPrice)
                       : '—'}
                   </span>
                 </div>
@@ -1096,10 +1069,10 @@ export default function EditProduct() {
                 </div>
               </div>
 
-              {!discountPreview.error && discountPreview.discountPercent !== null ? (
+              {listingPricing.hasDiscount ? (
                 <div className="mt-3 border-t pt-3">
                   <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
-                    {discountPreview.discountPercent}% off original price
+                    {listingPricing.discountPercent}% off market price
                   </span>
                 </div>
               ) : null}
@@ -1114,9 +1087,6 @@ export default function EditProduct() {
                   </span>
                   <div>
                     <p className="font-semibold">Delivery is included automatically</p>
-                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                      Delivery fees stay auto-calculated from your location to the buyer&apos;s location.
-                    </p>
                   </div>
                 </div>
 
@@ -1131,26 +1101,32 @@ export default function EditProduct() {
                     className="mt-1"
                   />
                   <div>
-                    <p className="font-semibold">Enable pickup for this product</p>
+                    <p className="font-semibold">Campus Pickup (recommended)</p>
+                    <p className="mt-1 text-sm">Offer campus meet-up for this product</p>
+                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
+                      Buyers can pick up from your saved campus locations.
+                    </p>
                   </div>
                 </label>
 
                 {formData.pickupEnabled && sellerPickupLocations.length === 0 ? (
                   <div className={`rounded-xl border border-dashed p-4 ${theme.empty}`}>
-                    <p className="text-sm leading-6">Add a seller pickup location first.</p>
+                    <p className="text-sm leading-6">
+                      You need at least one campus meet-up point before enabling pickup.
+                    </p>
                     <button
                       type="button"
                       onClick={() => navigate('/seller/delivery')}
                       className="mt-3 text-sm font-semibold text-orange-600 underline underline-offset-2"
                     >
-                      Open delivery settings
+                      Add one
                     </button>
                   </div>
                 ) : null}
 
                 {formData.pickupEnabled && sellerPickupLocations.length > 0 ? (
                   <p className={`text-sm ${theme.mutedText}`}>
-                    Pickup will use {sellerPickupLocations.length} active seller location
+                    Campus pickup will use {sellerPickupLocations.length} active saved location
                     {sellerPickupLocations.length === 1 ? '' : 's'}.
                   </p>
                 ) : null}
@@ -1172,7 +1148,7 @@ export default function EditProduct() {
             </p>
             <h2 className="mt-2 text-2xl font-bold">Images</h2>
             <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-              Replace or remove listing images using the same slot layout as add-product.
+              Replace or remove your product images.
             </p>
           </div>
 
@@ -1208,7 +1184,7 @@ export default function EditProduct() {
           </p>
           <h2 className="mt-2 text-2xl font-bold">Product Details</h2>
           <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-            Update the buyer-facing details using the same category-specific fields as add-product.
+            Update your product details.
           </p>
         </div>
 
@@ -1240,26 +1216,7 @@ export default function EditProduct() {
   };
 
   if (isLoading) {
-    return (
-      <div className={`min-h-screen flex flex-col transition-colors duration-300 ${theme.shell}`}>
-        <Navbar
-          theme={themeState.darkMode ? 'dark' : 'light'}
-          themeToggle={
-            themeState.canToggleTheme
-              ? {
-                  darkMode: themeState.darkMode,
-                  onToggle: themeState.toggleTheme,
-                }
-              : null
-          }
-        />
-        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
-          <div className={`rounded-2xl p-6 ${theme.panel}`}>Loading product...</div>
-        </div>
-        <Footer />
-        <ModalComponent />
-      </div>
-    );
+    return <SellerWorkspaceSkeleton darkMode={themeState.darkMode} mode="products" />;
   }
 
   return (
@@ -1294,9 +1251,6 @@ export default function EditProduct() {
                   Seller Workspace
                 </p>
                 <h1 className="mt-2 text-3xl font-bold tracking-tight">Edit Product</h1>
-                <p className={`mt-3 max-w-2xl text-sm leading-7 ${theme.mutedText}`}>
-                  Update this listing with the same category-driven standards used in add-product.
-                </p>
               </div>
               <div className={`rounded-xl px-4 py-3 text-sm ${theme.panelMuted}`}>
                 Step {currentStep} of {EDIT_PRODUCT_STEPS.length}
@@ -1338,7 +1292,7 @@ export default function EditProduct() {
               </p>
               <h2 className="mt-2 text-2xl font-bold">Stock Management</h2>
               <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-                Orders reduce stock automatically. Use this section to top up available units.
+                Orders reduce stock automatically.
               </p>
             </div>
 
@@ -1347,9 +1301,6 @@ export default function EditProduct() {
                 <p className="text-sm font-semibold">Current Stock</p>
                 <p className="mt-2 text-3xl font-bold text-orange-500">
                   {Number(productRecord?.stock_quantity || 0)} units
-                </p>
-                <p className={`mt-2 text-sm ${theme.mutedText}`}>
-                  Stock updates do not change the buyer-facing listing details above.
                 </p>
               </div>
 
@@ -1387,17 +1338,13 @@ export default function EditProduct() {
                 Promotions
               </p>
               <h2 className="mt-2 text-2xl font-bold">Flash Sale</h2>
-              <p className={`mt-2 text-sm leading-6 ${theme.mutedText}`}>
-                Manage promotional pricing without losing the cleaner add-product listing experience.
-              </p>
             </div>
 
             {canManageFlashSales ? (
               <div className={`space-y-4 rounded-2xl border p-4 ${theme.panelMuted}`}>
                 {isFlashSaleEligibilityTemporarilyUnavailable ? (
                   <div className={`rounded-xl border border-dashed p-3 text-sm ${theme.mutedText}`}>
-                    We could not verify flash-sale eligibility right now. You can still set up the
-                    promotion here, and the final seller/product checks will run when you save.
+                    Eligibility check unavailable. You can still set up the sale — checks run on save.
                   </div>
                 ) : null}
 
@@ -1410,13 +1357,13 @@ export default function EditProduct() {
                       setFormData((previousData) => ({
                         ...previousData,
                         flashSaleEnabled: enabled,
-                        salePrice: enabled ? previousData.salePrice : '',
+                        saleDiscountPercent: enabled ? previousData.saleDiscountPercent : '',
                         saleDurationDays: enabled ? previousData.saleDurationDays || '1' : '',
                         saleQuantityLimit: enabled ? previousData.saleQuantityLimit : '',
                       }));
                       clearErrorFields([
                         'flashSale',
-                        'salePrice',
+                        'saleDiscountPercent',
                         'saleDurationDays',
                         'saleQuantityLimit',
                       ]);
@@ -1428,9 +1375,6 @@ export default function EditProduct() {
                       <Zap className="h-4 w-4 text-orange-500" />
                       Enable flash sale pricing for this product
                     </span>
-                    <p className={`mt-1 text-sm ${theme.mutedText}`}>
-                      Flash sale changes are saved alongside the main product update.
-                    </p>
                   </div>
                 </label>
 
@@ -1450,21 +1394,27 @@ export default function EditProduct() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-semibold">
-                        Sale Price <span className="text-orange-500">*</span>
+                        Discount Percentage <span className="text-orange-500">*</span>
                       </label>
                       <input
-                        type="text"
-                        name="salePrice"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        value={formData.salePrice}
+                        type="number"
+                        name="saleDiscountPercent"
+                        min="1"
+                        max="99"
+                        step="1"
+                        value={formData.saleDiscountPercent}
                         onChange={handleChange}
-                        placeholder="e.g., 18,500"
+                        placeholder="e.g., 25"
                         className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
-                          errors.salePrice ? 'border-orange-500 focus:border-orange-500' : ''
+                          errors.saleDiscountPercent ? 'border-orange-500 focus:border-orange-500' : ''
                         }`}
                       />
-                      <FieldError message={errors.salePrice} />
+                      {flashSalePreviewPrice != null ? (
+                        <p className={`mt-2 text-xs font-semibold ${theme.softText}`}>
+                          Sale price preview: {formatSellerCurrency(flashSalePreviewPrice)}
+                        </p>
+                      ) : null}
+                      <FieldError message={errors.saleDiscountPercent} />
                     </div>
 
                     <div>
@@ -1501,8 +1451,7 @@ export default function EditProduct() {
                         }`}
                       />
                       <p className={`mt-2 text-xs ${theme.softText}`}>
-                        Flash sales start as soon as you save. Choose 1 to 5 days and we&apos;ll
-                        calculate the end time for you.
+                        1 to 5 days.
                       </p>
                       {flashSalePreviewWindow.saleEnd ? (
                         <p className={`mt-2 text-xs ${theme.softText}`}>
@@ -1538,8 +1487,7 @@ export default function EditProduct() {
                   <div className={`mt-4 rounded-xl border p-3 ${theme.panel}`}>
                     <p className="font-semibold">Seller trust snapshot</p>
                     <p className={`mt-2 text-xs ${theme.softText}`}>
-                      Flash-sale access is based on your seller account metrics across all orders,
-                      not just this product&apos;s own sales history.
+                      Based on your overall seller metrics.
                     </p>
                     <p className="mt-3">
                       Completed seller orders: {normalizedFlashSaleEligibility.completed_orders}

@@ -13,11 +13,11 @@ import { AdminWorkspaceSkeleton } from '../components/MarketplaceLoading';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import useModal from '../hooks/useModal';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import {
   fetchPendingVerificationRequests,
   reviewSellerVerification,
 } from '../services/adminVerificationService';
+import { performLogout } from '../utils/logout';
 
 function statusTone(status) {
   const normalizedStatus = String(status || '').toLowerCase();
@@ -59,8 +59,7 @@ export default function AdminVerifications() {
 
   const handleLogout = async () => {
     showConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

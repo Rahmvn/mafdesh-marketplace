@@ -150,14 +150,20 @@ export function isFlashSaleActive(product, now = new Date()) {
 
 export function getProductPricing(product, now = new Date()) {
   const regularPrice = toNumber(product?.price);
+  const catalogOriginalPrice = toNumber(product?.original_price);
   const flashSaleActive = isFlashSaleActive(product, now);
   const salePrice = flashSaleActive ? toNumber(product?.sale_price) : null;
+  const displayPrice = flashSaleActive && salePrice != null ? salePrice : regularPrice;
+  const comparisonPrice = flashSaleActive
+    ? Math.max(regularPrice, catalogOriginalPrice)
+    : catalogOriginalPrice;
 
   return {
     isFlashSaleActive: flashSaleActive,
     regularPrice,
     salePrice,
-    displayPrice: flashSaleActive && salePrice != null ? salePrice : regularPrice,
+    originalPrice: comparisonPrice > displayPrice ? comparisonPrice : null,
+    displayPrice,
     remainingSaleQuantity: getFlashSaleRemainingQuantity(product),
     saleEnd: product?.sale_end || null,
   };
@@ -253,14 +259,14 @@ export function getFlashSaleValidationErrors({
   stockQuantity,
   deletedAt,
   price,
-  salePrice,
+  saleDiscountPercent,
   saleDurationDays,
   saleQuantityLimit,
   adminApprovedDiscount,
 }) {
   const errors = {};
   const shouldValidateConfiguration = Boolean(
-    enabled || salePrice || saleDurationDays || saleQuantityLimit
+    enabled || saleDiscountPercent || saleDurationDays || saleQuantityLimit
   );
 
   if (!shouldValidateConfiguration) {
@@ -268,7 +274,10 @@ export function getFlashSaleValidationErrors({
   }
 
   const basePrice = toNumber(price);
-  const parsedSalePrice = salePrice === '' ? NaN : toNumber(salePrice);
+  const parsedDiscountPercent =
+    saleDiscountPercent === '' || saleDiscountPercent == null
+      ? NaN
+      : Number(saleDiscountPercent);
   const parsedDurationDays = saleDurationDays === '' ? null : Number(saleDurationDays);
   const parsedQuantityLimit = saleQuantityLimit === '' ? null : Number(saleQuantityLimit);
   const blockingSummary = getFlashSaleBlockingSummary(eligibility);
@@ -297,18 +306,17 @@ export function getFlashSaleValidationErrors({
     }
   }
 
-  if (!salePrice) {
-    errors.salePrice = 'Sale price is required.';
-  } else if (parsedSalePrice <= 0) {
-    errors.salePrice = 'Sale price must be greater than 0.';
-  } else if (basePrice > 0 && parsedSalePrice >= basePrice) {
-    errors.salePrice = 'Sale price must be lower than the original price.';
+  if (!saleDiscountPercent) {
+    errors.saleDiscountPercent = 'Discount percentage is required.';
+  } else if (!Number.isInteger(parsedDiscountPercent) || parsedDiscountPercent <= 0) {
+    errors.saleDiscountPercent = 'Discount percentage must be a whole number greater than 0.';
+  } else if (parsedDiscountPercent >= 100) {
+    errors.saleDiscountPercent = 'Discount percentage must be lower than 100.';
   } else if (
     !adminApprovedDiscount &&
-    basePrice > 0 &&
-    parsedSalePrice < basePrice * (1 - DEFAULT_MAX_DISCOUNT_PERCENT / 100)
+    parsedDiscountPercent > DEFAULT_MAX_DISCOUNT_PERCENT
   ) {
-    errors.salePrice = 'Discounts above 50% require admin approval.';
+    errors.saleDiscountPercent = 'Discounts above 50% require admin approval.';
   }
 
   if (!saleDurationDays) {

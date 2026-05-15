@@ -13,6 +13,10 @@ import {
 import { showGlobalError, showGlobalWarning } from '../hooks/modalService';
 import {
   DELIVERY_TYPE,
+  formatCampusPickupLocationLocality,
+  formatCampusPickupLocationReference,
+  formatCampusPickupLocationSummary,
+  formatCampusPickupLocationZone,
   formatPickupLocationAddress,
   getProductFulfillmentOptions,
   isDeliverySchemaMissingError,
@@ -26,7 +30,7 @@ import { saveSavedAddress } from '../services/savedAddressService';
 import { createSingleCheckoutOrder } from '../services/singleCheckoutService';
 import { supabase } from '../supabaseClient';
 import { getSessionWithRetry } from '../utils/authResilience';
-import { getProductPricing } from '../utils/flashSale';
+import { getEffectiveMarketplacePrice } from '../utils/marketplacePricing';
 import { formatNaira } from '../utils/multiSellerCheckout';
 import { navigateBack } from '../utils/navigation';
 import {
@@ -50,6 +54,7 @@ export default function Checkout() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [sellerProfile, setSellerProfile] = useState(null);
 
   const loadProduct = useCallback(async (productId = id) => {
     const { data, error } = await supabase
@@ -70,6 +75,7 @@ export default function Checkout() {
 
     const sellerMap = await fetchPublicSellerIdentityMap([data.seller_id]);
     const seller = sellerMap[String(data.seller_id)] || null;
+    setSellerProfile(seller);
 
     if (!isSellerMarketplaceActive(seller)) {
       showGlobalWarning(
@@ -161,8 +167,7 @@ export default function Checkout() {
     }
   }, [deliveryType, fulfillment]);
 
-  const pricing = useMemo(() => getProductPricing(product), [product]);
-  const productPrice = pricing.displayPrice;
+  const productPrice = useMemo(() => getEffectiveMarketplacePrice(product), [product]);
 
   const handleAddressSelect = useCallback((address) => {
     setSelectedDeliveryAddress(address);
@@ -335,6 +340,23 @@ export default function Checkout() {
   const total = productPrice + deliveryFee;
   const pickupOptions = fulfillment?.pickupLocations || [];
   const pickupEnabled = pickupOptions.length > 0;
+  const selectedPickupLocation =
+    pickupOptions.find((location) => location.id === selectedPickup) || null;
+  const sellerUniversityName = String(sellerProfile?.university_name || '').trim();
+  const selectedPickupSummary = selectedPickupLocation
+    ? formatCampusPickupLocationSummary(selectedPickupLocation, {
+        universityName: sellerUniversityName,
+      })
+    : '';
+  const selectedPickupZone = selectedPickupLocation
+    ? formatCampusPickupLocationZone(selectedPickupLocation)
+    : '';
+  const selectedPickupLocality = selectedPickupLocation
+    ? formatCampusPickupLocationLocality(selectedPickupLocation)
+    : '';
+  const selectedPickupReference = selectedPickupLocation
+    ? formatCampusPickupLocationReference(selectedPickupLocation)
+    : '';
   const hasAvailableMethod = true;
 
   return (
@@ -368,7 +390,7 @@ export default function Checkout() {
             </div>
 
             <div className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
-              <h2 className="mb-4 font-semibold text-blue-900">Delivery Method</h2>
+              <h2 className="mb-4 font-semibold text-blue-900">Fulfillment Method</h2>
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                 <button
                   onClick={() => setDeliveryType(DELIVERY_TYPE.DELIVERY)}
@@ -378,7 +400,7 @@ export default function Checkout() {
                       : 'border-blue-200 text-blue-700 hover:bg-gray-50'
                   }`}
                 >
-                  Delivery
+                  Campus Delivery (doorstep)
                 </button>
                 {pickupEnabled ? (
                   <button
@@ -389,14 +411,19 @@ export default function Checkout() {
                         : 'border-blue-200 text-blue-700 hover:bg-gray-50'
                     }`}
                   >
-                    Pickup
+                    Campus Meet-up
                   </button>
                 ) : null}
               </div>
 
               {!pickupEnabled ? (
                 <p className="mt-3 text-sm text-blue-600">
-                  Pickup appears only when this seller has active pickup locations.
+                  Campus meet-up appears only when this seller has active saved campus locations.
+                </p>
+              ) : null}
+              {pickupEnabled && sellerUniversityName ? (
+                <p className="mt-3 text-sm text-blue-600">
+                  Campus meet-up points should stay within this seller&apos;s university environment: {sellerUniversityName}.
                 </p>
               ) : null}
 
@@ -404,20 +431,55 @@ export default function Checkout() {
                 <div className="mt-4">
                   <SelectField
                     id="checkout-pickup-location"
-                    label="Select Pickup Location"
+                    label="Choose Campus Meet-up Point"
                     value={selectedPickup}
                     onChange={setSelectedPickup}
                     options={pickupOptions.map((location) => ({
                       value: location.id,
-                      label: `${location.label} - ${formatPickupLocationAddress(location)}`,
+                      label: [
+                        formatCampusPickupLocationSummary(location, {
+                          universityName: sellerUniversityName,
+                        }),
+                        formatCampusPickupLocationZone(location),
+                        formatCampusPickupLocationLocality(location),
+                      ]
+                        .filter(Boolean)
+                        .join(' - '),
                     }))}
-                    placeholder="Choose a pickup point"
+                    placeholder="Choose a campus meet-up point"
                     tone="blue"
                     required
                   />
-                  <p className="mt-2 text-sm text-gray-500">
-                    You&apos;ll be notified when pickup is ready.
-                  </p>
+                  {selectedPickupLocation ? (
+                    <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                      <p className="font-semibold text-blue-900">{selectedPickupSummary}</p>
+                      {selectedPickupZone ? (
+                        <p className="mt-1 text-sm text-blue-700">{selectedPickupZone}</p>
+                      ) : null}
+                      {selectedPickupLocality ? (
+                        <p className="mt-1 text-xs text-blue-600">{selectedPickupLocality}</p>
+                      ) : null}
+                      {selectedPickupReference ? (
+                        <p className="mt-1 text-sm text-blue-700">{selectedPickupReference}</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-blue-700">
+                          {formatPickupLocationAddress(selectedPickupLocation)}
+                        </p>
+                      )}
+                      {selectedPickupLocation.pickup_instructions ? (
+                        <p className="mt-2 text-sm text-blue-700">
+                          {selectedPickupLocation.pickup_instructions}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-sm text-blue-700">
+                        Meet your seller here. Bring your order confirmation.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-gray-500">
+                      Meet your seller here. Bring your order confirmation.
+                    </p>
+                  )}
                 </div>
               ) : null}
             </div>

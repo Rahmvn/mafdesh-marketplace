@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { showGlobalLoginRequired } from '../hooks/modalService';
-import { clearStoredUser } from '../utils/storage';
+import { performLogout } from '../utils/logout';
+import { clearStoredUser, getStoredUser } from '../utils/storage';
 import {
   consumeIntentionalLogoutRedirect,
   loadAuthenticatedUserContext,
@@ -93,7 +94,20 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
     checkAuth();
 
-    const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
+    const unsubscribe = subscribeToAuthStateChanges(async ({ event, session }) => {
+      if (event === 'SIGNED_OUT' || (event !== 'INITIAL_SESSION' && !session)) {
+        await performLogout();
+        return;
+      }
+
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        const storedUser = getStoredUser();
+        if (storedUser && storedUser.id !== session.user.id) {
+          await performLogout();
+          return;
+        }
+      }
+
       if (!session) {
         clearStoredUser();
         if (isMounted) {

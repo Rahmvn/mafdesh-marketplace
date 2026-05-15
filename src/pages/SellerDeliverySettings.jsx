@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MapPin, PackageCheck, Plus, Save, Truck, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import { getSessionWithRetry } from '../utils/authResilience';
 import {
   showGlobalConfirm,
@@ -16,6 +15,7 @@ import {
   DELIVERY_SCHEMA_ERROR_MESSAGE,
   getSellerFulfillmentSettings,
   getSellerPickupLocations,
+  isDeliverySchemaMissingError,
   isDeliverySchemaInstalled,
   updateSellerPickupLocation,
   upsertSellerFulfillmentSettings,
@@ -28,6 +28,7 @@ import {
 } from '../components/seller/SellerShell';
 import { NIGERIAN_STATES, getLgasForState } from '../utils/nigeriaData';
 import { SellerWorkspaceSkeleton } from '../components/MarketplaceLoading';
+import { performLogout } from '../utils/logout';
 
 const emptyPickupForm = {
   label: '',
@@ -56,6 +57,11 @@ export default function SellerDeliverySettings() {
   const [schemaInstalled, setSchemaInstalled] = useState(true);
   const [fulfillmentForm, setFulfillmentForm] = useState(emptyFulfillmentForm);
   const [pickupForm, setPickupForm] = useState(emptyPickupForm);
+  const [shipFromOverrideEnabled, setShipFromOverrideEnabled] = useState(false);
+  const [fulfillmentSnapshot, setFulfillmentSnapshot] = useState(emptyFulfillmentForm);
+  const [pickupDependencyByLocation, setPickupDependencyByLocation] = useState({});
+  const [sellerPickupEnabledProductCount, setSellerPickupEnabledProductCount] = useState(0);
+  const [sellerProductCount, setSellerProductCount] = useState(0);
   const themeState = useSellerTheme(
     currentUser?.is_verified_seller ?? currentUser?.is_verified ?? null
   );
@@ -63,23 +69,137 @@ export default function SellerDeliverySettings() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 
-  const loadSettings = useCallback(async (sellerId) => {
+  const loadPickupDependencies = useCallback(async (sellerId, locations = []) => {
+    const { data: productRows, error: productError } = await supabase
+      .from('products')
+      .select('id, name, pickup_mode')
+      .eq('seller_id', sellerId);
+
+    if (productError) {
+      throw productError;
+    }
+
+    const products = productRows || [];
+    const pickupEnabledProducts = products.filter(
+      (product) => String(product?.pickup_mode || '').trim() && product.pickup_mode !== 'disabled'
+    );
+    const customProducts = pickupEnabledProducts.filter((product) => product.pickup_mode === 'custom');
+    const customProductIds = customProducts.map((product) => product.id).filter(Boolean);
+    let pickupLinks = [];
+
+    if (customProductIds.length > 0) {
+      const { data: linkRows, error: linkError } = await supabase
+        .from('product_pickup_location_links')
+        .select('product_id, pickup_location_id')
+        .in('product_id', customProductIds);
+
+      if (isDeliverySchemaMissingError(linkError)) {
+        pickupLinks = [];
+      } else if (linkError) {
+        throw linkError;
+      } else {
+        pickupLinks = linkRows || [];
+      }
+    }
+
+    const linksByProductId = pickupLinks.reduce((map, row) => {
+      if (!map[row.product_id]) {
+        map[row.product_id] = [];
+      }
+      map[row.product_id].push(row.pickup_location_id);
+      return map;
+    }, {});
+
+    const activeLocationIds = new Set(
+      (locations || [])
+        .filter((location) => location?.is_active !== false)
+        .map((location) => location.id)
+        .filter(Boolean)
+    );
+    const sellerDefaultProducts = pickupEnabledProducts.filter(
+      (product) => product.pickup_mode === 'seller_default'
+    );
+    const dependencyMap = {};
+
+    (locations || []).forEach((location) => {
+      const locationId = location?.id;
+      if (!locationId) {
+        return;
+      }
+
+      const affectedNames = new Set(sellerDefaultProducts.map((product) => product.name).filter(Boolean));
+      const strandedNames = new Set();
+      const remainingActiveLocationIds = new Set(activeLocationIds);
+      remainingActiveLocationIds.delete(locationId);
+
+      if (sellerDefaultProducts.length > 0 && remainingActiveLocationIds.size === 0) {
+        sellerDefaultProducts.forEach((product) => {
+          if (product?.name) {
+            strandedNames.add(product.name);
+          }
+        });
+      }
+
+      customProducts.forEach((product) => {
+        const linkedIds = linksByProductId[product.id] || [];
+        if (!linkedIds.includes(locationId)) {
+          return;
+        }
+
+        if (product?.name) {
+          affectedNames.add(product.name);
+        }
+
+        const hasAnotherActiveLinkedLocation = linkedIds.some(
+          (linkedLocationId) =>
+            linkedLocationId !== locationId && remainingActiveLocationIds.has(linkedLocationId)
+        );
+
+        if (!hasAnotherActiveLinkedLocation && product?.name) {
+          strandedNames.add(product.name);
+        }
+      });
+
+      dependencyMap[locationId] = {
+        affectedProductNames: [...affectedNames],
+        strandedProductNames: [...strandedNames],
+      };
+    });
+
+    setPickupDependencyByLocation(dependencyMap);
+    setSellerPickupEnabledProductCount(pickupEnabledProducts.length);
+    setSellerProductCount(products.length);
+  }, []);
+
+  const loadSettings = useCallback(async (sellerId, sellerRecord = null) => {
     const [fulfillmentSettings, locations] = await Promise.all([
       getSellerFulfillmentSettings(sellerId),
       getSellerPickupLocations(sellerId, true),
     ]);
+    const sellerUniversityState = String(sellerRecord?.university_state || '').trim();
+    const savedShipFromState = String(fulfillmentSettings.ship_from_state || '').trim();
+    const resolvedShipFromState = savedShipFromState || sellerUniversityState || '';
+    const shouldEnableOverride = Boolean(
+      savedShipFromState &&
+        (!sellerUniversityState || savedShipFromState.toLowerCase() !== sellerUniversityState.toLowerCase())
+    );
 
     setFulfillmentForm({
-      shipFromState: fulfillmentSettings.ship_from_state || '',
+      shipFromState: resolvedShipFromState,
       shipFromAddressText: fulfillmentSettings.ship_from_address_text || '',
     });
+    setFulfillmentSnapshot({
+      shipFromState: resolvedShipFromState,
+      shipFromAddressText: fulfillmentSettings.ship_from_address_text || '',
+    });
+    setShipFromOverrideEnabled(shouldEnableOverride);
     setPickupLocations(locations);
-  }, []);
+    await loadPickupDependencies(sellerId, locations);
+  }, [loadPickupDependencies]);
 
   const init = useCallback(async () => {
     const { data } = await getSessionWithRetry(supabase.auth);
@@ -110,7 +230,7 @@ export default function SellerDeliverySettings() {
     });
 
     setSchemaInstalled(schemaReady);
-    await loadSettings(userData.id);
+    await loadSettings(userData.id, userData);
     setLoading(false);
   }, [loadSettings, navigate]);
 
@@ -145,6 +265,38 @@ export default function SellerDeliverySettings() {
     setEditingPickupId(null);
   };
 
+  const formatProductNames = (names = []) => {
+    const normalizedNames = [...new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean))];
+
+    if (normalizedNames.length <= 3) {
+      return normalizedNames.join(', ');
+    }
+
+    return `${normalizedNames.slice(0, 3).join(', ')} and ${normalizedNames.length - 3} more`;
+  };
+
+  const persistFulfillmentSettings = async () => {
+    setSavingFulfillment(true);
+
+    try {
+      await upsertSellerFulfillmentSettings({
+        seller_id: currentUser.id,
+        ship_from_state:
+          fulfillmentForm.shipFromState || String(currentUser?.university_state || '').trim() || null,
+        ship_from_address_text: fulfillmentForm.shipFromAddressText.trim(),
+        updated_at: new Date().toISOString(),
+      });
+
+      await loadSettings(currentUser.id, currentUser);
+      showGlobalSuccess('Settings Updated', 'Delivery settings updated.');
+    } catch (error) {
+      console.error(error);
+      showGlobalError('Update Failed', error?.message || 'Failed to update delivery settings.');
+    } finally {
+      setSavingFulfillment(false);
+    }
+  };
+
   const handleSaveFulfillment = async (event) => {
     event.preventDefault();
 
@@ -158,48 +310,25 @@ export default function SellerDeliverySettings() {
       return;
     }
 
-    setSavingFulfillment(true);
-
-    try {
-      await upsertSellerFulfillmentSettings({
-        seller_id: currentUser.id,
-        ship_from_state: fulfillmentForm.shipFromState || null,
-        ship_from_address_text: fulfillmentForm.shipFromAddressText.trim(),
-        updated_at: new Date().toISOString(),
-      });
-
-      await loadSettings(currentUser.id);
-      showGlobalSuccess('Settings Updated', 'Delivery settings updated.');
-    } catch (error) {
-      console.error(error);
-      showGlobalError('Update Failed', error?.message || 'Failed to update delivery settings.');
-    } finally {
-      setSavingFulfillment(false);
-    }
-  };
-
-  const handleSavePickup = async (event) => {
-    event.preventDefault();
-
-    if (!schemaInstalled) {
-      showGlobalError('Schema Required', DELIVERY_SCHEMA_ERROR_MESSAGE);
-      return;
-    }
-
     if (
-      !pickupForm.address_text.trim() ||
-      !pickupForm.state_name ||
-      !pickupForm.lga_name ||
-      !pickupForm.city_name.trim() ||
-      !pickupForm.area_name.trim()
+      fulfillmentSnapshot.shipFromState &&
+      fulfillmentSnapshot.shipFromState !== fulfillmentForm.shipFromState &&
+      sellerProductCount > 0
     ) {
-      showGlobalWarning(
-        'Missing Details',
-        'Exact address, state, local government, city, and particular area are required.'
+      showGlobalConfirm(
+        'Update Ship-from State',
+        `This changes delivery quotes for future orders across ${sellerProductCount} product${sellerProductCount === 1 ? '' : 's'}. Existing orders will keep their original delivery snapshots.`,
+        async () => {
+          await persistFulfillmentSettings();
+        }
       );
       return;
     }
 
+    await persistFulfillmentSettings();
+  };
+
+  const persistPickupForm = async () => {
     setSavingPickup(true);
 
     try {
@@ -225,7 +354,7 @@ export default function SellerDeliverySettings() {
         });
       }
 
-      await loadSettings(currentUser.id);
+      await loadSettings(currentUser.id, currentUser);
       resetPickupForm();
     } catch (error) {
       console.error(error);
@@ -235,9 +364,80 @@ export default function SellerDeliverySettings() {
     }
   };
 
+  const handleSavePickup = async (event) => {
+    event.preventDefault();
+
+    if (!schemaInstalled) {
+      showGlobalError('Schema Required', DELIVERY_SCHEMA_ERROR_MESSAGE);
+      return;
+    }
+
+    if (
+      !pickupForm.address_text.trim() ||
+      !pickupForm.state_name ||
+      !pickupForm.lga_name ||
+      !pickupForm.city_name.trim() ||
+      !pickupForm.area_name.trim()
+    ) {
+      showGlobalWarning(
+        'Missing Details',
+        'Exact meet-up address, state, local government, city, and particular area are required.'
+      );
+      return;
+    }
+
+    const pickupDependency = pickupDependencyByLocation[editingPickupId] || null;
+
+    if (editingPickupId && pickupDependency?.affectedProductNames?.length) {
+      showGlobalConfirm(
+        'Update Meet-up Point',
+        `This meet-up point is used by ${pickupDependency.affectedProductNames.length} pickup-enabled product${pickupDependency.affectedProductNames.length === 1 ? '' : 's'}: ${formatProductNames(pickupDependency.affectedProductNames)}. Existing orders keep their saved pickup snapshot, but future checkouts will use your updated details.`,
+        async () => {
+          await persistPickupForm();
+        }
+      );
+      return;
+    }
+
+    await persistPickupForm();
+  };
+
   const togglePickupActive = async (location) => {
     if (!schemaInstalled) {
       showGlobalError('Schema Required', DELIVERY_SCHEMA_ERROR_MESSAGE);
+      return;
+    }
+
+    const dependency = pickupDependencyByLocation[location.id] || {
+      affectedProductNames: [],
+      strandedProductNames: [],
+    };
+
+    if (location.is_active !== false && dependency.strandedProductNames.length > 0) {
+      showGlobalWarning(
+        'Meet-up Point Still Needed',
+        `You cannot deactivate this meet-up point yet because these pickup-enabled products would lose pickup availability: ${formatProductNames(dependency.strandedProductNames)}. Add another active meet-up point or disable pickup on those products first.`
+      );
+      return;
+    }
+
+    if (location.is_active !== false && dependency.affectedProductNames.length > 0) {
+      showGlobalConfirm(
+        'Deactivate Meet-up Point',
+        `This affects ${dependency.affectedProductNames.length} pickup-enabled product${dependency.affectedProductNames.length === 1 ? '' : 's'} for future checkouts: ${formatProductNames(dependency.affectedProductNames)}. Existing orders keep their saved pickup details. Continue?`,
+        async () => {
+          try {
+            await updateSellerPickupLocation(location.id, {
+              is_active: location.is_active === false,
+              updated_at: new Date().toISOString(),
+            });
+            await loadSettings(currentUser.id, currentUser);
+          } catch (error) {
+            console.error(error);
+            showGlobalError('Update Failed', 'Failed to update pickup location status.');
+          }
+        }
+      );
       return;
     }
 
@@ -246,7 +446,7 @@ export default function SellerDeliverySettings() {
         is_active: location.is_active === false,
         updated_at: new Date().toISOString(),
       });
-      await loadSettings(currentUser.id);
+      await loadSettings(currentUser.id, currentUser);
     } catch (error) {
       console.error(error);
       showGlobalError('Update Failed', 'Failed to update pickup location status.');
@@ -256,6 +456,15 @@ export default function SellerDeliverySettings() {
   if (loading) {
     return <SellerWorkspaceSkeleton darkMode={themeState.darkMode} mode="products" />;
   }
+
+  const sellerCampusLabel = [
+    String(currentUser?.university_name || '').trim(),
+    String(currentUser?.university_state || '').trim(),
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const sellerUniversityState = String(currentUser?.university_state || '').trim();
+  const effectiveShipFromState = fulfillmentForm.shipFromState || sellerUniversityState || '';
 
   return (
     <SellerShell currentUser={currentUser} onLogout={handleLogout} themeState={themeState}>
@@ -283,7 +492,7 @@ export default function SellerDeliverySettings() {
               <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
                 Ship from
               </p>
-              <p className="mt-1 text-3xl font-bold">{fulfillmentForm.shipFromState || 'Unset'}</p>
+              <p className="mt-1 text-3xl font-bold">{effectiveShipFromState || 'Unset'}</p>
             </div>
           </div>
         </article>
@@ -295,7 +504,7 @@ export default function SellerDeliverySettings() {
             </div>
             <div>
               <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${theme.softText}`}>
-                Pickup points
+                Meet-up points
               </p>
               <p className="mt-1 text-3xl font-bold">{activePickupCount}</p>
             </div>
@@ -324,27 +533,24 @@ export default function SellerDeliverySettings() {
 
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="text-sm font-semibold">Your ship-from location</p>
+            <p className={`mt-1 text-sm ${theme.mutedText}`}>
+              We use your university state as the default ship-from state for delivery quotes.
+            </p>
+            {sellerProductCount > 0 ? (
+              <p className={`mt-2 text-xs ${theme.softText}`}>
+                Any change here affects future delivery quotes for your listed products. Existing orders keep their saved delivery snapshot.
+              </p>
+            ) : null}
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <select
-                value={fulfillmentForm.shipFromState}
-                disabled={!schemaInstalled}
-                onChange={(event) =>
-                  setFulfillmentForm((current) => ({
-                    ...current,
-                    shipFromState: event.target.value,
-                  }))
-                }
-                className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-              >
-                <option value="">Select ship-from state</option>
-                {NIGERIAN_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-
+              <div className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}>
+                <p className="font-medium">{effectiveShipFromState || 'No university state yet'}</p>
+                <p className={`mt-1 text-xs ${theme.softText}`}>
+                  {shipFromOverrideEnabled
+                    ? 'Custom ship-from state active.'
+                    : 'Defaulting to your registered university state.'}
+                </p>
+              </div>
               <input
                 type="text"
                 value={fulfillmentForm.shipFromAddressText}
@@ -360,6 +566,60 @@ export default function SellerDeliverySettings() {
                 className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
               />
             </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {sellerUniversityState ? (
+                <button
+                  type="button"
+                  disabled={!schemaInstalled}
+                  onClick={() => {
+                    setShipFromOverrideEnabled((current) => {
+                      const nextValue = !current;
+
+                      setFulfillmentForm((currentForm) => ({
+                        ...currentForm,
+                        shipFromState: nextValue
+                          ? currentForm.shipFromState || sellerUniversityState
+                          : sellerUniversityState,
+                      }));
+
+                      return nextValue;
+                    });
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
+                >
+                  {shipFromOverrideEnabled ? 'Use university state instead' : 'Shipping from a different state?'}
+                </button>
+              ) : null}
+              {!sellerUniversityState ? (
+                <p className={`text-xs ${theme.softText}`}>
+                  Add your university state in your profile to auto-fill this field.
+                </p>
+              ) : null}
+            </div>
+
+            {shipFromOverrideEnabled || !sellerUniversityState ? (
+              <div className="mt-3">
+                <select
+                  value={fulfillmentForm.shipFromState}
+                  disabled={!schemaInstalled}
+                  onChange={(event) =>
+                    setFulfillmentForm((current) => ({
+                      ...current,
+                      shipFromState: event.target.value,
+                    }))
+                  }
+                  className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+                >
+                  <option value="">Select ship-from state</option>
+                  {NIGERIAN_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
 
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
@@ -392,85 +652,32 @@ export default function SellerDeliverySettings() {
 
       <SellerSection
         theme={theme}
-        eyebrow="Pickup"
-        title="Pickup locations"
+        eyebrow="Campus Pickup"
+        title="Campus Meet-up Points"
       >
+        <p className={`mb-4 text-sm ${theme.mutedText}`}>
+          Add a safe, public university hotspot where buyers can meet you on campus, such as a library entrance, department building, hostel lobby, student center, ICT building, or faculty gate.
+        </p>
+        {sellerCampusLabel ? (
+          <div className={`mb-4 rounded-lg p-4 ${theme.panelMuted}`}>
+            <p className="text-sm font-semibold">This meet-up point will appear under</p>
+            <p className={`mt-1 text-sm ${theme.mutedText}`}>{sellerCampusLabel}</p>
+            <p className={`mt-2 text-xs ${theme.softText}`}>
+              Keep meet-up points within your registered university environment and use safe public hotspots only.
+            </p>
+            {sellerPickupEnabledProductCount > 0 ? (
+              <p className={`mt-2 text-xs ${theme.softText}`}>
+                {sellerPickupEnabledProductCount} pickup-enabled product
+                {sellerPickupEnabledProductCount === 1 ? '' : 's'} currently depend on your active campus meet-up setup for future checkouts.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <form onSubmit={handleSavePickup} className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <select
-              value={pickupForm.state_name}
-              disabled={!schemaInstalled}
-              onChange={(event) =>
-                setPickupForm((current) => ({
-                  ...current,
-                  state_name: event.target.value,
-                  lga_name: '',
-                }))
-              }
-              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-            >
-              <option value="">Select state</option>
-              {NIGERIAN_STATES.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={pickupForm.lga_name}
-              disabled={!schemaInstalled || !pickupForm.state_name}
-              onChange={(event) =>
-                setPickupForm((current) => ({ ...current, lga_name: event.target.value }))
-              }
-              className={`rounded-lg px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
-            >
-              <option value="">
-                {pickupForm.state_name ? 'Select LGA' : 'Select state first'}
-              </option>
-              {pickupLgaOptions.map((lgaName) => (
-                <option key={lgaName} value={lgaName}>
-                  {lgaName}
-                </option>
-              ))}
-            </select>
-
             <input
               type="text"
-              placeholder="City or town"
-              value={pickupForm.city_name}
-              disabled={!schemaInstalled}
-              onChange={(event) =>
-                setPickupForm((current) => ({ ...current, city_name: event.target.value }))
-              }
-              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-            />
-
-            <input
-              type="text"
-              placeholder="Particular area / neighbourhood"
-              value={pickupForm.area_name}
-              disabled={!schemaInstalled}
-              onChange={(event) =>
-                setPickupForm((current) => ({ ...current, area_name: event.target.value }))
-              }
-              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-            />
-
-          <input
-            type="text"
-              placeholder="Exact pickup address"
-            value={pickupForm.address_text}
-            disabled={!schemaInstalled}
-            onChange={(event) =>
-              setPickupForm((current) => ({ ...current, address_text: event.target.value }))
-            }
-            className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
-          />
-
-            <input
-              type="text"
-              placeholder="Display name (optional)"
+              placeholder="Pickup spot / hotspot (e.g. Main Library entrance)"
               value={pickupForm.label}
               disabled={!schemaInstalled}
               onChange={(event) =>
@@ -481,7 +688,29 @@ export default function SellerDeliverySettings() {
 
             <input
               type="text"
-              placeholder="Nearby landmark (optional)"
+              placeholder="Campus area / hostel / department zone"
+              value={pickupForm.area_name}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, area_name: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
+
+            <input
+              type="text"
+              placeholder="Exact meet-up details (not a private residence)"
+              value={pickupForm.address_text}
+              disabled={!schemaInstalled}
+              onChange={(event) =>
+                setPickupForm((current) => ({ ...current, address_text: event.target.value }))
+              }
+              className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+            />
+
+            <input
+              type="text"
+              placeholder="Nearby public landmark (e.g. Faculty gate, help desk)"
               value={pickupForm.landmark_text}
               disabled={!schemaInstalled}
               onChange={(event) =>
@@ -491,9 +720,66 @@ export default function SellerDeliverySettings() {
             />
           </div>
 
+          <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
+            <p className="text-sm font-semibold">Location details for clarity</p>
+            <p className={`mt-1 text-xs ${theme.softText}`}>
+              These support trust and should match the campus area of this meet-up point.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <select
+                value={pickupForm.state_name}
+                disabled={!schemaInstalled}
+                onChange={(event) =>
+                  setPickupForm((current) => ({
+                    ...current,
+                    state_name: event.target.value,
+                    lga_name: '',
+                  }))
+                }
+                className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+              >
+                <option value="">Select state</option>
+                {NIGERIAN_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={pickupForm.lga_name}
+                disabled={!schemaInstalled || !pickupForm.state_name}
+                onChange={(event) =>
+                  setPickupForm((current) => ({ ...current, lga_name: event.target.value }))
+                }
+                className={`rounded-lg px-4 py-3 text-sm ${theme.input} disabled:cursor-not-allowed disabled:opacity-70`}
+              >
+                <option value="">
+                  {pickupForm.state_name ? 'Select LGA' : 'Select state first'}
+                </option>
+                {pickupLgaOptions.map((lgaName) => (
+                  <option key={lgaName} value={lgaName}>
+                    {lgaName}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                placeholder="City or town"
+                value={pickupForm.city_name}
+                disabled={!schemaInstalled}
+                onChange={(event) =>
+                  setPickupForm((current) => ({ ...current, city_name: event.target.value }))
+                }
+                className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}
+              />
+            </div>
+          </div>
+
           <textarea
             rows={3}
-            placeholder="Pickup instructions (optional)"
+            placeholder="Meet-up instructions (optional, e.g. wait near the help desk or call on arrival)"
             value={pickupForm.pickup_instructions}
             disabled={!schemaInstalled}
             onChange={(event) =>
@@ -512,7 +798,7 @@ export default function SellerDeliverySettings() {
               className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition ${theme.actionPrimary}`}
             >
               {editingPickupId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {savingPickup ? 'Saving...' : editingPickupId ? 'Update point' : 'Add point'}
+              {savingPickup ? 'Saving...' : editingPickupId ? 'Update meet-up point' : 'Add meet-up point'}
             </button>
 
             {editingPickupId && (
@@ -529,7 +815,7 @@ export default function SellerDeliverySettings() {
         <div className="mt-6 space-y-3">
           {pickupLocations.length === 0 ? (
             <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
-              No pickup locations yet.
+              No campus meet-up points yet.
             </div>
           ) : (
             pickupLocations.map((location) => (
@@ -548,23 +834,25 @@ export default function SellerDeliverySettings() {
                         {location.is_active !== false ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    <p className={`mt-1 text-sm ${theme.mutedText}`}>{location.address_text}</p>
-                    {(location.area_name ||
-                      location.city_name ||
-                      location.lga_name ||
-                      location.state_name) && (
+                    {sellerCampusLabel ? (
+                      <p className={`mt-1 text-sm ${theme.mutedText}`}>{sellerCampusLabel}</p>
+                    ) : null}
+                    {(location.area_name || location.city_name) && (
                       <p className={`mt-1 text-xs ${theme.softText}`}>
-                        {[
-                          location.area_name,
-                          location.city_name,
-                          location.lga_name,
-                          location.state_name,
-                          location.landmark_text,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
+                        {[location.area_name, location.city_name].filter(Boolean).join(' - ')}
                       </p>
                     )}
+                    {(location.state_name || location.lga_name) && (
+                      <p className={`mt-1 text-xs ${theme.softText}`}>
+                        {[location.state_name, location.lga_name].filter(Boolean).join(' - ')}
+                      </p>
+                    )}
+                    {location.landmark_text && (
+                      <p className={`mt-1 text-xs ${theme.softText}`}>
+                        {location.landmark_text}
+                      </p>
+                    )}
+                    <p className={`mt-1 text-xs ${theme.softText}`}>{location.address_text}</p>
                     {location.pickup_instructions && (
                       <p className={`mt-1 text-xs ${theme.softText}`}>
                         {location.pickup_instructions}

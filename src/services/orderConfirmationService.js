@@ -5,6 +5,7 @@ import {
   getUserWithRetry,
   refreshSessionWithRetry,
 } from '../utils/authResilience';
+import { performLogout } from '../utils/logout';
 
 async function getValidAccessToken() {
   const {
@@ -62,6 +63,18 @@ export async function confirmOrder(orderId, options = {}) {
   });
 
   if (error) {
+    const isAuthError =
+      error?.message?.includes('401') ||
+      error?.message?.toLowerCase().includes('unauthorized') ||
+      error?.message?.toLowerCase().includes('invalid token') ||
+      error?.context?.status === 401 ||
+      response?.status === 401;
+
+    if (isAuthError) {
+      await performLogout();
+      return null;
+    }
+
     let errorBody = null;
 
     try {

@@ -293,6 +293,8 @@ export default function Navbar({
 
     const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
       setAuthUserId(session?.user?.id || null);
+      setStoredUser(getStoredUser());
+      setCartCount(readCachedCartCount());
     });
 
     return () => {

@@ -95,6 +95,24 @@ vi.mock('../supabaseClient', () => {
           return createProductsQuery();
         }
 
+        if (table === 'users') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: {
+                    id: 'buyer-1',
+                    university_id: 'uni-1',
+                    university_name: 'Mafdesh University',
+                    university_state: 'Lagos',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
       channel: vi.fn(() => mockChannel),
@@ -194,7 +212,14 @@ vi.mock('../utils/flashSale', () => ({
 
 vi.mock('../services/publicSellerService', () => ({
   enrichProductsWithPublicSellerData: vi.fn(async (products) => products),
-  fetchPublicSellerDirectory: vi.fn(async () => ({})),
+  fetchPublicSellerDirectory: vi.fn(async () => ({
+    'seller-1': {
+      id: 'seller-1',
+      university_id: 'uni-1',
+      university_name: 'Mafdesh University',
+      university_state: 'Lagos',
+    },
+  })),
   isSellerMarketplaceActive: vi.fn(() => true),
 }));
 
@@ -325,9 +350,19 @@ describe('BuyerOrderDetails', () => {
 
     await screen.findByText('Campus Desk Lamp');
 
+    expect(screen.getByText(/campus meet-up point/i)).toBeInTheDocument();
+    expect(screen.getByText(/meet your seller at:/i)).toBeInTheDocument();
+    expect(screen.getByText('Mafdesh University - Main Gate')).toBeInTheDocument();
+    expect(screen.getByText('Pickup spot: Main Gate')).toBeInTheDocument();
     expect(screen.getByText(/inspect before confirming/i)).toBeInTheDocument();
     expect(screen.queryByText(/pickup deadline:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/contact them for arrangement/i)).not.toBeInTheDocument();
+  });
+
+  it('shows campus delivery wording when buyer and seller share the same university', async () => {
+    renderBuyerOrderDetails();
+
+    expect(await screen.findByText('Campus delivery (doorstep)')).toBeInTheDocument();
   });
 
   it('renders similar products after the buyer action area', async () => {

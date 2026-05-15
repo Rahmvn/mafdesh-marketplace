@@ -39,8 +39,9 @@ describe('BuyerProductCard', () => {
     expect(screen.getByText('Campus Headset')).toBeInTheDocument();
     expect(screen.getByLabelText('Seller rating 4.4 out of 5')).toBeInTheDocument();
     expect(screen.getByText('Only 3 left')).toBeInTheDocument();
-    expect(screen.getByText('₦15,000')).toBeInTheDocument();
-    expect(screen.getByText('₦18,000')).toBeInTheDocument();
+    const discountPriceRow = screen.getByTestId('discount-price-row');
+    expect(discountPriceRow.children[0]).toHaveTextContent('15,000');
+    expect(discountPriceRow.children[1]).toHaveTextContent('18,000');
     expect(screen.queryByText(/verified/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button'));

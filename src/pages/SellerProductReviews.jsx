@@ -8,8 +8,8 @@ import { supabase } from "../supabaseClient";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
 import { showGlobalConfirm, showGlobalError } from "../hooks/modalService";
 import { getSellerThemeClasses, useSellerTheme } from "../components/seller/SellerShell";
-import { signOutAndClearAuthState } from "../services/authSessionService";
 import { getStoredUser, setStoredUser } from "../utils/storage";
+import { performLogout } from '../utils/logout';
 
 function ReviewStars({ rating, size = 18 }) {
   return (
@@ -138,8 +138,7 @@ export default function SellerProductReviews() {
 
   const handleLogout = async () => {
     showGlobalConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await signOutAndClearAuthState();
-      window.location.href = "/login";
+      await performLogout();
     });
   };
 
@@ -324,4 +323,3 @@ export default function SellerProductReviews() {
     </div>
   );
 }
-

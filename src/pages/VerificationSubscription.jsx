@@ -21,7 +21,6 @@ import {
   useSellerTheme,
 } from '../components/seller/SellerShell';
 import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from '../hooks/modalService';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import {
   EARLY_VERIFICATION_FEE,
   fetchSellerVerificationSnapshot,
@@ -34,6 +33,7 @@ import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
 import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import { setStoredUser } from '../utils/storage';
 import { searchUniversities } from '../services/universityService';
+import { performLogout } from '../utils/logout';
 
 const ZONE_OPTIONS = [
   'North Central',
@@ -129,8 +129,7 @@ export default function SellerVerificationPage() {
 
   const handleLogout = async () => {
     showGlobalConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

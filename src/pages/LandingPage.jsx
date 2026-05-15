@@ -14,6 +14,7 @@ import {
   readCachedPublicProducts,
   writeCachedPublicProducts,
 } from '../utils/publicProductsStorage';
+import { PRODUCT_CATEGORIES } from '../utils/categories';
 export default function LandingPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,10 +24,16 @@ export default function LandingPage() {
   );
 
   const categories = [
-    'Electronics', 'Fashion & Clothing', 'Food & Beverages',
-    'Home & Living', 'Beauty & Health', 'Sports & Fitness',
-    'Phones & Tablets', 'Books & Media'
-  ];
+    'Phones & Tablets',
+    'Computers & Laptops',
+    'Electronics',
+    'Fashion & Clothing',
+    'Books & Media',
+    'School & Office Supplies',
+    'Hostel Essentials',
+    'Beauty & Health',
+    'Food & Beverages',
+  ].filter((category) => PRODUCT_CATEGORIES.includes(category));
 
   async function loadProducts() {
     setIsLoading(true);

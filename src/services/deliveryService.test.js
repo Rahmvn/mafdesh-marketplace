@@ -3,6 +3,10 @@ import {
   AUTO_DELIVERY_ROUTE,
   DELIVERY_TYPE,
   PICKUP_MODE,
+  formatCampusPickupLocationLocality,
+  formatCampusPickupLocationReference,
+  formatCampusPickupLocationSummary,
+  formatCampusPickupLocationZone,
   getAutoCalculatedDeliveryFee,
   getAutoDeliveryRouteType,
   formatPickupLocationAddress,
@@ -188,6 +192,29 @@ describe('deliveryService', () => {
         state_name: 'Lagos',
       })
     ).toBe('Shop 12, Main Plaza, Beside Slot, Computer Village, Ikeja, Ikeja, Lagos');
+  });
+
+  it('formats campus pickup summaries with university, state, lga, and pickup spot', () => {
+    const location = {
+      label: 'Main Library entrance',
+      address_text: 'Near the help desk',
+      area_name: 'Faculty of Science',
+      city_name: 'Nsukka',
+      lga_name: 'Nsukka',
+      state_name: 'Enugu',
+      landmark_text: 'Beside the reading hall',
+    };
+
+    expect(
+      formatCampusPickupLocationSummary(location, {
+        universityName: 'University of Nigeria',
+      })
+    ).toBe('University of Nigeria - Main Library entrance');
+    expect(formatCampusPickupLocationZone(location)).toBe('Faculty of Science - Nsukka');
+    expect(formatCampusPickupLocationLocality(location)).toBe('Enugu - Nsukka');
+    expect(formatCampusPickupLocationReference(location)).toBe(
+      'Beside the reading hall - Near the help desk'
+    );
   });
 
   it('filters out legacy pickup arrays that do not include required location details', () => {

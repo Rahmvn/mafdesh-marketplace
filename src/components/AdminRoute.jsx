@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from "react-router-dom";
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
-import { clearStoredUser } from '../utils/storage';
+import { performLogout } from '../utils/logout';
+import { clearStoredUser, getStoredUser } from '../utils/storage';
 import {
   loadAuthenticatedUserContext,
   signOutAndClearAuthState,
@@ -52,7 +53,20 @@ export default function AdminRoute({ children }) {
 
     checkAdminAccess();
 
-    const unsubscribe = subscribeToAuthStateChanges(({ session }) => {
+    const unsubscribe = subscribeToAuthStateChanges(async ({ event, session }) => {
+      if (event === 'SIGNED_OUT' || (event !== 'INITIAL_SESSION' && !session)) {
+        await performLogout();
+        return;
+      }
+
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        const storedUser = getStoredUser();
+        if (storedUser && storedUser.id !== session.user.id) {
+          await performLogout();
+          return;
+        }
+      }
+
       if (!session) {
         clearStoredUser();
         if (isMounted) {

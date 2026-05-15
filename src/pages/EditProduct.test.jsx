@@ -235,7 +235,7 @@ describe('EditProduct flash-sale eligibility', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Flash-sale access is based on your seller account metrics across all orders, not just this product's own sales history."
+        'Based on your overall seller metrics.'
       )
     ).toBeInTheDocument();
     expect(
@@ -298,13 +298,58 @@ describe('EditProduct flash-sale eligibility', () => {
 
     expect(toggle).toBeInTheDocument();
     fireEvent.click(toggle);
+    expect(screen.getByText('Discount Percentage')).toBeInTheDocument();
     expect(screen.getByText('Duration (Days)')).toBeInTheDocument();
     expect(
       screen.queryByText(/flash sales are locked for this product right now/i)
     ).not.toBeInTheDocument();
   });
 
-  it('formats seller price inputs with commas while typing', async () => {
+  it('loads an existing flash sale as a discount percentage with a preview price', async () => {
+    mockGetFlashSaleEligibility.mockResolvedValue(
+      createEligibility({
+        eligible: true,
+        seller_eligible: true,
+        product_eligible: true,
+        blocking_reasons: [],
+        trust_reasons: [],
+        completed_orders: 9,
+        average_rating: 4.8,
+        is_trusted_seller: true,
+      })
+    );
+    mockGetProductById.mockResolvedValue(
+      createProduct({
+        is_flash_sale: true,
+        sale_price: 36000,
+        sale_start: '2026-05-15T10:00:00Z',
+        sale_end: '2026-05-17T10:00:00Z',
+        sale_quantity_limit: 5,
+      })
+    );
+
+    renderEditProduct();
+
+    expect(await screen.findByDisplayValue('20')).toBeInTheDocument();
+    expect(screen.getByText(/sale price preview: ngn 36000/i)).toBeInTheDocument();
+  });
+
+  it('prefills edit pricing as market price plus discount percentage for discounted products', async () => {
+    mockGetProductById.mockResolvedValue(
+      createProduct({
+        price: 45000,
+        original_price: 50000,
+      })
+    );
+
+    renderEditProduct();
+
+    expect(await screen.findByDisplayValue('50,000')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('10')).toBeInTheDocument();
+    expect(screen.getByText(/10% off market price/i)).toBeInTheDocument();
+  });
+
+  it('formats seller market price inputs with commas while typing', async () => {
     mockGetFlashSaleEligibility.mockResolvedValue(
       createEligibility({
         eligible: true,
@@ -321,7 +366,7 @@ describe('EditProduct flash-sale eligibility', () => {
     renderEditProduct();
 
     const priceInput = await screen.findByDisplayValue('45,000');
-    fireEvent.change(priceInput, { target: { name: 'price', value: '12500' } });
+    fireEvent.change(priceInput, { target: { name: 'marketPrice', value: '12500' } });
 
     expect(priceInput).toHaveValue('12,500');
   });
@@ -334,7 +379,7 @@ describe('EditProduct flash-sale eligibility', () => {
     expect(await screen.findByDisplayValue('Studio Headphones')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'We could not verify flash-sale eligibility right now. You can still set up the promotion here, and the final seller/product checks will run when you save.'
+        'Eligibility check unavailable. You can still set up the sale — checks run on save.'
       )
     ).toBeInTheDocument();
     expect(

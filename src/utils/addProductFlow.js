@@ -32,7 +32,7 @@ const ADD_PRODUCT_IMAGE_STEP_FIELDS = new Set(['images']);
 export const ADD_PRODUCT_STEPS = [
   { id: 1, label: 'Basic Info' },
   { id: 2, label: 'Images' },
-  { id: 3, label: 'Description' },
+  { id: 3, label: 'Product Details' },
 ];
 
 let previewFormCache = null;
@@ -227,7 +227,7 @@ export function validateAddProductForm(formData, sellerPickupLocations = [], ste
     }
 
     if (formData.pickupEnabled && sellerPickupLocations.length === 0) {
-      newErrors.pickupEnabled = 'Add at least one seller pickup location before enabling pickup';
+      newErrors.pickupEnabled = 'You need at least one campus meet-up point before enabling pickup';
     }
   }
 

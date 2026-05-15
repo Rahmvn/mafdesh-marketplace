@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { performLogout } from "../utils/logout";
 
 export const SELF_SERVICE_ACCOUNT_ROLES = ["buyer", "seller"];
 
@@ -40,6 +41,17 @@ export async function reconcileUserRole({
   });
 
   if (error) {
+    const isAuthError =
+      error?.message?.includes("401") ||
+      error?.message?.toLowerCase().includes("unauthorized") ||
+      error?.message?.toLowerCase().includes("invalid token") ||
+      error?.context?.status === 401;
+
+    if (isAuthError) {
+      await performLogout();
+      return null;
+    }
+
     throw error;
   }
 

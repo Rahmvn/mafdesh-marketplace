@@ -5,8 +5,25 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import useModal from "../hooks/useModal";
 import { supabase } from "../supabaseClient";
-import { signOutAndClearAuthState } from "../services/authSessionService";
 import { getOrderDisplayDetails, getOrderItemsMap } from "../utils/orderItems";
+import { performLogout } from '../utils/logout';
+
+const COMMITTED_ORDER_STATUSES = [
+  "PAID_ESCROW",
+  "SHIPPED",
+  "READY_FOR_PICKUP",
+  "DELIVERED",
+  "DISPUTED",
+  "COMPLETED",
+];
+
+const ESCROW_ORDER_STATUSES = [
+  "PAID_ESCROW",
+  "SHIPPED",
+  "READY_FOR_PICKUP",
+  "DELIVERED",
+  "DISPUTED",
+];
 
 function AdminPageSkeleton() {
   return (
@@ -58,8 +75,7 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     showConfirm("Log Out", "Are you sure you want to log out of your account?", async () => {
-      await signOutAndClearAuthState();
-      window.location.href = "/login";
+      await performLogout();
     });
   };
 
@@ -80,10 +96,12 @@ export default function AdminDashboard() {
       let escrowMoney = 0;
 
       orders?.forEach((order) => {
-        totalSales += Number(order.total_amount || 0);
-        platformFees += Number(order.platform_fee || 0);
+        if (COMMITTED_ORDER_STATUSES.includes(order.status)) {
+          totalSales += Number(order.total_amount || 0);
+          platformFees += Number(order.platform_fee || 0);
+        }
 
-        if (["PAID_ESCROW", "SHIPPED"].includes(order.status)) {
+        if (ESCROW_ORDER_STATUSES.includes(order.status)) {
           escrowMoney += Number(order.total_amount || 0);
         }
       });

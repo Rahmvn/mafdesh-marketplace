@@ -120,6 +120,10 @@ export default function Login() {
 
         const userId = session.user.id;
         const { user: userData } = await loadAuthenticatedUserContext();
+        if (!userData) {
+          clearStoredUser();
+          return;
+        }
         await storeAndRouteUser(userData, userId);
       } catch (error) {
         console.error('Failed to check existing auth session:', error);
@@ -143,6 +147,15 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    try {
+      localStorage.removeItem('mafdesh_user');
+      localStorage.removeItem('cached_products');
+      localStorage.removeItem('cached_products_time');
+      localStorage.removeItem('recently_viewed');
+    } catch {
+      // ignore
+    }
 
     if (submitInFlightRef.current || isLoading) {
       return;
@@ -178,12 +191,33 @@ export default function Login() {
         throw new Error("Login failed");
       }
 
-      authenticatedUser = user;
+      let session = data.session || null;
+      let sessionError = null;
+
+      if (!session) {
+        const sessionResult = await supabase.auth.getSession();
+        session = sessionResult.data?.session || null;
+        sessionError = sessionResult.error || null;
+      }
+
+      if (!session || sessionError) {
+        showError(
+          'Login Error',
+          'Signed in but session could not be confirmed. Please try again.'
+        );
+        return;
+      }
+
+      authenticatedUser = session.user || user;
 
       const profile = await ensureCurrentUserContext({
-        authUser: user,
+        authUser: authenticatedUser,
         desiredRole: userType,
       });
+
+      if (!profile) {
+        return;
+      }
 
       const role = profile.role;
       if (!role) {

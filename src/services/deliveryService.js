@@ -217,6 +217,46 @@ export function formatPickupLocationAddress(location) {
     .join(', ');
 }
 
+export function formatCampusPickupLocationSummary(
+  location,
+  { universityName = '' } = {}
+) {
+  const normalized = normalizePickupLocation(location);
+  const campusName = String(universityName || '').trim();
+
+  return [campusName, normalized.label]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+}
+
+export function formatCampusPickupLocationZone(location) {
+  const normalized = normalizePickupLocation(location);
+
+  return [normalized.area_name, normalized.city_name]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+}
+
+export function formatCampusPickupLocationLocality(location) {
+  const normalized = normalizePickupLocation(location);
+
+  return [normalized.state_name, normalized.lga_name]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+}
+
+export function formatCampusPickupLocationReference(location) {
+  const normalized = normalizePickupLocation(location);
+
+  return [normalized.landmark_text, normalized.address_text]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+}
+
 function getPickupLocationKey(location) {
   return String(location?.id || `${location?.label}:${location?.address_text}`);
 }

@@ -4,17 +4,23 @@ function toAmount(value) {
 }
 
 export function getSellerOrderPayout(order, orderItems = []) {
+  const normalizedItems = Array.isArray(orderItems) ? orderItems : [];
   const subtotal = orderItems.reduce(
     (sum, item) => sum + toAmount(item.price_at_time) * toAmount(item.quantity),
     0
   );
+  const fallbackSubtotal = Math.max(toAmount(order?.quantity), 1) * toAmount(order?.product_price);
+  const earningsSubtotal =
+    normalizedItems.length > 0
+      ? subtotal
+      : order?.product_price != null
+        ? fallbackSubtotal
+        : subtotal;
 
   const baseEarnings =
-    order?.product_price != null
-      ? toAmount(order.product_price) +
-        toAmount(order.delivery_fee) -
-        toAmount(order.platform_fee)
-      : subtotal + toAmount(order?.delivery_fee) - toAmount(order?.platform_fee);
+    earningsSubtotal +
+    toAmount(order?.delivery_fee) -
+    toAmount(order?.platform_fee);
 
   let netEarnings = baseEarnings;
   let refundInfo = null;

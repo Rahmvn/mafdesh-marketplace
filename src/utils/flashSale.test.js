@@ -29,7 +29,26 @@ describe('flashSale utils', () => {
       isFlashSaleActive: true,
       displayPrice: 15000,
       regularPrice: 20000,
+      originalPrice: 20000,
       remainingSaleQuantity: 8,
+    });
+  });
+
+  it('returns the original catalog price for standard discounted products', () => {
+    const product = {
+      price: 15000,
+      original_price: 18000,
+      is_flash_sale: false,
+      sale_price: null,
+      sale_start: null,
+      sale_end: null,
+    };
+
+    expect(getProductPricing(product, now)).toMatchObject({
+      isFlashSaleActive: false,
+      displayPrice: 15000,
+      regularPrice: 15000,
+      originalPrice: 18000,
     });
   });
 
@@ -59,13 +78,13 @@ describe('flashSale utils', () => {
       stockQuantity: 5,
       deletedAt: null,
       price: 10000,
-      salePrice: 4000,
+      saleDiscountPercent: '60',
       saleDurationDays: '6',
       saleQuantityLimit: '9',
       adminApprovedDiscount: false,
     });
 
-    expect(errors.salePrice).toBe('Discounts above 50% require admin approval.');
+    expect(errors.saleDiscountPercent).toBe('Discounts above 50% require admin approval.');
     expect(errors.saleDurationDays).toBe('Flash sales cannot last longer than 5 days.');
     expect(errors.saleQuantityLimit).toBe('Quantity limit cannot exceed current stock.');
   });
@@ -118,7 +137,7 @@ describe('flashSale utils', () => {
       stockQuantity: 0,
       deletedAt: null,
       price: 10000,
-      salePrice: '',
+      saleDiscountPercent: '',
       saleDurationDays: '',
       saleQuantityLimit: '',
       adminApprovedDiscount: false,
@@ -127,7 +146,7 @@ describe('flashSale utils', () => {
     expect(errors.flashSale).toBe(
       'This product needs at least 1 item in stock before it can join a flash sale.'
     );
-    expect(errors.salePrice).toBe('Sale price is required.');
+    expect(errors.saleDiscountPercent).toBe('Discount percentage is required.');
     expect(errors.saleDurationDays).toBe('Duration is required.');
   });
 
@@ -142,14 +161,14 @@ describe('flashSale utils', () => {
       stockQuantity: 0,
       deletedAt: '2026-04-19T12:00:00Z',
       price: 10000,
-      salePrice: '',
+      saleDiscountPercent: '',
       saleDurationDays: '',
       saleQuantityLimit: '',
       adminApprovedDiscount: false,
     });
 
     expect(errors.flashSale).toBeUndefined();
-    expect(errors.salePrice).toBe('Sale price is required.');
+    expect(errors.saleDiscountPercent).toBe('Discount percentage is required.');
     expect(errors.saleDurationDays).toBe('Duration is required.');
   });
 

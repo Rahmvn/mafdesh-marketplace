@@ -124,8 +124,11 @@ function moveToContactStep({ asSeller = false } = {}) {
     fireEvent.click(screen.getByRole('button', { name: /seller/i }));
   }
 
-  fireEvent.change(screen.getByPlaceholderText('John Doe'), {
-    target: { value: 'Jane Doe' },
+  fireEvent.change(screen.getByPlaceholderText('John'), {
+    target: { value: 'Jane' },
+  });
+  fireEvent.change(screen.getByPlaceholderText('Doe'), {
+    target: { value: 'Doe' },
   });
   fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
     target: { value: 'jane@example.com' },
@@ -234,7 +237,8 @@ describe('SignUp', () => {
     expect(screen.getByPlaceholderText('08012345678')).toHaveValue('08012345678');
 
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
-    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    expect(screen.getByPlaceholderText('John')).toHaveValue('Jane');
+    expect(screen.getByPlaceholderText('Doe')).toHaveValue('Doe');
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
   });
 
@@ -253,7 +257,8 @@ describe('SignUp', () => {
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
 
-    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    expect(screen.getByPlaceholderText('John')).toHaveValue('Jane');
+    expect(screen.getByPlaceholderText('Doe')).toHaveValue('Doe');
     expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('jane@example.com');
   });
 
@@ -283,9 +288,11 @@ describe('SignUp', () => {
 
     expect(mockSignUp).toHaveBeenCalledWith(
       expect.objectContaining({
+        email: 'jane@example.com',
         options: expect.objectContaining({
           data: expect.objectContaining({
             role: 'buyer',
+            full_name: 'Jane Doe',
             date_of_birth: '1999-04-10',
             university_name: 'Mafdesh University',
             username: expect.any(String),
@@ -305,7 +312,8 @@ describe('SignUp', () => {
     expect(screen.getByRole('combobox', { name: /location \(state in nigeria\)/i })).toHaveValue('Lagos');
 
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
-    expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Jane Doe');
+    expect(screen.getByPlaceholderText('John')).toHaveValue('Jane');
+    expect(screen.getByPlaceholderText('Doe')).toHaveValue('Doe');
 
     fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
     fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
@@ -326,8 +334,11 @@ describe('SignUp', () => {
   it('does not submit signup early when enter is pressed on step two', async () => {
     renderSignUpRoute();
 
-    fireEvent.change(screen.getByPlaceholderText('John Doe'), {
-      target: { value: 'Jane Doe' },
+    fireEvent.change(screen.getByPlaceholderText('John'), {
+      target: { value: 'Jane' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Doe'), {
+      target: { value: 'Doe' },
     });
     fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
       target: { value: 'jane@example.com' },

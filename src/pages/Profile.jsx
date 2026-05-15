@@ -25,10 +25,10 @@ import useModal from '../hooks/useModal';
 import { RetryablePageError } from '../components/PageFeedback';
 import { listSavedAddresses } from '../services/savedAddressService';
 import {
-  signOutAndClearAuthState,
   updateAuthenticatedPassword,
   verifyCurrentPassword,
 } from '../services/authSessionService';
+import { performLogout } from '../utils/logout';
 import { searchUniversities } from '../services/universityService';
 import {
   formatSavedAddressLandmark,
@@ -1171,8 +1171,7 @@ export default function Profile() {
       });
 
       window.setTimeout(async () => {
-        await signOutAndClearAuthState();
-        navigate('/login');
+        await performLogout();
       }, 1200);
     } catch (error) {
       console.error(error);
@@ -1192,8 +1191,7 @@ export default function Profile() {
   };
 
   const confirmLogout = async () => {
-    await signOutAndClearAuthState();
-    navigate('/login');
+    await performLogout();
   };
 
   const submitChangeRequest = async (event) => {

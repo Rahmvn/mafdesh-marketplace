@@ -6,6 +6,9 @@ import {
   getUserWithRetry,
   refreshSessionWithRetry,
 } from "../utils/authResilience";
+import { performLogout } from "../utils/logout";
+
+const ORDER_DEADLINE_RETRY_DELAY_MS = 30 * 1000;
 
 async function getValidAccessToken() {
   const {
@@ -206,6 +209,18 @@ export async function processOrderDeadline(orderId) {
   );
 
   if (error) {
+    const isAuthError =
+      error?.message?.includes("401") ||
+      error?.message?.toLowerCase().includes("unauthorized") ||
+      error?.message?.toLowerCase().includes("invalid token") ||
+      error?.context?.status === 401 ||
+      response?.status === 401;
+
+    if (isAuthError) {
+      await performLogout();
+      return null;
+    }
+
     let errorBody = null;
 
     try {
@@ -245,25 +260,41 @@ export function useOrderDeadlineAutoProcessing({
   getHasActiveHold,
   getHasPendingRefund,
   debugLabel = "order deadline auto-processing",
+  retryDelayMs = ORDER_DEADLINE_RETRY_DELAY_MS,
 }) {
-  const attemptedKeysRef = useRef(new Set());
+  const completedKeysRef = useRef(new Set());
+  const inFlightKeysRef = useRef(new Set());
+  const retryAfterRef = useRef(new Map());
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
+    const nowTimestamp =
+      now instanceof Date ? now.getTime() : new Date(now || Date.now()).getTime();
+
     const pendingTargets = getOrderDeadlineCatchUpTargets(orders, {
       now,
       getHasActiveHold,
       getHasPendingRefund,
-    }).filter((target) => !attemptedKeysRef.current.has(target.key));
+    }).filter((target) => {
+      if (
+        completedKeysRef.current.has(target.key) ||
+        inFlightKeysRef.current.has(target.key)
+      ) {
+        return false;
+      }
+
+      const retryAfter = retryAfterRef.current.get(target.key);
+      return retryAfter == null || retryAfter <= nowTimestamp;
+    });
 
     if (pendingTargets.length === 0) {
       return;
     }
 
-    pendingTargets.forEach((target) => attemptedKeysRef.current.add(target.key));
+    pendingTargets.forEach((target) => inFlightKeysRef.current.add(target.key));
 
     let cancelled = false;
 
@@ -276,7 +307,10 @@ export function useOrderDeadlineAutoProcessing({
 
           if (result?.processed) {
             processedAny = true;
+            completedKeysRef.current.add(target.key);
+            retryAfterRef.current.delete(target.key);
           } else {
+            retryAfterRef.current.set(target.key, nowTimestamp + retryDelayMs);
             console.info(`${debugLabel}: skipped`, {
               orderId: target.orderId,
               key: target.key,
@@ -284,11 +318,14 @@ export function useOrderDeadlineAutoProcessing({
             });
           }
         } catch (error) {
+          retryAfterRef.current.set(target.key, nowTimestamp + retryDelayMs);
           console.error(`${debugLabel}: failed`, {
             orderId: target.orderId,
             key: target.key,
             error,
           });
+        } finally {
+          inFlightKeysRef.current.delete(target.key);
         }
 
         if (cancelled) {
@@ -315,7 +352,8 @@ export function useOrderDeadlineAutoProcessing({
     onProcessed,
     orders,
     processOrder,
+    retryDelayMs,
   ]);
 
-  return attemptedKeysRef;
+  return completedKeysRef;
 }

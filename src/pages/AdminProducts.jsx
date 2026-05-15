@@ -21,12 +21,12 @@ import {
   executeGuardedAdminAction,
   getCurrentAdminUser,
 } from '../services/adminActionService';
-import { signOutAndClearAuthState } from '../services/authSessionService';
 import {
   getAdminProductEditRequests,
   PRODUCT_CORE_FIELDS,
   PRODUCT_EDIT_REQUEST_STATUS,
 } from '../services/productEditService';
+import { performLogout } from '../utils/logout';
 
 const PRODUCT_FIELD_LABELS = {
   name: 'Name',
@@ -220,8 +220,7 @@ export default function AdminProducts() {
 
   const handleLogout = async () => {
     showConfirm('Log Out', 'Are you sure you want to log out of your account?', async () => {
-      await signOutAndClearAuthState();
-      window.location.href = '/login';
+      await performLogout();
     });
   };
 

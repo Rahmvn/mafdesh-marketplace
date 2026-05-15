@@ -80,4 +80,19 @@ describe('getSellerOrderPayout', () => {
     expect(result.netEarnings).toBe(7500);
     expect(result.refundInfo).toEqual({ type: 'partial_refund', amount: 2500 });
   });
+
+  it('multiplies legacy quantity when line items are not available', () => {
+    const result = getSellerOrderPayout({
+      status: 'COMPLETED',
+      quantity: 3,
+      product_price: 15000,
+      delivery_fee: 2000,
+      platform_fee: 1000,
+    });
+
+    expect(result.subtotal).toBe(0);
+    expect(result.baseEarnings).toBe(46000);
+    expect(result.netEarnings).toBe(46000);
+    expect(result.refundInfo).toBeNull();
+  });
 });

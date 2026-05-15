@@ -40,8 +40,15 @@ import {
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
 import {
   enrichProductsWithPublicSellerData,
+  fetchPublicSellerDirectory,
   isSellerMarketplaceActive,
 } from "../services/publicSellerService";
+import {
+  formatCampusPickupLocationLocality,
+  formatCampusPickupLocationReference,
+  formatCampusPickupLocationSummary,
+  formatCampusPickupLocationZone,
+} from "../services/deliveryService";
 import {
   useOrderDeadlineAutoProcessing,
 } from "../services/orderDeadlineService";
@@ -63,6 +70,29 @@ import {
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function hasMatchingUniversityIdentity(buyer, seller) {
+  const buyerUniversityId = String(buyer?.university_id || "").trim();
+  const sellerUniversityId = String(seller?.university_id || "").trim();
+
+  if (buyerUniversityId && sellerUniversityId) {
+    return buyerUniversityId === sellerUniversityId;
+  }
+
+  const buyerUniversityName = normalizeDisplayText(buyer?.university_name);
+  const sellerUniversityName = normalizeDisplayText(seller?.university_name);
+  const buyerUniversityState = normalizeDisplayText(buyer?.university_state);
+  const sellerUniversityState = normalizeDisplayText(seller?.university_state);
+
+  return Boolean(
+    buyerUniversityName &&
+      sellerUniversityName &&
+      buyerUniversityState &&
+      sellerUniversityState &&
+      buyerUniversityName === sellerUniversityName &&
+      buyerUniversityState === sellerUniversityState
+  );
 }
 
 function shouldShowDistinctPickupAddress(label, address) {
@@ -97,6 +127,8 @@ export default function BuyerOrderDetails() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [isSameUniversityDelivery, setIsSameUniversityDelivery] = useState(false);
+  const [sellerProfile, setSellerProfile] = useState(null);
   const [existingReviews, setExistingReviews] = useState([]);
   const [reviewModal, setReviewModal] = useState({ open: false, productId: null, productName: '' });
   const [rating, setRating] = useState(5);
@@ -185,6 +217,46 @@ export default function BuyerOrderDetails() {
       }
     }
     setItems(finalItems);
+
+    const primarySellerId = String(
+      orderData.seller_id || finalItems[0]?.product?.seller_id || ""
+    ).trim();
+
+    let resolvedSellerProfile = null;
+
+    if (primarySellerId) {
+      try {
+        const sellerDirectory = await fetchPublicSellerDirectory([primarySellerId]);
+        resolvedSellerProfile = sellerDirectory[String(primarySellerId)] || null;
+      } catch (sellerProfileError) {
+        console.error("Seller profile lookup failed:", sellerProfileError);
+      }
+    }
+
+    setSellerProfile(resolvedSellerProfile);
+
+    if (orderData.delivery_type === "delivery" && orderData.buyer_id && primarySellerId) {
+      try {
+        const { data: buyerProfile, error: buyerProfileError } = await supabase
+          .from("users")
+          .select("id, university_id, university_name, university_state")
+          .eq("id", orderData.buyer_id)
+          .single();
+
+        if (buyerProfileError) {
+          throw buyerProfileError;
+        }
+
+        setIsSameUniversityDelivery(
+          hasMatchingUniversityIdentity(buyerProfile, resolvedSellerProfile)
+        );
+      } catch (universityMatchError) {
+        console.error("University match lookup failed:", universityMatchError);
+        setIsSameUniversityDelivery(false);
+      }
+    } else {
+      setIsSameUniversityDelivery(false);
+    }
 
     // Fetch existing reviews for these products by this buyer (across all orders)
     const productIds = finalItems.map(item => item.product.id);
@@ -556,16 +628,12 @@ export default function BuyerOrderDetails() {
   const pickupSnapshot = order.pickup_location_snapshot || null;
   const pickupAddress = String(pickupSnapshot?.address_text || "").trim();
   const pickupLabel = String(pickupSnapshot?.label || order.selected_pickup_location || "").trim();
-  const pickupLocationDetails = [
-    pickupSnapshot?.area_name || pickupSnapshot?.area,
-    pickupSnapshot?.city_name || pickupSnapshot?.city,
-    pickupSnapshot?.lga_name || pickupSnapshot?.lga,
-    pickupSnapshot?.state_name,
-    pickupSnapshot?.landmark_text || pickupSnapshot?.landmark,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(", ");
+  const pickupLocationDetails = formatCampusPickupLocationSummary(pickupSnapshot, {
+    universityName: sellerProfile?.university_name,
+  });
+  const pickupZoneDetails = formatCampusPickupLocationZone(pickupSnapshot);
+  const pickupLocalityDetails = formatCampusPickupLocationLocality(pickupSnapshot);
+  const pickupReferenceDetails = formatCampusPickupLocationReference(pickupSnapshot);
   const showPickupAddressLine = shouldShowDistinctPickupAddress(pickupLabel, pickupAddress);
   const isSingleItem = order.product_price !== null && items.length === 1;
   const orderAmounts = getBuyerOrderAmounts(order, items);
@@ -580,7 +648,9 @@ export default function BuyerOrderDetails() {
   const refundReviewDeadline = getRefundReviewDeadline(pendingRefundRequest);
   const displayStatusLabel = isRefundProcessing
     ? "REFUND PROCESSING"
-    : order.status.replaceAll("_", " ");
+    : order.status === "READY_FOR_PICKUP" && isPickup
+      ? "READY FOR CAMPUS MEET-UP"
+      : order.status.replaceAll("_", " ");
   const displayStatusClass = isRefundProcessing
     ? "bg-amber-100 text-amber-800"
     : order.status === "COMPLETED"
@@ -598,6 +668,7 @@ export default function BuyerOrderDetails() {
   const disputeDeadlineExpired = isExpired(order.dispute_deadline);
   const pickupTimerLabel = formatBusinessDeadline(order.auto_cancel_at, now);
   const pickupUrgencyClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
+  const deliveryLabel = isSameUniversityDelivery ? "Campus delivery (doorstep)" : "Delivery";
 
   const steps = [
     { label: "Order Placed", active: true, icon: Package, desc: "Your order has been placed." },
@@ -614,10 +685,10 @@ export default function BuyerOrderDetails() {
       expired: shipDeadlineExpired && order.status === "PAID_ESCROW"
     },
     {
-      label: isDelivery ? "Shipped" : "Ready for Pickup",
+      label: isDelivery ? "Shipped" : "Ready for Campus Meet-up",
       active: ["SHIPPED", "READY_FOR_PICKUP", "DELIVERED", "COMPLETED"].includes(order.status),
       icon: isDelivery ? Truck : Package,
-      desc: isDelivery ? "Your order is on its way." : "You can now pick up your order.",
+      desc: isDelivery ? "Your order is on its way." : "You can now meet your seller for this order.",
       expired: (order.status === "READY_FOR_PICKUP" && pickupDeadlineExpired)
     },
     {
@@ -645,7 +716,7 @@ export default function BuyerOrderDetails() {
     if (pickupDeadlineExpired) {
       actionMessage = "The pickup window has expired. This order will be cancelled.";
     } else {
-      actionMessage = "Your order is ready for pickup. Inspect everything carefully before you confirm.";
+      actionMessage = "Your order is ready for campus meet-up. Inspect everything carefully before you confirm.";
       actionButton = (
         <>
           <button onClick={confirmPickup} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">Confirm Pickup & Release Payment</button>
@@ -966,18 +1037,29 @@ export default function BuyerOrderDetails() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 border-l-4 border-l-orange-500">
             <h2 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
               <MapPin size={20} className="text-orange-500" />
-              Pickup Location
+              Campus Meet-up Point
             </h2>
             {pickupSnapshot?.label || order.selected_pickup_location ? (
               <>
-                <p className="text-lg font-bold text-gray-800">
-                  {pickupLabel}
+                <p className="text-sm text-gray-600 mb-2">
+                  Meet your seller at:
                 </p>
-                {showPickupAddressLine && (
+                <p className="text-lg font-bold text-gray-800">{pickupLocationDetails || pickupLabel}</p>
+                {pickupZoneDetails ? (
+                  <p className="text-sm text-gray-500 mt-1">{pickupZoneDetails}</p>
+                ) : null}
+                {pickupLocalityDetails ? (
+                  <p className="text-xs text-gray-500 mt-1">{pickupLocalityDetails}</p>
+                ) : null}
+                {pickupReferenceDetails ? (
+                  <p className="text-gray-700 mt-1">{pickupReferenceDetails}</p>
+                ) : showPickupAddressLine ? (
                   <p className="text-gray-700 mt-1">{pickupAddress}</p>
-                )}
+                ) : null}
                 {pickupLocationDetails && (
-                  <p className="text-sm text-gray-500 mt-1">{pickupLocationDetails}</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Pickup spot: {pickupLabel}
+                  </p>
                 )}
                 {pickupSnapshot?.pickup_instructions && (
                   <p className="text-sm text-gray-500 mt-1">
@@ -986,13 +1068,13 @@ export default function BuyerOrderDetails() {
                 )}
               </>
             ) : (
-              <p className="text-gray-500">Pickup details will appear here once they are available.</p>
+              <p className="text-gray-500">Campus meet-up details will appear here once they are available.</p>
             )}
           </div>
         )}
         {isDelivery && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-3">Delivery Address</h2>
+            <h2 className="font-semibold text-gray-900 mb-3">{deliveryLabel}</h2>
             <p className="text-gray-700">{order.delivery_state}, {order.delivery_address}</p>
             {deliverySnapshot && (
               <p className="text-sm text-gray-500 mt-2">
@@ -1023,7 +1105,7 @@ export default function BuyerOrderDetails() {
               let timerText = null;
               let urgencyClass = '';
               if (!isFinalState) {
-                if (step.label === "Ready for Pickup" && order.auto_cancel_at) {
+                if (step.label === "Ready for Campus Meet-up" && order.auto_cancel_at) {
                   timerText = pickupTimerLabel;
                   urgencyClass = pickupUrgencyClass;
                 } else if (step.label === "Delivered" && order.auto_complete_at && order.status === "DELIVERED") {
