@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  normalizeOptionalDate,
+  normalizeOptionalUuid,
+  normalizeText,
+  resolveImmutableSelfServiceRole,
+  validateSelfServiceSignupInput,
+} from "../_shared/selfServiceRoleSecurity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,8 +14,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-const SELF_SERVICE_ROLES = new Set(["buyer", "seller"]);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -18,145 +23,6 @@ function jsonResponse(body: unknown, status = 200) {
       "Content-Type": "application/json",
     },
   });
-}
-
-function normalizeRole(value: unknown) {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return SELF_SERVICE_ROLES.has(normalized) ? normalized : "";
-}
-
-function normalizeText(value: unknown) {
-  return typeof value === "string"
-    ? value.replace(/[\u200B-\u200D\uFEFF]/gu, "").replace(/\s+/gu, " ").trim()
-    : "";
-}
-
-function normalizeOptionalUuid(value: unknown) {
-  const normalized = normalizeText(value);
-  return normalized || "";
-}
-
-function normalizeOptionalDate(value: unknown) {
-  const normalized = normalizeText(value);
-
-  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    return "";
-  }
-
-  return normalized;
-}
-
-function validateHumanName(value: string) {
-  if (!value) {
-    return "A valid full name is required for signup.";
-  }
-
-  if (value.length < 2 || value.length > 100) {
-    return "Full name must be between 2 and 100 characters.";
-  }
-
-  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'-]+$/u.test(value)) {
-    return "Full name contains invalid characters.";
-  }
-
-  return "";
-}
-
-function validateBusinessName(value: string) {
-  if (!value) {
-    return "A valid business name is required for seller signup.";
-  }
-
-  if (value.length < 2 || value.length > 120) {
-    return "Business name must be between 2 and 120 characters.";
-  }
-
-  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'&()/-]+$/u.test(value)) {
-    return "Business name contains invalid characters.";
-  }
-
-  return "";
-}
-
-function validatePhoneNumber(value: string) {
-  if (!/^0\d{10}$/.test(value)) {
-    return "Phone number must be a valid 11-digit Nigerian number starting with 0.";
-  }
-
-  return "";
-}
-
-function validateDateOfBirth(value: string) {
-  if (!value) {
-    return "Date of birth is required for signup.";
-  }
-
-  const birthDate = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(birthDate.getTime())) {
-    return "Date of birth must be a valid date.";
-  }
-
-  const now = new Date();
-  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
-  const monthDelta = now.getUTCMonth() - birthDate.getUTCMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < birthDate.getUTCDate())) {
-    age -= 1;
-  }
-
-  if (age < 16) {
-    return "You must be at least 16 years old to create an account.";
-  }
-
-  if (age > 120) {
-    return "Date of birth must be realistic.";
-  }
-
-  return "";
-}
-
-function validateUniversityName(value: string) {
-  if (!value || value.length < 2 || value.length > 120 || value.includes("<") || value.includes(">")) {
-    return "A valid university name is required for signup.";
-  }
-
-  return "";
-}
-
-function validateSelfServiceSignupInput({
-  role,
-  fullName,
-  phoneNumber,
-  dateOfBirth,
-  businessName,
-  universityName,
-  universityState,
-  universityZone,
-}: {
-  role: string;
-  fullName: string;
-  phoneNumber: string;
-  dateOfBirth: string;
-  businessName: string;
-  universityName: string;
-  universityState: string;
-  universityZone: string;
-}) {
-  const errors = [
-    validateHumanName(fullName),
-    validatePhoneNumber(phoneNumber),
-    validateDateOfBirth(dateOfBirth),
-    validateUniversityName(universityName),
-  ].filter(Boolean);
-
-  if (role === "seller") {
-    errors.push(
-      validateBusinessName(businessName),
-      universityState ? "" : "University state is required for seller signup.",
-      universityZone ? "" : "University zone is required for seller signup."
-    );
-  }
-
-  return errors.filter(Boolean)[0] || "";
 }
 
 function errorMessage(error: unknown) {
@@ -211,37 +77,6 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const desiredRole = normalizeRole(
-      body?.role || authUser.user_metadata?.role || authUser.raw_user_meta_data?.role
-    );
-
-    if (!desiredRole) {
-      return jsonResponse({ error: "A buyer or seller role is required." }, 400);
-    }
-
-    const phoneNumber = normalizeText(body?.phone_number || authUser.user_metadata?.phone_number);
-    const businessName = normalizeText(body?.business_name || authUser.user_metadata?.business_name);
-    const dateOfBirth = normalizeOptionalDate(body?.date_of_birth || authUser.user_metadata?.date_of_birth);
-    const universityId = normalizeOptionalUuid(body?.university_id || authUser.user_metadata?.university_id);
-    const universityName = normalizeText(body?.university_name || authUser.user_metadata?.university_name);
-    const universityState = normalizeText(body?.university_state || authUser.user_metadata?.university_state);
-    const universityZone = normalizeText(body?.university_zone || authUser.user_metadata?.university_zone);
-    const fullName = normalizeText(authUser.user_metadata?.full_name);
-
-    const validationError = validateSelfServiceSignupInput({
-      role: desiredRole,
-      fullName,
-      phoneNumber,
-      dateOfBirth,
-      businessName,
-      universityName,
-      universityState,
-      universityZone,
-    });
-
-    if (validationError) {
-      return jsonResponse({ error: validationError }, 400);
-    }
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -274,35 +109,39 @@ serve(async (req) => {
       return jsonResponse({ error: "Admin accounts cannot be changed here." }, 403);
     }
 
-    if (existingUser?.role && existingUser.role !== desiredRole) {
-      const [buyerOrdersResult, sellerOrdersResult, productsResult] = await Promise.all([
-        supabaseAdmin
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("buyer_id", authUser.id),
-        supabaseAdmin
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("seller_id", authUser.id),
-        supabaseAdmin
-          .from("products")
-          .select("id", { count: "exact", head: true })
-          .eq("seller_id", authUser.id),
-      ]);
+    const { desiredRole } = resolveImmutableSelfServiceRole({
+      existingRole: existingUser?.role,
+      requestedRole: body?.role,
+      metadataRole: authUser.user_metadata?.role || authUser.raw_user_meta_data?.role,
+    });
 
-      const buyerOrdersCount = Number(buyerOrdersResult.count || 0);
-      const sellerOrdersCount = Number(sellerOrdersResult.count || 0);
-      const productsCount = Number(productsResult.count || 0);
+    if (!desiredRole) {
+      return jsonResponse({ error: "A buyer or seller role is required." }, 400);
+    }
 
-      if (buyerOrdersCount > 0 || sellerOrdersCount > 0 || productsCount > 0) {
-        return jsonResponse(
-          {
-            error:
-              "This account already has marketplace activity, so its role cannot be changed automatically.",
-          },
-          409
-        );
-      }
+    const phoneNumber = normalizeText(body?.phone_number || authUser.user_metadata?.phone_number);
+    const businessName = normalizeText(body?.business_name || authUser.user_metadata?.business_name);
+    const dateOfBirth = normalizeOptionalDate(body?.date_of_birth || authUser.user_metadata?.date_of_birth);
+    const universityId = normalizeOptionalUuid(body?.university_id || authUser.user_metadata?.university_id);
+    const universityName = normalizeText(body?.university_name || authUser.user_metadata?.university_name);
+    const universityState = normalizeText(body?.university_state || authUser.user_metadata?.university_state);
+    const universityZone = normalizeText(body?.university_zone || authUser.user_metadata?.university_zone);
+    const fullName = normalizeText(authUser.user_metadata?.full_name);
+
+    const validationError = validateSelfServiceSignupInput({
+      role: desiredRole,
+      fullName,
+      phoneNumber,
+      dateOfBirth,
+      businessName,
+      location: "",
+      universityName,
+      universityState,
+      universityZone,
+    });
+
+    if (validationError) {
+      return jsonResponse({ error: validationError }, 400);
     }
 
     const nextUserPayload = {

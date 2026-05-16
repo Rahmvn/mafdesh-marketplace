@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  normalizeOptionalDate,
+  normalizeOptionalUuid,
+  normalizeText,
+  resolveImmutableSelfServiceRole,
+  validateSelfServiceSignupInput,
+} from "../_shared/selfServiceRoleSecurity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,9 +14,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-const SELF_SERVICE_ROLES = new Set(["buyer", "seller"]);
-const ALL_MARKETPLACE_ROLES = new Set(["buyer", "seller", "admin"]);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -19,162 +23,6 @@ function jsonResponse(body: unknown, status = 200) {
       "Content-Type": "application/json",
     },
   });
-}
-
-function readSelfServiceRole(value: unknown) {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-
-  return SELF_SERVICE_ROLES.has(normalized) ? normalized : "";
-}
-
-function normalizeMarketplaceRole(value: unknown) {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return ALL_MARKETPLACE_ROLES.has(normalized) ? normalized : "";
-}
-
-function normalizeText(value: unknown) {
-  return typeof value === "string"
-    ? value.replace(/[\u200B-\u200D\uFEFF]/gu, "").replace(/\s+/gu, " ").trim()
-    : "";
-}
-
-function normalizeOptionalUuid(value: unknown) {
-  const normalized = normalizeText(value);
-  return normalized || "";
-}
-
-function normalizeOptionalDate(value: unknown) {
-  const normalized = normalizeText(value);
-
-  if (!normalized || !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    return "";
-  }
-
-  return normalized;
-}
-
-function validateHumanName(value: string) {
-  if (!value) {
-    return "A valid full name is required for signup.";
-  }
-
-  if (value.length < 2 || value.length > 100) {
-    return "Full name must be between 2 and 100 characters.";
-  }
-
-  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'-]+$/u.test(value)) {
-    return "Full name contains invalid characters.";
-  }
-
-  return "";
-}
-
-function validateBusinessName(value: string) {
-  if (!value) {
-    return "A valid business name is required for seller signup.";
-  }
-
-  if (value.length < 2 || value.length > 120) {
-    return "Business name must be between 2 and 120 characters.";
-  }
-
-  if (value.includes("<") || value.includes(">") || !/^[\p{L}\p{M}\p{N} .,'&()/-]+$/u.test(value)) {
-    return "Business name contains invalid characters.";
-  }
-
-  return "";
-}
-
-function validatePhoneNumber(value: string) {
-  if (!/^0\d{10}$/.test(value)) {
-    return "Phone number must be a valid 11-digit Nigerian number starting with 0.";
-  }
-
-  return "";
-}
-
-function validateLocation(value: string) {
-  if (!value || value.length > 80 || value.includes("<") || value.includes(">")) {
-    return "A valid location is required for signup.";
-  }
-
-  return "";
-}
-
-function validateDateOfBirth(value: string) {
-  if (!value) {
-    return "Date of birth is required for signup.";
-  }
-
-  const birthDate = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(birthDate.getTime())) {
-    return "Date of birth must be a valid date.";
-  }
-
-  const now = new Date();
-  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
-  const monthDelta = now.getUTCMonth() - birthDate.getUTCMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && now.getUTCDate() < birthDate.getUTCDate())) {
-    age -= 1;
-  }
-
-  if (age < 16) {
-    return "You must be at least 16 years old to create an account.";
-  }
-
-  if (age > 120) {
-    return "Date of birth must be realistic.";
-  }
-
-  return "";
-}
-
-function validateUniversityName(value: string) {
-  if (!value || value.length < 2 || value.length > 120 || value.includes("<") || value.includes(">")) {
-    return "A valid university name is required for signup.";
-  }
-
-  return "";
-}
-
-function validateSelfServiceSignupInput({
-  role,
-  fullName,
-  phoneNumber,
-  dateOfBirth,
-  businessName,
-  location,
-  universityName,
-  universityState,
-  universityZone,
-}: {
-  role: string;
-  fullName: string;
-  phoneNumber: string;
-  dateOfBirth: string;
-  businessName: string;
-  location: string;
-  universityName: string;
-  universityState: string;
-  universityZone: string;
-}) {
-  const errors = [
-    validateHumanName(fullName),
-    validatePhoneNumber(phoneNumber),
-    validateDateOfBirth(dateOfBirth),
-    validateLocation(location),
-    validateUniversityName(universityName),
-  ].filter(Boolean);
-
-  if (role === "seller") {
-    errors.push(
-      validateBusinessName(businessName),
-      universityState ? "" : "University state is required for seller signup.",
-      universityZone ? "" : "University zone is required for seller signup."
-    );
-  }
-
-  return errors.filter(Boolean)[0] || "";
 }
 
 function errorMessage(error: unknown) {
@@ -257,55 +105,18 @@ serve(async (req) => {
       return jsonResponse({ error: errorMessage(existingProfileError) }, 500);
     }
 
-    const trustedRole = normalizeMarketplaceRole(existingUser?.role || "");
-    const existingSelfServiceRole = readSelfServiceRole(existingUser?.role || "");
-    const requestedRole = readSelfServiceRole(body?.role);
-    const metadataRole = readSelfServiceRole(metadata?.role);
-    const desiredRole =
-      trustedRole === "admin"
-        ? "admin"
-        : existingSelfServiceRole || requestedRole || metadataRole || "buyer";
+    const { desiredRole, storedRole } = resolveImmutableSelfServiceRole({
+      existingRole: existingUser?.role,
+      requestedRole: body?.role,
+      metadataRole: metadata?.role,
+      fallbackRole: "buyer",
+    });
 
-    if (trustedRole === "admin" && existingUser?.role === "admin") {
+    if (storedRole === "admin" && existingUser?.role === "admin") {
       return jsonResponse({
         success: true,
         user: existingUser,
       });
-    }
-
-    if (
-      existingUser?.role &&
-      existingUser.role !== desiredRole &&
-      trustedRole !== "admin"
-    ) {
-      const [buyerOrdersResult, sellerOrdersResult, productsResult] = await Promise.all([
-        supabaseAdmin
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("buyer_id", authUser.id),
-        supabaseAdmin
-          .from("orders")
-          .select("id", { count: "exact", head: true })
-          .eq("seller_id", authUser.id),
-        supabaseAdmin
-          .from("products")
-          .select("id", { count: "exact", head: true })
-          .eq("seller_id", authUser.id),
-      ]);
-
-      const buyerOrdersCount = Number(buyerOrdersResult.count || 0);
-      const sellerOrdersCount = Number(sellerOrdersResult.count || 0);
-      const productsCount = Number(productsResult.count || 0);
-
-      if (buyerOrdersCount > 0 || sellerOrdersCount > 0 || productsCount > 0) {
-        return jsonResponse(
-          {
-            error:
-              "This account already has marketplace activity, so its role cannot be changed automatically.",
-          },
-          409
-        );
-      }
     }
 
     const phoneNumber = normalizeText(body?.phone_number || metadata?.phone_number);
@@ -319,17 +130,20 @@ serve(async (req) => {
     const location = normalizeText(metadata?.location);
 
     if (desiredRole === "buyer" || desiredRole === "seller") {
-      const validationError = validateSelfServiceSignupInput({
-        role: desiredRole,
-        fullName,
-        phoneNumber,
-        dateOfBirth,
-        businessName,
-        location,
-        universityName,
-        universityState,
-        universityZone,
-      });
+      const validationError = validateSelfServiceSignupInput(
+        {
+          role: desiredRole,
+          fullName,
+          phoneNumber,
+          dateOfBirth,
+          businessName,
+          location,
+          universityName,
+          universityState,
+          universityZone,
+        },
+        { requireLocation: true }
+      );
 
       if (validationError) {
         return jsonResponse({ error: validationError }, 400);

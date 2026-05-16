@@ -19,6 +19,7 @@ import {
   getAuthFeedback,
   runAuthOperationWithRetry,
 } from '../utils/authResilience';
+import { validatePasswordSpacing } from '../utils/accountValidation';
 import { clearStoredUser } from '../utils/storage';
 
 const LOGIN_ROLE_UI = {
@@ -163,6 +164,12 @@ export default function Login() {
 
     if (!email || !password) {
       showWarning('Missing Details', 'Please enter both email and password.');
+      return;
+    }
+
+    const passwordSpacingError = validatePasswordSpacing(password);
+    if (passwordSpacingError) {
+      showWarning('Password Format', `${passwordSpacingError} Remove the extra space and try again.`);
       return;
     }
 

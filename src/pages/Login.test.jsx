@@ -236,6 +236,22 @@ describe('Login', () => {
     expect(mockShowError).not.toHaveBeenCalled();
   });
 
+  it('warns instead of submitting when the password starts or ends with a space', async () => {
+    renderLoginRoute();
+    fillAndSubmitLoginForm({
+      password: ' password123 ',
+    });
+
+    await waitFor(() => {
+      expect(mockShowWarning).toHaveBeenCalledWith(
+        'Password Format',
+        'Password cannot start or end with a space. Remove the extra space and try again.'
+      );
+    });
+
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
+  });
+
   it('recovers the public user context through the shared bootstrap service during login', async () => {
     mockEnsureCurrentUserContext.mockResolvedValue({
       id: 'buyer-1',

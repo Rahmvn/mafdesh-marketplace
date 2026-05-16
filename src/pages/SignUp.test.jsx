@@ -133,7 +133,7 @@ function moveToContactStep({ asSeller = false } = {}) {
   fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
     target: { value: 'jane@example.com' },
   });
-  fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+  fireEvent.click(screen.getByRole('button', { name: /next: contact info/i }));
 }
 
 function moveToDetailsStep({ asSeller = false } = {}) {
@@ -148,17 +148,11 @@ function moveToDetailsStep({ asSeller = false } = {}) {
   fireEvent.change(screen.getByPlaceholderText('08012345678'), {
     target: { value: '08012345678' },
   });
-  fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
-    target: { value: 'password123' },
-  });
-  fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
-    target: { value: 'password123' },
-  });
 
   fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
 }
 
-function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
+function moveToSecurityStep({ agreeToTerms = true, asSeller = false } = {}) {
   moveToDetailsStep({ asSeller });
 
   if (asSeller) {
@@ -180,6 +174,19 @@ function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
   if (agreeToTerms) {
     fireEvent.click(screen.getByRole('checkbox'));
   }
+
+  fireEvent.click(screen.getByRole('button', { name: /next: security/i }));
+}
+
+function fillSignUpForm({ agreeToTerms = true, asSeller = false } = {}) {
+  moveToSecurityStep({ agreeToTerms, asSeller });
+
+  fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
+    target: { value: 'password123' },
+  });
+  fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
+    target: { value: 'password123' },
+  });
 }
 
 function fillAndSubmitSignUpForm(options) {
@@ -219,13 +226,23 @@ describe('SignUp', () => {
   it('restores the signup draft after viewing terms and returning to signup', async () => {
     renderSignUpRoute();
 
-    fillSignUpForm({ asSeller: true });
+    moveToDetailsStep({ asSeller: true });
+    fireEvent.change(screen.getByPlaceholderText('Your store name'), {
+      target: { value: 'Jane Store' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
+      target: { value: 'Mafdesh University' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
+      target: { value: 'Kaduna' },
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /terms & conditions/i }));
 
     expect(await screen.findByText('Terms & Conditions')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
 
-    expect(await screen.findByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(await screen.findByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
     expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
     expect(screen.getByRole('combobox', { name: /university state/i })).toHaveValue('Kaduna');
@@ -245,13 +262,17 @@ describe('SignUp', () => {
   it('restores the signup draft after viewing policies and returning to signup', async () => {
     renderSignUpRoute();
 
-    fillSignUpForm();
+    moveToDetailsStep();
+    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
+      target: { value: 'Mafdesh University' },
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /privacy policy/i }));
 
     expect(await screen.findByText('Marketplace Policies')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /back to sign up/i }));
 
-    expect(await screen.findByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(await screen.findByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).toBeChecked();
 
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
@@ -276,11 +297,7 @@ describe('SignUp', () => {
   it('passes date of birth and optional buyer university data into auth signup metadata', async () => {
     renderSignUpRoute();
 
-    fillSignUpForm();
-    fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
-      target: { value: 'Mafdesh University' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+    fillAndSubmitSignUpForm();
 
     await waitFor(() => {
       expect(mockSignUp).toHaveBeenCalled();
@@ -305,7 +322,11 @@ describe('SignUp', () => {
   it('preserves values when moving back through steps', async () => {
     renderSignUpRoute();
 
-    fillSignUpForm({ asSeller: true, agreeToTerms: false });
+    fillSignUpForm({ asSeller: true });
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
+    expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
 
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(screen.getByLabelText(/date of birth/i)).toHaveValue('1999-04-10');
@@ -315,10 +336,11 @@ describe('SignUp', () => {
     expect(screen.getByPlaceholderText('John')).toHaveValue('Jane');
     expect(screen.getByPlaceholderText('Doe')).toHaveValue('Doe');
 
-    fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next: contact info/i }));
     fireEvent.click(screen.getByRole('button', { name: /next: details/i }));
-    expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
-    expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
+    fireEvent.click(screen.getByRole('button', { name: /next: security/i }));
+    expect(screen.getByPlaceholderText('Enter a password')).toHaveValue('password123');
+    expect(screen.getByPlaceholderText('Confirm your password')).toHaveValue('password123');
   });
 
   it('treats step two next as navigation instead of signup submission', async () => {
@@ -326,9 +348,9 @@ describe('SignUp', () => {
 
     moveToDetailsStep();
 
-    expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(mockSignUp).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next: security/i })).toBeInTheDocument();
   });
 
   it('does not submit signup early when enter is pressed on step two', async () => {
@@ -343,7 +365,7 @@ describe('SignUp', () => {
     fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
       target: { value: 'jane@example.com' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /next: contact & security/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next: contact info/i }));
 
     fireEvent.change(screen.getByLabelText(/date of birth/i), {
       target: { value: '1999-04-10' },
@@ -354,22 +376,39 @@ describe('SignUp', () => {
     fireEvent.change(screen.getByPlaceholderText('08012345678'), {
       target: { value: '08012345678' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
-      target: { value: 'password123' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
-      target: { value: 'password123' },
-    });
-
-    fireEvent.keyDown(screen.getByPlaceholderText('Confirm your password'), {
+    fireEvent.keyDown(screen.getByPlaceholderText('08012345678'), {
       key: 'Enter',
       code: 'Enter',
       charCode: 13,
     });
 
-    expect(screen.getByText(/step 3 of 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(mockSignUp).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next: security/i })).toBeInTheDocument();
+  });
+
+  it('blocks step four when the password starts or ends with a space', async () => {
+    renderSignUpRoute();
+
+    moveToSecurityStep();
+    fireEvent.change(screen.getByPlaceholderText('Enter a password'), {
+      target: { value: ' password123 ' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Confirm your password'), {
+      target: { value: ' password123 ' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(mockShowWarning).toHaveBeenCalledWith(
+        'Password Format',
+        'Password cannot start or end with a space.'
+      );
+    });
+
+    expect(screen.getByText(/step 4 of 4/i)).toBeInTheDocument();
+    expect(mockSignUp).not.toHaveBeenCalled();
   });
 
   it('finishes backend bootstrap immediately when auth signup returns a live session', async () => {
@@ -454,6 +493,27 @@ describe('SignUp', () => {
 
     expect(screen.getByText('Create your account')).toBeInTheDocument();
     expect(screen.queryByText(/Account created successfully!/i)).not.toBeInTheDocument();
+  });
+
+  it('surfaces backend seller validation errors when forged seller signup data is rejected', async () => {
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: null,
+      },
+      error: new Error('A valid business name is required for seller signup.'),
+    });
+
+    renderSignUpRoute();
+    fillAndSubmitSignUpForm({ asSeller: true });
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Sign up Failed',
+        'A valid business name is required for seller signup.'
+      );
+    });
+
+    expect(screen.getByText('Create your account')).toBeInTheDocument();
   });
 
   it('shows the generic signup message when secure signup fails server-side', async () => {

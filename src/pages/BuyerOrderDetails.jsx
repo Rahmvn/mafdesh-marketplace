@@ -5,6 +5,8 @@ import BuyerProductCard from "../components/BuyerProductCard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
 import { MarketplaceDetailSkeleton } from "../components/MarketplaceLoading";
+import ProductCardGrid from "../components/ProductCardGrid";
+import ProductLineItemCard from "../components/ProductLineItemCard";
 import { CheckCircle, Clock, Package, Truck, MapPin, AlertCircle } from "lucide-react";
 import DisputeThread from "../components/DisputeThread";
 import { showGlobalConfirm, showGlobalError, showGlobalSuccess, showGlobalWarning } from "../hooks/modalService";
@@ -953,7 +955,7 @@ export default function BuyerOrderDetails() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 sm:py-8">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6 sm:py-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Order Details</h1>
           <button
@@ -991,6 +993,45 @@ export default function BuyerOrderDetails() {
                 const safeImageUrl = getSafeProductImage(item.product);
                 const isReviewed = existingReviews.includes(item.product.id);
                 return (
+                  <React.Fragment key={idx}>
+                    <ProductLineItemCard
+                      imageSrc={safeImageUrl}
+                      imageAlt={item.product?.name}
+                      imageFallbackSrc="/placeholder.svg"
+                      onImageClick={
+                        item.product?.id ? () => openProductDetails(item.product?.id) : undefined
+                      }
+                      imageDisabled={!item.product?.id}
+                      imageAriaLabel={
+                        item.product?.id
+                          ? `View details for ${item.product?.name || "this product"}`
+                          : "Product details unavailable"
+                      }
+                      title={item.product?.name}
+                      metaLines={[
+                        `Product ID: ${item.product?.id || "Unavailable"}`,
+                        `Quantity: ${item.quantity}`,
+                      ]}
+                      price={`â‚¦${Number(item.price_at_time).toLocaleString()} each`}
+                      className="border-gray-200 shadow-none hover:shadow-sm"
+                      footer={
+                        order.status === "COMPLETED" && !isReviewed ? (
+                          <button
+                            onClick={() =>
+                              setReviewModal({
+                                open: true,
+                                productId: item.product.id,
+                                productName: item.product.name,
+                              })
+                            }
+                            className="text-sm font-medium text-blue-600 underline"
+                          >
+                            Write a Review
+                          </button>
+                        ) : null
+                      }
+                    />
+                    {false ? (
                   <div key={idx} className="flex gap-4 items-start border-b pb-4 last:border-0 last:pb-0">
                     <button
                       type="button"
@@ -1027,6 +1068,8 @@ export default function BuyerOrderDetails() {
                       )}
                     </div>
                   </div>
+                    ) : null}
+                  </React.Fragment>
                 );
               })
             )}
@@ -1186,7 +1229,7 @@ export default function BuyerOrderDetails() {
           </div>
 
           {recommendationLoading ? (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <ProductCardGrid>
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={index}
@@ -1198,9 +1241,9 @@ export default function BuyerOrderDetails() {
                   <div className="mt-2 h-4 w-6/12 animate-pulse rounded bg-orange-100" />
                 </div>
               ))}
-            </div>
+            </ProductCardGrid>
           ) : recommendationProducts.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <ProductCardGrid>
               {recommendationProducts.map((product) => (
                 <OrderRecommendationCard
                   key={product.id}
@@ -1208,7 +1251,7 @@ export default function BuyerOrderDetails() {
                   onOpen={() => openProductDetails(product.id)}
                 />
               ))}
-            </div>
+            </ProductCardGrid>
           ) : (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
               No similar products are available right now.

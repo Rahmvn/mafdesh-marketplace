@@ -21,6 +21,7 @@ import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
 import { NIGERIAN_STATES } from '../utils/nigeriaStates';
 import { searchUniversities } from '../services/universityService';
 import {
+  validatePasswordSpacing,
   normalizeBusinessName,
   normalizeHumanName,
   normalizePhoneNumber,
@@ -40,13 +41,18 @@ const SIGNUP_STEPS = [
   },
   {
     id: 2,
-    label: 'Contact & Security',
-    description: 'Contact and password.',
+    label: 'Contact Info',
+    description: 'How we can reach you.',
   },
   {
     id: 3,
     label: 'Details',
-    description: 'University and final details.',
+    description: 'University and account details.',
+  },
+  {
+    id: 4,
+    label: 'Security',
+    description: 'Set your password.',
   },
 ];
 const EMPTY_SIGNUP_FORM = {
@@ -543,7 +549,7 @@ export default function SignUp() {
   };
 
   const validateContactStep = (normalizedFormData) => {
-    if (!normalizedFormData.date_of_birth || !normalizedFormData.location || !normalizedFormData.password) {
+    if (!normalizedFormData.date_of_birth || !normalizedFormData.location) {
       showWarning('Missing Details', 'Please fill in all required fields including date of birth and location.');
       return false;
     }
@@ -560,8 +566,23 @@ export default function SignUp() {
       return false;
     }
 
+    return true;
+  };
+
+  const validateSecurityStep = (normalizedFormData) => {
+    if (!normalizedFormData.password) {
+      showWarning('Missing Details', 'Please enter and confirm your password.');
+      return false;
+    }
+
     if (normalizedFormData.password.length < 6) {
       showWarning('Password Too Short', 'Password must be at least 6 characters.');
+      return false;
+    }
+
+    const passwordSpacingError = validatePasswordSpacing(normalizedFormData.password);
+    if (passwordSpacingError) {
+      showWarning('Password Format', passwordSpacingError);
       return false;
     }
 
@@ -622,6 +643,10 @@ export default function SignUp() {
     }
 
     if (currentStep === 2 && !validateContactStep(normalizedFormData)) {
+      return;
+    }
+
+    if (currentStep === 3 && !validateDetailsStep(normalizedFormData, { requireTerms: true })) {
       return;
     }
 
@@ -748,6 +773,12 @@ export default function SignUp() {
     }
 
     if (!validateDetailsStep(normalizedFormData, { requireTerms: true })) {
+      setCurrentStep(3);
+      return;
+    }
+
+    if (!validateSecurityStep(normalizedFormData)) {
+      setCurrentStep(4);
       return;
     }
 
@@ -826,7 +857,7 @@ export default function SignUp() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-4">
                   {SIGNUP_STEPS.map((step) => (
                     <StepBadge key={step.id} step={step} currentStep={currentStep} accent={accent} />
                   ))}
@@ -946,48 +977,6 @@ export default function SignUp() {
                         />
                       </div>
                     </div>
-
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <div>
-                        <FieldLabel>Password</FieldLabel>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="Enter a password"
-                            value={formData.password}
-                            onChange={(event) => setFieldValue('password', event.target.value)}
-                            className={`${inputClass} ${inputFocusClass} pr-12`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword((current) => !current)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
-                          >
-                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <FieldLabel>Confirm password</FieldLabel>
-                        <div className="relative">
-                          <input
-                            type={showConfirmPassword ? 'text' : 'password'}
-                            placeholder="Confirm your password"
-                            value={formData.confirmPassword}
-                            onChange={(event) => setFieldValue('confirmPassword', event.target.value)}
-                            className={`${inputClass} ${inputFocusClass} pr-12`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPassword((current) => !current)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
-                          >
-                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 ) : null}
 
@@ -1093,6 +1082,52 @@ export default function SignUp() {
                           Privacy Policy
                         </button>
                         .
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {currentStep === 4 ? (
+                  <div className="space-y-6">
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div>
+                        <FieldLabel>Password</FieldLabel>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Enter a password"
+                            value={formData.password}
+                            onChange={(event) => setFieldValue('password', event.target.value)}
+                            className={`${inputClass} ${inputFocusClass} pr-12`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((current) => !current)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <FieldLabel>Confirm password</FieldLabel>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="Confirm your password"
+                            value={formData.confirmPassword}
+                            onChange={(event) => setFieldValue('confirmPassword', event.target.value)}
+                            className={`${inputClass} ${inputFocusClass} pr-12`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword((current) => !current)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
+                          >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

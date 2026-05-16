@@ -133,6 +133,22 @@ describe('ResetPassword', () => {
     });
   });
 
+  it('blocks passwords with leading or trailing spaces', async () => {
+    renderResetPassword();
+    await waitForRecoveryCheck();
+    fillResetForm({ password: ' newpassword ', confirmPassword: ' newpassword ' });
+    fireEvent.click(screen.getByRole('button', { name: /update password/i }));
+
+    await waitFor(() => {
+      expect(mockShowWarning).toHaveBeenCalledWith(
+        'Password Format',
+        'Password cannot start or end with a space.'
+      );
+    });
+
+    expect(mockUpdateAuthenticatedPassword).not.toHaveBeenCalled();
+  });
+
   it('shows a friendly error when the password update fails', async () => {
     mockUpdateAuthenticatedPassword.mockResolvedValue({
       error: new Error('Update failed'),

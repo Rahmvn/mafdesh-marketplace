@@ -4,6 +4,8 @@ import { Trash2, Minus, Plus, ShoppingBag } from "lucide-react";
 import BuyerProductCard from "../components/BuyerProductCard";
 import Navbar from "../components/Navbar";
 import Footer from "../components/FooterSlim";
+import ProductCardGrid from "../components/ProductCardGrid";
+import ProductLineItemCard from "../components/ProductLineItemCard";
 import { supabase } from "../supabaseClient";
 import { getSessionWithRetry } from '../utils/authResilience';
 import {
@@ -431,6 +433,70 @@ export default function Cart() {
                   const productId = item.product_id || item.products?.id;
 
                   return (
+                    <React.Fragment key={item.id}>
+                      <ProductLineItemCard
+                        imageSrc={item.products?.images?.[0] || "/placeholder.svg"}
+                        imageAlt={item.products?.name}
+                        imageFallbackSrc="/placeholder.svg"
+                        onImageClick={productId ? () => openProductDetails(productId) : undefined}
+                        imageDisabled={!productId}
+                        imageAriaLabel={
+                          productId
+                            ? `View details for ${item.products?.name || "this product"}`
+                            : "Product details unavailable"
+                        }
+                        title={item.products?.name}
+                        metaLines={[
+                          `Quantity in cart: ${quantity}`,
+                          quantity >= maxStock ? `Max ${maxStock} available` : null,
+                        ].filter(Boolean)}
+                        price={`â‚¦${Number(pricing.displayPrice).toLocaleString()}`}
+                        footer={
+                          <div className="flex items-center justify-center gap-3 sm:justify-start">
+                            {quantity === 1 ? (
+                              <button
+                                onClick={() => removeItem(item)}
+                                className="p-1 text-red-500 transition hover:text-red-700"
+                                title="Remove item"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => updateQuantity(item, quantity - 1)}
+                                disabled={isSyncing}
+                                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                              >
+                                <Minus size={16} />
+                              </button>
+                            )}
+
+                            <span className="w-8 text-center font-medium">{quantity}</span>
+
+                            <button
+                              onClick={() => updateQuantity(item, quantity + 1)}
+                              disabled={quantity >= maxStock || isSyncing}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                            >
+                              <Plus size={16} />
+                            </button>
+
+                            {isSyncing ? (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-orange-200 border-t-orange-600" />
+                            ) : null}
+                          </div>
+                        }
+                        aside={
+                          <button
+                            onClick={() => removeItem(item)}
+                            className="text-gray-400 transition hover:text-red-500"
+                            title="Remove"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        }
+                      />
+                      {false ? (
                     <div
                       key={item.id}
                       className="bg-white p-4 rounded-xl border border-blue-100 transition-shadow hover:shadow-md"
@@ -508,6 +574,8 @@ export default function Cart() {
                         </button>
                       </div>
                     </div>
+                      ) : null}
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -549,7 +617,7 @@ export default function Cart() {
        
 
               {recommendationLoading ? (
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                <ProductCardGrid>
                   {Array.from({ length: 4 }).map((_, index) => (
                     <div
                       key={index}
@@ -561,9 +629,9 @@ export default function Cart() {
                       <div className="mt-2 h-4 w-6/12 animate-pulse rounded bg-orange-100" />
                     </div>
                   ))}
-                </div>
+                </ProductCardGrid>
               ) : recommendationProducts.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                <ProductCardGrid>
                   {recommendationProducts.map((product) => (
                     <CartRecommendationCard
                       key={product.id}
@@ -571,7 +639,7 @@ export default function Cart() {
                       onOpen={() => openProductDetails(product.id)}
                     />
                   ))}
-                </div>
+                </ProductCardGrid>
               ) : (
                 <div className="rounded-2xl border border-blue-100 bg-white p-6 text-sm text-slate-600">
                   We could not find related products in your cart categories right now.

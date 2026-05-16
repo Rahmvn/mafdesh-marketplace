@@ -6,6 +6,7 @@ import AuthNavbarWrapper from '../components/AuthNavbarWrapper';
 import BuyerProductCard from '../components/BuyerProductCard';
 import Footer from '../components/Footer';
 import FlashSaleStrip from '../components/FlashSaleStrip';
+import ProductCardGrid from '../components/ProductCardGrid';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { getCanonicalStateName } from '../utils/nigeriaStates';
 import { supabase } from '../supabaseClient';
@@ -293,7 +294,7 @@ function sellerMatchesCampusGroup(seller, campusGroup) {
 
 function LoadingGrid() {
   return (
-    <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6 xl:grid-cols-7">
+    <ProductCardGrid>
       {Array.from({ length: 12 }).map((_, index) => (
         <div
           key={index}
@@ -305,7 +306,7 @@ function LoadingGrid() {
           <div className="mt-1.5 h-4 w-14 animate-pulse rounded bg-orange-100" />
         </div>
       ))}
-    </div>
+    </ProductCardGrid>
   );
 }
 
@@ -796,7 +797,7 @@ export default function Marketplace() {
           <div className="space-y-3">
             {categorySections.map((section) => (
               <section key={section.category}>
-                <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6">
+                <ProductCardGrid className="xl:grid-cols-6">
                   {section.products.map((product) => (
                     <BuyerProductCard
                       key={product.id}
@@ -804,7 +805,7 @@ export default function Marketplace() {
                       onOpen={() => handleProductOpen(product)}
                     />
                   ))}
-                </div>
+                </ProductCardGrid>
                 {section.totalCount > section.products.length ? (
                   <div className="mt-1.5 flex justify-end">
                     <button
@@ -831,7 +832,7 @@ export default function Marketplace() {
               </button>
             )}
 
-            <div className="grid grid-cols-2 gap-1 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 md:gap-2 lg:grid-cols-6 xl:grid-cols-7">
+            <ProductCardGrid>
               {visibleProducts.map((product) => (
                 <BuyerProductCard
                   key={product.id}
@@ -839,7 +840,7 @@ export default function Marketplace() {
                   onOpen={() => handleProductOpen(product)}
                 />
               ))}
-            </div>
+            </ProductCardGrid>
           </>
         )}
       </main>

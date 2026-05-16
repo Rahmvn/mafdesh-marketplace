@@ -64,6 +64,20 @@ export function normalizePhoneNumber(value) {
   return String(value || '').replace(/\D+/g, '').slice(0, 11);
 }
 
+export function hasEdgeWhitespace(value) {
+  const normalized = removeInvisibleCharacters(value);
+
+  return Boolean(normalized) && normalized !== normalized.trim();
+}
+
+export function validatePasswordSpacing(value, { label = 'Password' } = {}) {
+  if (hasEdgeWhitespace(value)) {
+    return `${label} cannot start or end with a space.`;
+  }
+
+  return '';
+}
+
 function validateLength(value, { label, required, minLength = 0, maxLength = Infinity }) {
   if (!value) {
     return required ? `${label} is required.` : '';

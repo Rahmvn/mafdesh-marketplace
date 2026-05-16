@@ -6,6 +6,7 @@ import {
   updateAuthenticatedPassword,
 } from "../services/authSessionService";
 import { getAuthFeedback } from "../utils/authResilience";
+import { validatePasswordSpacing } from "../utils/accountValidation";
 import useModal from '../hooks/useModal';
 import Footer from '../components/FooterSlim';
 
@@ -65,6 +66,12 @@ export default function ResetPassword() {
 
     if (password.length < 6) {
       showWarning('Password Too Short', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    const passwordSpacingError = validatePasswordSpacing(password);
+    if (passwordSpacingError) {
+      showWarning('Password Format', passwordSpacingError);
       return;
     }
 
