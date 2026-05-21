@@ -4,6 +4,7 @@ import {
   calculateMarketplacePlatformFee,
   getEffectiveMarketplacePrice,
 } from '../../../src/utils/marketplacePricing.js';
+import { buildEstimatedFulfillmentSnapshot } from '../../../src/utils/orderEta.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -100,6 +101,44 @@ async function assertSellerIsActive(
   if (sellerStatus !== 'active') {
     throw new Error('This seller account is not active for marketplace orders.');
   }
+}
+
+function isMissingSellerFulfillmentSettingsError(error: unknown) {
+  const code = String((error as { code?: unknown })?.code || '');
+  const message = String((error as { message?: unknown })?.message || '');
+  const hint = String((error as { hint?: unknown })?.hint || '');
+  const haystack = `${message} ${hint}`;
+
+  if (code === 'PGRST205' || code === 'PGRST204' || code === '42P01') {
+    return true;
+  }
+
+  return haystack.includes('seller_fulfillment_settings') || haystack.includes('ship_from_state');
+}
+
+async function getSellerShipFromState(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  sellerId: string
+) {
+  if (!sellerId) {
+    return null;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('seller_fulfillment_settings')
+    .select('ship_from_state')
+    .eq('seller_id', sellerId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingSellerFulfillmentSettingsError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  return String(data?.ship_from_state || '').trim() || null;
 }
 
 serve(async (req) => {
@@ -276,6 +315,16 @@ serve(async (req) => {
     const platformFee = calculateMarketplacePlatformFee(productPrice);
     const totalAmount = productPrice + deliveryFee;
     const orderNumber = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const sellerShipFromState = await getSellerShipFromState(
+      supabaseAdmin,
+      String(product.seller_id || '')
+    );
+    const estimatedFulfillmentSnapshot =
+      buildEstimatedFulfillmentSnapshot({
+        deliveryType,
+        shipFromState: deliveryType === 'delivery' ? sellerShipFromState : null,
+        destinationState: deliveryType === 'delivery' ? deliveryState : null,
+      }) || {};
 
     // Product snapshot
     const { data: snapshotData, error: snapshotError } = await supabaseAdmin.rpc('build_product_snapshot', {
@@ -312,6 +361,7 @@ serve(async (req) => {
         selected_pickup_location: deliveryType === 'pickup' ? selectedPickupLocation : null,
         delivery_zone_snapshot: deliveryType === 'delivery' ? deliveryZoneSnapshot : null,
         pickup_location_snapshot: deliveryType === 'pickup' ? pickupLocationSnapshot : null,
+        estimated_fulfillment_snapshot: estimatedFulfillmentSnapshot,
         payment_reference: reference,
         status: 'PENDING'
       })

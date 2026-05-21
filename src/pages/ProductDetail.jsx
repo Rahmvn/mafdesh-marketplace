@@ -37,6 +37,7 @@ import {
 } from "../hooks/modalService";
 import { getProductPricing } from "../utils/flashSale";
 import { navigateBack } from "../utils/navigation";
+import { formatBusinessDayRange } from "../utils/orderEta";
 import { getAttributesForCategory } from "../utils/productAttributes";
 import { scoreRecommendationProducts } from "../utils/recommendationScoring";
 import { getStoredUser } from "../utils/storage";
@@ -963,10 +964,13 @@ export default function ProductDetail() {
                   Delivery fee is calculated automatically at checkout from the seller location to your delivery state.
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
+                  Delivery ETA is confirmed at checkout after you choose your state.
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
                   {fulfillment?.pickupLocations?.length
                     ? `Pickup available at ${fulfillment.pickupLocations.length} location${
                         fulfillment.pickupLocations.length === 1 ? "" : "s"
-                      }.`
+                      }. Estimated ready time: ${formatBusinessDayRange(1, 2)}.`
                     : "Pickup is not available for this product."}
                 </p>
                 <Link

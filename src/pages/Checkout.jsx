@@ -34,6 +34,10 @@ import { getEffectiveMarketplacePrice } from '../utils/marketplacePricing';
 import { formatNaira } from '../utils/multiSellerCheckout';
 import { navigateBack } from '../utils/navigation';
 import {
+  buildEstimatedFulfillmentSnapshot,
+  formatEstimatedFulfillmentMessage,
+} from '../utils/orderEta';
+import {
   formatSavedAddressForOrder,
   getFirstSavedAddressError,
   validateSavedAddress,
@@ -357,6 +361,14 @@ export default function Checkout() {
   const selectedPickupReference = selectedPickupLocation
     ? formatCampusPickupLocationReference(selectedPickupLocation)
     : '';
+  const deliveryEstimateMessage = formatEstimatedFulfillmentMessage(
+    deliveryQuote?.estimatedFulfillment
+  );
+  const pickupEstimateMessage = formatEstimatedFulfillmentMessage(
+    buildEstimatedFulfillmentSnapshot({
+      deliveryType: DELIVERY_TYPE.PICKUP,
+    })
+  );
   const hasAvailableMethod = true;
 
   return (
@@ -474,6 +486,9 @@ export default function Checkout() {
                       <p className="mt-2 text-sm text-blue-700">
                         Meet your seller here. Bring your order confirmation.
                       </p>
+                      <p className="mt-2 text-sm font-medium text-blue-900">
+                        {pickupEstimateMessage}
+                      </p>
                     </div>
                   ) : (
                     <p className="mt-2 text-sm text-gray-500">
@@ -509,6 +524,11 @@ export default function Checkout() {
                         : 'Delivery is not available for this destination.')}
                   </p>
                 ) : null}
+                {deliveryType === DELIVERY_TYPE.DELIVERY && deliveryEstimateMessage ? (
+                  <p className="text-sm font-medium text-blue-900">
+                    {deliveryEstimateMessage}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -524,6 +544,16 @@ export default function Checkout() {
                 <span>Delivery</span>
                 <span>{formatNaira(deliveryFee)}</span>
               </div>
+              {deliveryType === DELIVERY_TYPE.DELIVERY && deliveryEstimateMessage ? (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+                  {deliveryEstimateMessage}
+                </div>
+              ) : null}
+              {deliveryType === DELIVERY_TYPE.PICKUP && pickupEstimateMessage ? (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+                  {pickupEstimateMessage}
+                </div>
+              ) : null}
               <div className="flex justify-between border-t pt-3 font-bold text-blue-900">
                 <span>Total</span>
                 <span>{formatNaira(total)}</span>

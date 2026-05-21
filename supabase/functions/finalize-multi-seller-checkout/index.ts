@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { buildEstimatedFulfillmentSnapshot } from '../../../src/utils/orderEta.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,10 @@ type CheckoutOrderPayload = {
   delivery_fee?: unknown
   total?: unknown
   platform_fee?: unknown
+  delivery_method?: unknown
+  delivery_state?: unknown
   items?: unknown
+  estimated_fulfillment_snapshot?: unknown
 }
 
 type CheckoutProductRecord = {
@@ -284,6 +288,75 @@ function getOrderedProductIds(orders: CheckoutOrderPayload[]) {
     }),
     80
   )
+}
+
+function isMissingSellerFulfillmentSettingsError(error: unknown) {
+  const code = String((error as { code?: unknown })?.code || '')
+  const message = String((error as { message?: unknown })?.message || '')
+  const hint = String((error as { hint?: unknown })?.hint || '')
+  const haystack = `${message} ${hint}`
+
+  if (code === 'PGRST205' || code === 'PGRST204' || code === '42P01') {
+    return true
+  }
+
+  return haystack.includes('seller_fulfillment_settings') || haystack.includes('ship_from_state')
+}
+
+async function getSellerShipFromStates(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  sellerIds: string[]
+) {
+  const normalizedSellerIds = normalizeIdList(sellerIds, 80)
+
+  if (normalizedSellerIds.length === 0) {
+    return {}
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('seller_fulfillment_settings')
+    .select('seller_id, ship_from_state')
+    .in('seller_id', normalizedSellerIds)
+
+  if (error) {
+    if (isMissingSellerFulfillmentSettingsError(error)) {
+      return {}
+    }
+
+    throw error
+  }
+
+  return (data || []).reduce<Record<string, string>>((map, row) => {
+    const sellerId = String(row?.seller_id || '').trim()
+    const shipFromState = String(row?.ship_from_state || '').trim()
+
+    if (sellerId && shipFromState) {
+      map[sellerId] = shipFromState
+    }
+
+    return map
+  }, {})
+}
+
+function withEstimatedFulfillmentSnapshots(
+  orders: CheckoutOrderPayload[],
+  shipFromStateBySellerId: Record<string, string>
+) {
+  return orders.map((order) => {
+    const sellerId = String(order?.seller_id || '').trim()
+    const deliveryMethod = normalizeSingleLineText(order?.delivery_method, 20).toLowerCase()
+    const deliveryState = normalizeSingleLineText(order?.delivery_state, 80)
+
+    return {
+      ...order,
+      estimated_fulfillment_snapshot:
+        buildEstimatedFulfillmentSnapshot({
+          deliveryType: deliveryMethod,
+          shipFromState: deliveryMethod === 'delivery' ? shipFromStateBySellerId[sellerId] || null : null,
+          destinationState: deliveryMethod === 'delivery' ? deliveryState || null : null,
+        }) || {},
+    }
+  })
 }
 
 async function removePurchasedCartItems(
@@ -646,13 +719,19 @@ serve(async (req) => {
       )
     }
 
+    const shipFromStateBySellerId = await getSellerShipFromStates(supabaseAdmin, sellerIds)
+    const ordersWithEstimatedFulfillment = withEstimatedFulfillmentSnapshots(
+      orders as CheckoutOrderPayload[],
+      shipFromStateBySellerId
+    )
+
     const { data: orderIds, error: rpcError } = await supabaseAdmin.rpc(
       'create_multi_seller_orders',
       {
         p_checkout_session_id: checkoutSessionId,
         p_buyer_id: user.id,
         p_payment_reference: paymentReference,
-        p_orders: orders,
+        p_orders: ordersWithEstimatedFulfillment,
       }
     )
 

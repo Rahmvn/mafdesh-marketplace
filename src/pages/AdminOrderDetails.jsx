@@ -32,6 +32,10 @@ import {
 } from "../utils/timeUtils";
 import { useOrderDeadlineAutoProcessing } from "../services/orderDeadlineService";
 import { formatNaira } from "../utils/multiSellerCheckout";
+import {
+  formatEstimatedFulfillmentMessage,
+  normalizeEstimatedFulfillmentSnapshot,
+} from "../utils/orderEta";
 
 function AdminPageSkeleton() {
   return (
@@ -342,6 +346,12 @@ export default function AdminOrderDetails() {
   };
 
   const activeAdminHold = getActiveOrderAdminHold(adminHolds);
+  const estimatedFulfillmentSnapshot = normalizeEstimatedFulfillmentSnapshot(
+    order?.estimated_fulfillment_snapshot
+  );
+  const estimatedFulfillmentMessage = formatEstimatedFulfillmentMessage(
+    order?.estimated_fulfillment_snapshot
+  );
 
   useOrderDeadlineAutoProcessing({
     orders: order
@@ -635,6 +645,15 @@ export default function AdminOrderDetails() {
               </p>
             </section>
           )}
+
+          {estimatedFulfillmentMessage ? (
+            <section className="bg-white p-6 rounded-lg border md:col-span-2">
+              <h2 className="font-semibold mb-4 text-blue-900">
+                {estimatedFulfillmentSnapshot?.label || "Estimated timing"}
+              </h2>
+              <p>{estimatedFulfillmentMessage}</p>
+            </section>
+          ) : null}
 
           {order.status === "DISPUTED" && (
             <section className="bg-white p-6 rounded-lg border md:col-span-2">

@@ -69,6 +69,10 @@ import {
   validateDisputeMessage,
   validateReviewComment,
 } from '../utils/accountValidation';
+import {
+  formatEstimatedFulfillmentMessage,
+  normalizeEstimatedFulfillmentSnapshot,
+} from '../utils/orderEta';
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -671,6 +675,12 @@ export default function BuyerOrderDetails() {
   const pickupTimerLabel = formatBusinessDeadline(order.auto_cancel_at, now);
   const pickupUrgencyClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
   const deliveryLabel = isSameUniversityDelivery ? "Campus delivery (doorstep)" : "Delivery";
+  const estimatedFulfillmentSnapshot = normalizeEstimatedFulfillmentSnapshot(
+    order.estimated_fulfillment_snapshot
+  );
+  const estimatedFulfillmentMessage = formatEstimatedFulfillmentMessage(
+    order.estimated_fulfillment_snapshot
+  );
 
   const steps = [
     { label: "Order Placed", active: true, icon: Package, desc: "Your order has been placed." },
@@ -1126,6 +1136,15 @@ export default function BuyerOrderDetails() {
             )}
           </div>
         )}
+
+        {estimatedFulfillmentMessage ? (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <h2 className="font-semibold text-blue-900 mb-1">
+              {estimatedFulfillmentSnapshot?.label || 'Estimated timing'}
+            </h2>
+            <p className="text-sm text-blue-800">{estimatedFulfillmentMessage}</p>
+          </div>
+        ) : null}
 
         {refundInfoBox}
         {infoBox}

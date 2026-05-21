@@ -1,6 +1,10 @@
 import { supabase } from '../supabaseClient';
 import { getCanonicalStateName } from '../utils/nigeriaStates';
-import { getNigeriaGeoZoneForState } from '../utils/nigeriaGeoZones';
+import {
+  buildEstimatedFulfillmentSnapshot,
+  getEstimatedDeliveryRouteType,
+  ORDER_ETA_ROUTE,
+} from '../utils/orderEta';
 
 export const PICKUP_MODE = {
   DISABLED: 'disabled',
@@ -14,9 +18,9 @@ export const DELIVERY_TYPE = {
 };
 
 export const AUTO_DELIVERY_ROUTE = {
-  SAME_STATE: 'same_state',
-  SAME_ZONE: 'same_zone',
-  NATIONAL: 'national',
+  SAME_STATE: ORDER_ETA_ROUTE.SAME_STATE,
+  SAME_ZONE: ORDER_ETA_ROUTE.SAME_ZONE,
+  NATIONAL: ORDER_ETA_ROUTE.NATIONAL,
 };
 
 export const AUTO_DELIVERY_PRICING = {
@@ -59,25 +63,7 @@ const DEFAULT_FULFILLMENT_SETTINGS = {
 };
 
 export function getAutoDeliveryRouteType(originState, destinationState) {
-  const canonicalOrigin = getCanonicalStateName(originState);
-  const canonicalDestination = getCanonicalStateName(destinationState);
-
-  if (!canonicalOrigin || !canonicalDestination) {
-    return null;
-  }
-
-  if (canonicalOrigin === canonicalDestination) {
-    return AUTO_DELIVERY_ROUTE.SAME_STATE;
-  }
-
-  const originZone = getNigeriaGeoZoneForState(canonicalOrigin);
-  const destinationZone = getNigeriaGeoZoneForState(canonicalDestination);
-
-  if (originZone && destinationZone && originZone === destinationZone) {
-    return AUTO_DELIVERY_ROUTE.SAME_ZONE;
-  }
-
-  return AUTO_DELIVERY_ROUTE.NATIONAL;
+  return getEstimatedDeliveryRouteType(originState, destinationState);
 }
 
 export function getAutoCalculatedDeliveryFee(originState, destinationState) {
@@ -416,6 +402,9 @@ export function quoteSellerDeliveryFromContext({
       deliveryType,
       pickupLocations,
       deliveryZoneSnapshot: null,
+      estimatedFulfillment: buildEstimatedFulfillmentSnapshot({
+        deliveryType: DELIVERY_TYPE.PICKUP,
+      }),
       message: null,
     };
   }
@@ -434,6 +423,12 @@ export function quoteSellerDeliveryFromContext({
       fee: DEFAULT_DELIVERY_FEE,
       deliveryType,
       pickupLocations: [],
+      estimatedFulfillment: buildEstimatedFulfillmentSnapshot({
+        deliveryType: DELIVERY_TYPE.DELIVERY,
+        routeType: AUTO_DELIVERY_ROUTE.NATIONAL,
+        shipFromState: null,
+        destinationState: canonicalDestinationState,
+      }),
       message: getFallbackDeliveryMessage(),
       deliveryZoneSnapshot: {
         model: 'platform_auto_state_distance_fallback',
@@ -470,6 +465,12 @@ export function quoteSellerDeliveryFromContext({
     fee,
     deliveryType,
     pickupLocations: [],
+    estimatedFulfillment: buildEstimatedFulfillmentSnapshot({
+      deliveryType: DELIVERY_TYPE.DELIVERY,
+      routeType,
+      shipFromState: fulfillmentSettings.ship_from_state,
+      destinationState: canonicalDestinationState,
+    }),
     message: getAutoDeliveryMessage(routeType),
     deliveryZoneSnapshot: {
       model: 'platform_auto_state_distance',

@@ -38,6 +38,7 @@ import {
   groupCartItemsBySeller,
   toKobo,
 } from '../utils/multiSellerCheckout';
+import { formatEstimatedFulfillmentMessage } from '../utils/orderEta';
 import { getProductPricing } from '../utils/flashSale';
 import { cartService } from '../services/cartService';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
@@ -423,6 +424,14 @@ export default function MultiCheckout() {
           deliveryQuote &&
           !deliveryQuote.available &&
           !pickupQuote?.available;
+        const estimatedFulfillment =
+          selection.deliveryType === DELIVERY_TYPE.DELIVERY
+            ? deliveryQuote?.estimatedFulfillment || null
+            : selection.deliveryType === DELIVERY_TYPE.PICKUP
+              ? pickupQuote?.estimatedFulfillment || null
+              : null;
+        const estimatedFulfillmentMessage =
+          formatEstimatedFulfillmentMessage(estimatedFulfillment);
 
         return {
           ...group,
@@ -437,6 +446,8 @@ export default function MultiCheckout() {
           platformFee,
           selectedPickupLocation,
           hasNoFulfillmentOption,
+          estimatedFulfillment,
+          estimatedFulfillmentMessage,
         };
       }),
     [
@@ -585,6 +596,7 @@ export default function MultiCheckout() {
         group.selection.deliveryType === DELIVERY_TYPE.PICKUP
           ? group.selectedPickupLocation?.label || null
           : null,
+      estimated_fulfillment_snapshot: group.estimatedFulfillment || null,
       delivery_zone_snapshot:
         group.selection.deliveryType === DELIVERY_TYPE.DELIVERY
           ? group.deliveryQuote?.deliveryZoneSnapshot || null
@@ -940,11 +952,18 @@ export default function MultiCheckout() {
                           <Truck size={18} />
                           Campus Delivery
                         </div>
-                          <p className="text-xs mt-1">
-                            {group.deliveryQuote?.available
-                              ? `Campus delivery to ${selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`
-                              : 'Campus delivery arranged by seller.'}
+                        <p className="mt-1 text-xs">
+                          {group.deliveryQuote?.available
+                            ? `Campus delivery to ${selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`
+                            : 'Campus delivery arranged by seller.'}
+                        </p>
+                        {group.deliveryQuote?.estimatedFulfillment ? (
+                          <p className="mt-1 text-xs font-medium">
+                            {formatEstimatedFulfillmentMessage(
+                              group.deliveryQuote.estimatedFulfillment
+                            )}
                           </p>
+                        ) : null}
                       </button>
 
                       <button
@@ -974,6 +993,13 @@ export default function MultiCheckout() {
                             ? `${group.pickupQuote?.pickupLocations?.length || 0} campus meet-up point(s) available`
                             : group.pickupQuote?.message || 'Campus meet-up is unavailable for this seller'}
                         </p>
+                        {group.pickupQuote?.estimatedFulfillment ? (
+                          <p className="mt-1 text-xs font-medium">
+                            {formatEstimatedFulfillmentMessage(
+                              group.pickupQuote.estimatedFulfillment
+                            )}
+                          </p>
+                        ) : null}
                         {group.sellerProfile?.university_name ? (
                           <p className="mt-1 text-xs">
                             For {group.sellerProfile.university_name}
@@ -1001,10 +1027,17 @@ export default function MultiCheckout() {
                           </p>
                         </div>
                       ) : group.deliveryQuote?.available ? (
-                        <p className="text-sm text-green-700">
-                          {group.deliveryQuote.message ||
-                            `Campus delivery to ${selectedDeliveryAddress?.lga || selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm text-green-700">
+                            {group.deliveryQuote.message ||
+                              `Campus delivery to ${selectedDeliveryAddress?.lga || selectedDeliveryAddress?.state}: ${formatNaira(group.deliveryQuote.fee)}`}
+                          </p>
+                          {group.estimatedFulfillmentMessage ? (
+                            <p className="text-sm font-medium text-blue-900">
+                              {group.estimatedFulfillmentMessage}
+                            </p>
+                          ) : null}
+                        </div>
                       ) : (
                         <p className="text-sm text-blue-700">
                           Campus delivery quote pending.
@@ -1077,7 +1110,12 @@ export default function MultiCheckout() {
                               )}
                               {group.selectedPickupLocation.pickup_instructions ? (
                                 <p className="mt-1">
-                                  {group.selectedPickupLocation.pickup_instructions}
+                              {group.selectedPickupLocation.pickup_instructions}
+                                </p>
+                              ) : null}
+                              {group.estimatedFulfillmentMessage ? (
+                                <p className="mt-2 font-medium text-blue-900">
+                                  {group.estimatedFulfillmentMessage}
                                 </p>
                               ) : null}
                             </div>

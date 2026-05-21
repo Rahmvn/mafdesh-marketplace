@@ -267,6 +267,15 @@ function buildOrder(overrides = {}) {
     delivery_address_snapshot: { flat_fee: 2000 },
     pickup_location_snapshot: null,
     selected_pickup_location: '',
+    estimated_fulfillment_snapshot: {
+      label: 'Estimated delivery',
+      min_business_days: 2,
+      max_business_days: 4,
+      message: 'Estimated delivery: 2-4 business days',
+      delivery_type: 'delivery',
+      source: 'platform_defaults_v1',
+      version: 1,
+    },
     ship_deadline: '2099-01-02T00:00:00.000Z',
     auto_cancel_at: '2099-01-03T00:00:00.000Z',
     dispute_deadline: '2099-01-05T00:00:00.000Z',
@@ -363,6 +372,8 @@ describe('BuyerOrderDetails', () => {
     renderBuyerOrderDetails();
 
     expect(await screen.findByText('Campus delivery (doorstep)')).toBeInTheDocument();
+    expect(screen.getByText('Estimated delivery')).toBeInTheDocument();
+    expect(screen.getByText('Estimated delivery: 2-4 business days')).toBeInTheDocument();
   });
 
   it('renders similar products after the buyer action area', async () => {

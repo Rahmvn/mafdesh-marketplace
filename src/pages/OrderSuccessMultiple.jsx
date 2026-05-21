@@ -7,6 +7,7 @@ import { supabase } from '../supabaseClient';
 import { getUserWithRetry } from '../utils/authResilience';
 import { getOrderItemsMap } from '../utils/orderItems';
 import { formatNaira } from '../utils/multiSellerCheckout';
+import { formatEstimatedFulfillmentMessage } from '../utils/orderEta';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 import {
   formatCampusPickupLocationLocality,
@@ -14,14 +15,6 @@ import {
   formatCampusPickupLocationSummary,
   formatCampusPickupLocationZone,
 } from '../services/deliveryService';
-
-function getHandlingCopy(order) {
-  if (order.delivery_type === 'pickup') {
-    return 'Seller prepares this pickup order within 2 business days.';
-  }
-
-  return 'Seller prepares this delivery order within 2 business days.';
-}
 
 function toAmount(value) {
   const amount = Number(value || 0);
@@ -158,6 +151,9 @@ export default function OrderSuccessMultiple() {
               const productsTotal = getProductsTotal(order, items);
               const deliveryFee = toAmount(order.delivery_fee);
               const totalPaid = toAmount(order.total_amount) || productsTotal + deliveryFee;
+              const estimatedFulfillmentMessage = formatEstimatedFulfillmentMessage(
+                order.estimated_fulfillment_snapshot
+              );
 
               return (
                 <div
@@ -224,9 +220,12 @@ export default function OrderSuccessMultiple() {
                     <div className="rounded-xl border border-white bg-white p-3">
                       <div className="flex items-center gap-2 font-medium text-slate-900 mb-1">
                         <MapPin size={16} />
-                        <span>Estimated Handling</span>
+                        <span>Estimated Timing</span>
                       </div>
-                      <p className="text-slate-600">{getHandlingCopy(order)}</p>
+                      <p className="text-slate-600">
+                        {estimatedFulfillmentMessage ||
+                          'Estimated timing will appear here once this order includes a fulfillment snapshot.'}
+                      </p>
                     </div>
                   </div>
 

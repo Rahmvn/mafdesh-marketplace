@@ -42,6 +42,12 @@ describe('deliveryService', () => {
 
     expect(result.available).toBe(true);
     expect(result.fee).toBe(2500);
+    expect(result.estimatedFulfillment).toMatchObject({
+      label: 'Estimated delivery',
+      min_business_days: 2,
+      max_business_days: 4,
+      route_type: AUTO_DELIVERY_ROUTE.SAME_ZONE,
+    });
     expect(result.deliveryZoneSnapshot).toMatchObject({
       model: 'platform_auto_state_distance',
       seller_id: 'seller-1',
@@ -82,6 +88,12 @@ describe('deliveryService', () => {
 
     expect(result.available).toBe(true);
     expect(result.fee).toBe(4000);
+    expect(result.estimatedFulfillment).toMatchObject({
+      label: 'Estimated delivery',
+      min_business_days: 3,
+      max_business_days: 7,
+      route_type: AUTO_DELIVERY_ROUTE.NATIONAL,
+    });
     expect(result.deliveryZoneSnapshot).toMatchObject({
       model: 'platform_auto_state_distance_fallback',
       seller_id: 'seller-1',
@@ -134,6 +146,11 @@ describe('deliveryService', () => {
     expect(result.available).toBe(true);
     expect(result.fee).toBe(0);
     expect(result.pickupLocations).toHaveLength(1);
+    expect(result.estimatedFulfillment).toMatchObject({
+      label: 'Estimated ready time',
+      min_business_days: 1,
+      max_business_days: 2,
+    });
     expect(result.pickupLocations[0]).toMatchObject({
       id: 'pickup-1',
       label: 'Ikeja Hub',

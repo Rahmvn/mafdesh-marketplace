@@ -46,6 +46,10 @@ import {
 } from "../services/orderDeadlineService";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { getStoredUser, setStoredUser } from "../utils/storage";
+import {
+  formatEstimatedFulfillmentMessage,
+  normalizeEstimatedFulfillmentSnapshot,
+} from "../utils/orderEta";
 
 function normalizeDisplayText(value) {
   return String(value || "").trim().toLowerCase();
@@ -474,6 +478,12 @@ export default function SellerOrderDetails() {
   const effectiveShipDueLabel = formatLagosDeadline(effectiveShipDeadline);
   const pickupTimerLabel = formatBusinessDeadline(order.auto_cancel_at, now);
   const pickupUrgencyClass = getBusinessUrgencyClass(order.auto_cancel_at, now);
+  const estimatedFulfillmentSnapshot = normalizeEstimatedFulfillmentSnapshot(
+    order.estimated_fulfillment_snapshot
+  );
+  const estimatedFulfillmentMessage = formatEstimatedFulfillmentMessage(
+    order.estimated_fulfillment_snapshot
+  );
 
   const { baseEarnings, netEarnings, refundInfo } = getSellerOrderPayout(order, items);
 
@@ -786,6 +796,15 @@ export default function SellerOrderDetails() {
             </div>
           </div>
         </div>
+
+        {estimatedFulfillmentMessage ? (
+          <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>
+            <h2 className="font-semibold mb-2">
+              {estimatedFulfillmentSnapshot?.label || "Estimated timing"}
+            </h2>
+            <p className={theme.mutedText}>{estimatedFulfillmentMessage}</p>
+          </div>
+        ) : null}
 
         {/* Payment Summary */}
         <div className={`rounded-xl p-6 mb-6 ${theme.panel}`}>

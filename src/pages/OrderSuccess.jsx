@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { CheckCircle } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/FooterSlim';
 import { MarketplaceDetailSkeleton } from '../components/MarketplaceLoading';
-import { CheckCircle } from 'lucide-react';
-import { snapshotToProduct } from '../utils/productSnapshots';
+import { supabase } from '../supabaseClient';
 import { getBuyerOrderAmounts } from '../utils/orderAmounts';
+import { formatNaira } from '../utils/multiSellerCheckout';
+import { formatEstimatedFulfillmentMessage } from '../utils/orderEta';
+import { snapshotToProduct } from '../utils/productSnapshots';
 
 export default function OrderSuccess() {
   const { id } = useParams();
@@ -20,25 +22,24 @@ export default function OrderSuccess() {
       .eq('id', id)
       .maybeSingle();
 
-    if (!error && data) {
-      setOrder(data);
-    } else {
-      setOrder(null);
-    }
+    setOrder(!error && data ? data : null);
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
-    const loadInitialOrder = async () => {
-      await loadOrder();
-    };
-
-    loadInitialOrder();
+    loadOrder();
   }, [loadOrder]);
+
   if (loading) return <MarketplaceDetailSkeleton />;
-  if (!order) return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
+  if (!order) {
+    return <div className="min-h-screen flex items-center justify-center">Order not found</div>;
+  }
+
   const orderProduct = snapshotToProduct(order.product_snapshot, order.products || null);
   const orderAmounts = getBuyerOrderAmounts(order);
+  const estimatedFulfillmentMessage = formatEstimatedFulfillmentMessage(
+    order.estimated_fulfillment_snapshot
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-blue-50">
@@ -52,10 +53,13 @@ export default function OrderSuccess() {
           <div className="bg-blue-50 p-4 rounded-lg text-left mb-6">
             <p><strong>Order ID:</strong> {order.id}</p>
             <p><strong>Product:</strong> {orderProduct?.name || 'Product'}</p>
-            <p><strong>Subtotal:</strong> ₦{orderAmounts.subtotal.toLocaleString()}</p>
-            <p><strong>Delivery:</strong> ₦{orderAmounts.deliveryFee.toLocaleString()}</p>
-            <p><strong>Total:</strong> ₦{orderAmounts.total.toLocaleString()}</p>
+            <p><strong>Subtotal:</strong> {formatNaira(orderAmounts.subtotal)}</p>
+            <p><strong>Delivery:</strong> {formatNaira(orderAmounts.deliveryFee)}</p>
+            <p><strong>Total:</strong> {formatNaira(orderAmounts.total)}</p>
             <p><strong>Status:</strong> {order.status}</p>
+            {estimatedFulfillmentMessage ? (
+              <p><strong>Estimated timing:</strong> {estimatedFulfillmentMessage}</p>
+            ) : null}
           </div>
 
           <div className="flex gap-4 justify-center">
@@ -72,4 +76,3 @@ export default function OrderSuccess() {
     </div>
   );
 }
-
