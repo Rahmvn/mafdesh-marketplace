@@ -82,6 +82,10 @@ function isGuestCartItem(item) {
   return Boolean(item?.isGuest) || !item?.cart_id;
 }
 
+function normalizeIdentifierList(values = []) {
+  return [...new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
 async function loadCartItemsWithFallback(cartId) {
   const { data, error } = await supabase
     .from('cart_items')
@@ -547,6 +551,72 @@ export const cartService = {
       clearCachedCart();
     } else {
       writeCachedCartItems(nextCachedItems);
+    }
+    window.dispatchEvent(new Event('cartUpdated'));
+  },
+
+  async clearPurchasedItems({ cartItemIds = [], productIds = [] } = {}) {
+    const normalizedCartItemIds = normalizeIdentifierList(cartItemIds);
+    const normalizedProductIds = normalizeIdentifierList(productIds);
+
+    if (!normalizedCartItemIds.length && !normalizedProductIds.length) {
+      return;
+    }
+
+    const userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      const nextCachedItems = readCachedCartItems().filter((item) => {
+        const itemId = String(item?.id || '').trim();
+        const productId = String(item?.product_id || '').trim();
+
+        return (
+          !normalizedCartItemIds.includes(itemId) &&
+          !normalizedProductIds.includes(productId)
+        );
+      });
+
+      if (nextCachedItems.length === 0) {
+        clearCachedCart();
+      } else {
+        writeCachedCartItems(nextCachedItems);
+      }
+
+      window.dispatchEvent(new Event('cartUpdated'));
+      return;
+    }
+
+    const cart = await ensureCart(userId);
+
+    if (normalizedCartItemIds.length > 0) {
+      const { error: deleteByItemIdError } = await supabase
+        .from('cart_items')
+        .delete()
+        .eq('cart_id', cart.id)
+        .in('id', normalizedCartItemIds);
+
+      if (deleteByItemIdError) {
+        throw deleteByItemIdError;
+      }
+    }
+
+    if (normalizedProductIds.length > 0) {
+      const { error: deleteByProductIdError } = await supabase
+        .from('cart_items')
+        .delete()
+        .eq('cart_id', cart.id)
+        .in('product_id', normalizedProductIds);
+
+      if (deleteByProductIdError) {
+        throw deleteByProductIdError;
+      }
+    }
+
+    const items = await loadCartItemsWithFallback(cart.id);
+    if (items.length === 0) {
+      clearCachedCart();
+    } else {
+      writeCachedCartItems(items);
     }
     window.dispatchEvent(new Event('cartUpdated'));
   },

@@ -105,4 +105,40 @@ describe('cartService guest cart', () => {
     expect(readCachedCartItems()).toEqual([]);
     expect(readCachedCartCount()).toBe(0);
   });
+
+  it('clears purchased guest cart items by item id and product id', async () => {
+    await cartService.addToCart(
+      {
+        id: 'product-1',
+        name: 'Laptop Stand',
+        price: 25000,
+        stock_quantity: 5,
+        seller_id: 'seller-1',
+        images: [],
+      },
+      1
+    );
+
+    await cartService.addToCart(
+      {
+        id: 'product-2',
+        name: 'Desk Lamp',
+        price: 12000,
+        stock_quantity: 5,
+        seller_id: 'seller-2',
+        images: [],
+      },
+      1
+    );
+
+    const [firstItem, secondItem] = readCachedCartItems();
+
+    await cartService.clearPurchasedItems({
+      cartItemIds: [firstItem.id],
+      productIds: [secondItem.product_id],
+    });
+
+    expect(readCachedCartItems()).toEqual([]);
+    expect(readCachedCartCount()).toBe(0);
+  });
 });

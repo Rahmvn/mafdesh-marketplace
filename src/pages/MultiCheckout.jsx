@@ -39,7 +39,7 @@ import {
   toKobo,
 } from '../utils/multiSellerCheckout';
 import { getProductPricing } from '../utils/flashSale';
-import { clearCachedCart } from '../utils/cartStorage';
+import { cartService } from '../services/cartService';
 import { fetchPublicSellerDirectory } from '../services/publicSellerService';
 import {
   formatSavedAddressForOrder,
@@ -675,8 +675,14 @@ export default function MultiCheckout() {
         return;
       }
 
-      clearCachedCart();
-      window.dispatchEvent(new Event('cartUpdated'));
+      try {
+        await cartService.clearPurchasedItems({
+          cartItemIds: cartItems.map((item) => item.id),
+          productIds: cartItems.map((item) => item.product_id),
+        });
+      } catch (cartCleanupError) {
+        console.error('Failed to clear purchased cart items after checkout:', cartCleanupError);
+      }
 
       const hasDeliveryOrders = groups.some(
         (group) => group.selection.deliveryType === DELIVERY_TYPE.DELIVERY

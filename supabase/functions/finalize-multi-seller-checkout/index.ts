@@ -70,6 +70,10 @@ type CheckoutProductRecord = {
   deleted_at: string | null
 }
 
+function normalizeIdList(values: unknown[], maxLength = 120) {
+  return [...new Set((values || []).map((value) => normalizeSingleLineText(value, maxLength)).filter(Boolean))]
+}
+
 function getPaystackSecretKey() {
   const candidateNames = ['PAYSTACK_SECRET_KEY', 'PAYSTACK_SECRET']
 
@@ -272,6 +276,106 @@ async function validateCheckoutOrdersPayload(
   }
 }
 
+function getOrderedProductIds(orders: CheckoutOrderPayload[]) {
+  return normalizeIdList(
+    orders.flatMap((order) => {
+      const items = Array.isArray(order.items) ? (order.items as CheckoutOrderItemPayload[]) : []
+      return items.map((item) => item?.product_id)
+    }),
+    80
+  )
+}
+
+async function removePurchasedCartItems(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  {
+    userId,
+    cartId,
+    cartItemIds,
+    productIds,
+  }: {
+    userId: string
+    cartId: string
+    cartItemIds: string[]
+    productIds: string[]
+  }
+) {
+  const normalizedCartItemIds = normalizeIdList(cartItemIds, 80)
+  const normalizedProductIds = normalizeIdList(productIds, 80)
+
+  if (!normalizedCartItemIds.length && !normalizedProductIds.length) {
+    return
+  }
+
+  let cartIds: string[] = []
+
+  if (cartId) {
+    const { data: cartRecord, error: cartLookupError } = await supabaseAdmin
+      .from('carts')
+      .select('id')
+      .eq('id', cartId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (cartLookupError) {
+      console.error('[finalize-multi-seller-checkout] cart lookup failed:', cartLookupError)
+      return
+    }
+
+    if (cartRecord?.id) {
+      cartIds = [cartRecord.id]
+    }
+  }
+
+  if (cartIds.length === 0) {
+    const { data: userCarts, error: userCartsError } = await supabaseAdmin
+      .from('carts')
+      .select('id')
+      .eq('user_id', userId)
+
+    if (userCartsError) {
+      console.error('[finalize-multi-seller-checkout] user cart lookup failed:', userCartsError)
+      return
+    }
+
+    cartIds = (userCarts || []).map((cart) => String(cart.id || '')).filter(Boolean)
+  }
+
+  if (cartIds.length === 0) {
+    return
+  }
+
+  if (normalizedCartItemIds.length > 0) {
+    const { error: deleteByItemIdError } = await supabaseAdmin
+      .from('cart_items')
+      .delete()
+      .in('cart_id', cartIds)
+      .in('id', normalizedCartItemIds)
+
+    if (deleteByItemIdError) {
+      console.error(
+        '[finalize-multi-seller-checkout] cart item deletion by item id failed:',
+        deleteByItemIdError
+      )
+    }
+  }
+
+  if (normalizedProductIds.length > 0) {
+    const { error: deleteByProductIdError } = await supabaseAdmin
+      .from('cart_items')
+      .delete()
+      .in('cart_id', cartIds)
+      .in('product_id', normalizedProductIds)
+
+    if (deleteByProductIdError) {
+      console.error(
+        '[finalize-multi-seller-checkout] cart item deletion by product id failed:',
+        deleteByProductIdError
+      )
+    }
+  }
+}
+
 async function assertSellersAreActive(
   supabaseAdmin: ReturnType<typeof createClient>,
   sellerIds: string[]
@@ -435,6 +539,7 @@ serve(async (req) => {
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
+    const orderedProductIds = getOrderedProductIds(orders as CheckoutOrderPayload[])
     const sellerIds = orders
       .map((order: Record<string, unknown>) => String(order?.seller_id || '').trim())
       .filter(Boolean)
@@ -453,6 +558,13 @@ serve(async (req) => {
     }
 
     if (existingOrders && existingOrders.length > 0) {
+      await removePurchasedCartItems(supabaseAdmin, {
+        userId: user.id,
+        cartId,
+        cartItemIds,
+        productIds: orderedProductIds,
+      })
+
       return jsonResponse({
         success: true,
         alreadyProcessed: true,
@@ -565,22 +677,12 @@ serve(async (req) => {
       ? orderIds.map((value) => String(value))
       : []
 
-    if (cartId && cartItemIds.length > 0) {
-      const { data: cartRecord } = await supabaseAdmin
-        .from('carts')
-        .select('id')
-        .eq('id', cartId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (cartRecord) {
-        await supabaseAdmin
-          .from('cart_items')
-          .delete()
-          .eq('cart_id', cartId)
-          .in('id', cartItemIds)
-      }
-    }
+    await removePurchasedCartItems(supabaseAdmin, {
+      userId: user.id,
+      cartId,
+      cartItemIds,
+      productIds: orderedProductIds,
+    })
 
     return jsonResponse({
       success: true,

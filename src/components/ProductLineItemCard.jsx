@@ -26,12 +26,12 @@ export default function ProductLineItemCard({
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="flex flex-col gap-4 sm:flex-row">
+      <div className="flex items-start gap-3 sm:gap-4">
         <button
           type="button"
           onClick={onImageClick}
           disabled={imageButtonDisabled}
-          className="h-24 w-full max-w-[7rem] shrink-0 self-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 transition hover:border-orange-300 disabled:cursor-default sm:self-start"
+          className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 transition hover:border-orange-300 disabled:cursor-default"
           aria-label={imageAriaLabel || title}
         >
           <SafeImage
@@ -42,7 +42,7 @@ export default function ProductLineItemCard({
           />
         </button>
 
-        <div className="min-w-0 flex-1 text-center sm:text-left">
+        <div className="min-w-0 flex-1 text-left">
           <h3 className="text-base font-semibold text-blue-900">{title}</h3>
           <div className="mt-1 space-y-1">
             {metaLines.map((line, index) => (
@@ -56,7 +56,7 @@ export default function ProductLineItemCard({
         </div>
 
         {aside ? (
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 sm:min-w-[110px] sm:flex-col sm:items-end sm:justify-start sm:border-t-0 sm:pt-0">
+          <div className="shrink-0 self-start">
             {aside}
           </div>
         ) : null}

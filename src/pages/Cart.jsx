@@ -7,7 +7,7 @@ import Footer from "../components/FooterSlim";
 import ProductCardGrid from "../components/ProductCardGrid";
 import ProductLineItemCard from "../components/ProductLineItemCard";
 import { supabase } from "../supabaseClient";
-import { getSessionWithRetry } from '../utils/authResilience';
+import { getSessionWithRetry } from "../utils/authResilience";
 import {
   showGlobalConfirm,
   showGlobalError,
@@ -23,9 +23,10 @@ import {
 } from "../services/publicSellerService";
 import { pickCartRecommendationProducts } from "../utils/cartRecommendations";
 import { scoreRecommendationProducts } from "../utils/recommendationScoring";
+import { formatNaira } from "../utils/multiSellerCheckout";
 
 function formatPrice(value) {
-  return `₦${Number(value || 0).toLocaleString()}`;
+  return formatNaira(value);
 }
 
 function isMissingDeletedAtColumn(error) {
@@ -326,7 +327,7 @@ export default function Cart() {
       const issueMessages = stockIssues
         .map(
           (issue) =>
-            `â€¢ ${issue.name}: only ${issue.available} left, you have ${issue.requested}`
+            `- ${issue.name}: only ${issue.available} left, you have ${issue.requested}`
         )
         .join("\n");
       showGlobalWarning(
@@ -450,7 +451,7 @@ export default function Cart() {
                           `Quantity in cart: ${quantity}`,
                           quantity >= maxStock ? `Max ${maxStock} available` : null,
                         ].filter(Boolean)}
-                        price={`â‚¦${Number(pricing.displayPrice).toLocaleString()}`}
+                        price={formatNaira(pricing.displayPrice)}
                         footer={
                           <div className="flex items-center justify-center gap-3 sm:justify-start">
                             {quantity === 1 ? (
@@ -497,83 +498,83 @@ export default function Cart() {
                         }
                       />
                       {false ? (
-                    <div
-                      key={item.id}
-                      className="bg-white p-4 rounded-xl border border-blue-100 transition-shadow hover:shadow-md"
-                    >
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        <button
-                          type="button"
-                          onClick={() => openProductDetails(productId)}
-                          disabled={!productId}
-                          className="w-24 h-24 overflow-hidden rounded border bg-gray-50 transition hover:border-orange-300 disabled:cursor-default"
-                          aria-label={
-                            productId
-                              ? `View details for ${item.products?.name || "this product"}`
-                              : "Product details unavailable"
-                          }
+                        <div
+                          key={item.id}
+                          className="bg-white p-4 rounded-xl border border-blue-100 transition-shadow hover:shadow-md"
                         >
-                          <img
-                            src={item.products?.images?.[0] || "/placeholder.svg"}
-                            alt={item.products?.name}
-                            className="h-full w-full object-contain"
-                          />
-                        </button>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-blue-900">{item.products?.name}</p>
-                          <p className="text-orange-600 font-bold mt-1">
-                          ₦{Number(pricing.displayPrice).toLocaleString()}
-                          </p>
-
-                          <div className="flex items-center gap-3 mt-3">
-                            {quantity === 1 ? (
-                              <button
-                                onClick={() => removeItem(item)}
-                                className="p-1 text-red-500 hover:text-red-700 transition"
-                                title="Remove item"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => updateQuantity(item, quantity - 1)}
-                                disabled={isSyncing}
-                                className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50"
-                              >
-                                <Minus size={16} />
-                              </button>
-                            )}
-
-                            <span className="font-medium w-8 text-center">{quantity}</span>
-
+                          <div className="flex flex-col sm:flex-row gap-4">
                             <button
-                              onClick={() => updateQuantity(item, quantity + 1)}
-                              disabled={quantity >= maxStock || isSyncing}
-                              className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50"
+                              type="button"
+                              onClick={() => openProductDetails(productId)}
+                              disabled={!productId}
+                              className="w-24 h-24 overflow-hidden rounded border bg-gray-50 transition hover:border-orange-300 disabled:cursor-default"
+                              aria-label={
+                                productId
+                                  ? `View details for ${item.products?.name || "this product"}`
+                                  : "Product details unavailable"
+                              }
                             >
-                              <Plus size={16} />
+                              <img
+                                src={item.products?.images?.[0] || "/placeholder.svg"}
+                                alt={item.products?.name}
+                                className="h-full w-full object-contain"
+                              />
                             </button>
 
-                            {isSyncing && (
-                              <div className="w-4 h-4 border-2 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
-                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-blue-900">{item.products?.name}</p>
+                              <p className="text-orange-600 font-bold mt-1">
+                                {formatNaira(pricing.displayPrice)}
+                              </p>
+
+                              <div className="flex items-center gap-3 mt-3">
+                                {quantity === 1 ? (
+                                  <button
+                                    onClick={() => removeItem(item)}
+                                    className="p-1 text-red-500 hover:text-red-700 transition"
+                                    title="Remove item"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => updateQuantity(item, quantity - 1)}
+                                    disabled={isSyncing}
+                                    className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50"
+                                  >
+                                    <Minus size={16} />
+                                  </button>
+                                )}
+
+                                <span className="font-medium w-8 text-center">{quantity}</span>
+
+                                <button
+                                  onClick={() => updateQuantity(item, quantity + 1)}
+                                  disabled={quantity >= maxStock || isSyncing}
+                                  className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 disabled:opacity-50"
+                                >
+                                  <Plus size={16} />
+                                </button>
+
+                                {isSyncing && (
+                                  <div className="w-4 h-4 border-2 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
+                                )}
+                              </div>
+
+                              {quantity >= maxStock && (
+                                <p className="text-xs text-red-500 mt-1">Max {maxStock} available</p>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={() => removeItem(item)}
+                              className="self-start sm:self-center text-gray-400 hover:text-red-500 transition"
+                              title="Remove"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           </div>
-
-                          {quantity >= maxStock && (
-                            <p className="text-xs text-red-500 mt-1">Max {maxStock} available</p>
-                          )}
                         </div>
-
-                        <button
-                          onClick={() => removeItem(item)}
-                          className="self-start sm:self-center text-gray-400 hover:text-red-500 transition"
-                          title="Remove"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </div>
                       ) : null}
                     </React.Fragment>
                   );
@@ -585,7 +586,7 @@ export default function Cart() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-                    <span>₦{getTotal().toLocaleString()}</span>
+                    <span>{formatNaira(getTotal())}</span>
                   </div>
                   <div className="flex justify-between text-gray-500">
                     <span>Delivery</span>
@@ -594,7 +595,7 @@ export default function Cart() {
                   <div className="border-t pt-3 mt-3">
                     <div className="flex justify-between font-bold text-blue-900">
                       <span>Total</span>
-                      <span>₦{getTotal().toLocaleString()}</span>
+                      <span>{formatNaira(getTotal())}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">*Excludes delivery fee</p>
                   </div>
@@ -608,14 +609,10 @@ export default function Cart() {
                 >
                   {checkoutButtonLabel}
                 </button>
-
-               
               </div>
             </div>
 
             <section>
-       
-
               {recommendationLoading ? (
                 <ProductCardGrid>
                   {Array.from({ length: 4 }).map((_, index) => (

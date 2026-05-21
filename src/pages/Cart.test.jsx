@@ -168,6 +168,19 @@ describe('Cart', () => {
     });
   });
 
+  it('renders cart prices with the naira symbol', async () => {
+    renderCart();
+    deferredGetCart.resolve({
+      items: JSON.parse(localStorage.getItem('cached_cart_items')),
+      removedItems: [],
+      isAuthenticated: false,
+    });
+
+    expect(await screen.findAllByText('₦25,000')).toHaveLength(3);
+    expect(screen.getByText('Subtotal').nextElementSibling).toHaveTextContent('₦25,000');
+    expect(screen.getByText('Total').nextElementSibling).toHaveTextContent('₦25,000');
+  });
+
   it('renders standardized recommendation cards with rating details', async () => {
     mockPickRecommendations.mockReturnValue([
       {
