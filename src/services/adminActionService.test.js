@@ -140,4 +140,11 @@ describe('adminActionService', () => {
       },
     });
   });
+
+  it('does not expose an unsupported hard-delete product admin action', async () => {
+    const { ADMIN_ACTION_TYPES, GUARDED_ADMIN_ACTION_TYPES } = await import('./adminActionService');
+
+    expect(ADMIN_ACTION_TYPES.DELETE_PRODUCT).toBeUndefined();
+    expect(GUARDED_ADMIN_ACTION_TYPES.has('DELETE_PRODUCT')).toBe(false);
+  });
 });

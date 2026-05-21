@@ -118,7 +118,7 @@ describe('Payment', () => {
 
     renderPaymentRoute();
 
-    fireEvent.click(await screen.findByRole('button', { name: /pay/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm demo payment/i }));
 
     await waitFor(() => {
       expect(mockShowGlobalWarning).toHaveBeenCalledWith(
@@ -139,7 +139,7 @@ describe('Payment', () => {
 
     renderPaymentRoute();
 
-    fireEvent.click(await screen.findByRole('button', { name: /pay/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm demo payment/i }));
 
     expect(await screen.findByText('Login')).toBeInTheDocument();
     expect(mockConfirmOrder).not.toHaveBeenCalled();
@@ -161,9 +161,19 @@ describe('Payment', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /pay/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm demo payment/i }));
 
     expect(await screen.findByText('Order success')).toBeInTheDocument();
     expect(mockShowGlobalError).not.toHaveBeenCalled();
+  });
+
+  it('renders demo payment copy with the naira symbol', async () => {
+    renderPaymentRoute();
+
+    expect(await screen.findByText('Complete Demo Payment')).toBeInTheDocument();
+    expect(screen.getByText(/Demo mode only/i)).toBeInTheDocument();
+    expect(screen.getByText('₦12,000')).toBeInTheDocument();
+    expect(screen.getByText('₦1,500')).toBeInTheDocument();
+    expect(screen.getByText('₦13,500')).toBeInTheDocument();
   });
 });

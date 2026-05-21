@@ -1161,15 +1161,15 @@ export default function MultiCheckout() {
               {launchingPayment || finalizingPayment ? (
                 <span className="inline-flex items-center gap-2">
                   <LoaderCircle size={18} className="animate-spin" />
-                  {finalizingPayment ? 'Finalizing your orders...' : 'Processing payment...'}
+                  {finalizingPayment ? 'Confirming demo payment...' : 'Preparing demo payment...'}
                 </span>
               ) : (
-                `Pay ${formatNaira(checkoutSummary.grandTotal)}`
+                `Confirm Demo Payment ${formatNaira(checkoutSummary.grandTotal)}`
               )}
             </button>
 
             <p className="text-xs text-blue-600 mt-4 text-center">
-              Orders confirm after payment.
+              Demo mode only. Orders confirm immediately after demo payment.
             </p>
           </aside>
         </div>

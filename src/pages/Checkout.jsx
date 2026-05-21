@@ -535,10 +535,10 @@ export default function Checkout() {
               disabled={isSubmitting || !hasAvailableMethod}
               className="mt-6 w-full rounded-lg bg-orange-600 py-3 font-semibold text-white transition hover:bg-orange-700 disabled:opacity-50"
             >
-              {isSubmitting ? 'Preparing...' : 'Continue to Payment'}
+              {isSubmitting ? 'Preparing...' : 'Continue to Demo Payment'}
             </button>
             <p className="mt-4 text-center text-xs text-blue-600">
-              Order confirms after payment.
+              For this demo, you will confirm a demo payment on the next screen.
             </p>
           </div>
         </div>

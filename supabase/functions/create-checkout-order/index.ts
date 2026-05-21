@@ -79,6 +79,29 @@ function sanitizeOptionalSnapshot(value: unknown) {
   return sanitizeSnapshotValue(value);
 }
 
+async function assertSellerIsActive(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  sellerId: string
+) {
+  const { data: sellerRecord, error } = await supabaseAdmin
+    .from('users')
+    .select('id, status, account_status')
+    .eq('id', sellerId)
+    .single();
+
+  if (error || !sellerRecord) {
+    throw new Error('Seller not found.');
+  }
+
+  const sellerStatus = String(
+    sellerRecord.account_status || sellerRecord.status || 'active'
+  ).toLowerCase();
+
+  if (sellerStatus !== 'active') {
+    throw new Error('This seller account is not active for marketplace orders.');
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -221,16 +244,26 @@ serve(async (req) => {
       });
     }
 
-    const { error: stockError } = await supabaseAdmin.rpc('reserve_stock_for_order', {
-      p_items: normalizedItems.map((item) => ({
-        product_id: normalizeUuidLike((item as Record<string, unknown>).product_id),
-        quantity: Number((item as Record<string, unknown>).quantity || 1),
-      })),
-    });
-
-    if (stockError) {
+    try {
+      await assertSellerIsActive(supabaseAdmin, String(product.seller_id || ''));
+    } catch (sellerError) {
       return new Response(
-        JSON.stringify({ error: stockError.message || 'One or more items are out of stock.' }),
+        JSON.stringify({
+          error:
+            sellerError instanceof Error
+              ? sellerError.message
+              : 'This seller account is not active for marketplace orders.',
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    if (Number(product.stock_quantity ?? 0) < itemQuantity) {
+      return new Response(
+        JSON.stringify({ error: 'One or more items are out of stock.' }),
         {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

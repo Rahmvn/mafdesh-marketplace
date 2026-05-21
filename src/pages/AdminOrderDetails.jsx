@@ -31,6 +31,7 @@ import {
   getUrgencyClass,
 } from "../utils/timeUtils";
 import { useOrderDeadlineAutoProcessing } from "../services/orderDeadlineService";
+import { formatNaira } from "../utils/multiSellerCheckout";
 
 function AdminPageSkeleton() {
   return (
@@ -83,7 +84,7 @@ const RESOLUTION_OPTIONS = [
 ];
 
 function formatCurrency(value) {
-  return `N${Number(value || 0).toLocaleString()}`;
+  return formatNaira(value);
 }
 
 function getResolutionLabel(resolutionType) {

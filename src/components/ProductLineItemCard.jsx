@@ -16,6 +16,10 @@ export default function ProductLineItemCard({
   className = '',
 }) {
   const imageButtonDisabled = imageDisabled || !onImageClick;
+  const normalizedPrice =
+    typeof price === 'string'
+      ? price.replaceAll('â‚¦', '₦').replaceAll('Ã¢â€šÂ¦', '₦')
+      : price;
 
   return (
     <div
@@ -51,7 +55,9 @@ export default function ProductLineItemCard({
               </p>
             ))}
           </div>
-          {price ? <p className="mt-2 text-lg font-bold text-orange-600">{price}</p> : null}
+          {normalizedPrice ? (
+            <p className="mt-2 text-lg font-bold text-orange-600">{normalizedPrice}</p>
+          ) : null}
           {footer ? <div className="mt-3">{footer}</div> : null}
         </div>
 

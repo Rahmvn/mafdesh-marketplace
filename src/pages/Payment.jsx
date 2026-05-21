@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { getSessionWithRetry } from '../utils/authResilience';
+import { getSessionWithRetry } from "../utils/authResilience";
 import { showGlobalError, showGlobalWarning } from "../hooks/modalService";
 import { confirmOrder } from "../services/orderConfirmationService";
 import Footer from "../components/FooterSlim";
@@ -10,10 +10,7 @@ import {
   RetryablePageError,
 } from "../components/PageFeedback";
 import { getBuyerOrderAmounts } from "../utils/orderAmounts";
-
-function formatPrice(value) {
-  return `₦${Number(value || 0).toLocaleString()}`;
-}
+import { formatNaira } from "../utils/multiSellerCheckout";
 
 function createMockPaymentReference(orderId) {
   const compactOrderId = String(orderId || "")
@@ -50,7 +47,7 @@ export default function Payment() {
         setOrder(data);
       }
     } catch (error) {
-      console.error('Payment load error:', error);
+      console.error("Payment load error:", error);
       setOrder(null);
       setLoadFailed(true);
     } finally {
@@ -151,25 +148,28 @@ export default function Payment() {
     <div className="min-h-screen flex flex-col bg-blue-50">
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md rounded-xl border border-blue-100 bg-white p-8 shadow-sm">
-          <h1 className="mb-6 text-xl font-bold text-blue-900">Complete Payment</h1>
+          <h1 className="mb-2 text-xl font-bold text-blue-900">Complete Demo Payment</h1>
+          <p className="mb-6 text-sm text-blue-700">
+            Demo mode only. No live charge is made during this step.
+          </p>
 
           <div className="mb-6 space-y-2">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span>{formatPrice(orderAmounts.subtotal)}</span>
+              <span>{formatNaira(orderAmounts.subtotal)}</span>
             </div>
             <div className="flex justify-between">
               <span>Delivery</span>
-              <span>{formatPrice(orderAmounts.deliveryFee)}</span>
+              <span>{formatNaira(orderAmounts.deliveryFee)}</span>
             </div>
             <div className="flex justify-between border-t pt-2 font-semibold">
               <span>Total</span>
-              <span>{formatPrice(orderAmounts.total)}</span>
+              <span>{formatNaira(orderAmounts.total)}</span>
             </div>
           </div>
 
           <p className="mb-6 text-sm text-blue-700">
-            Review your order total and continue to complete payment securely.
+            Review your order total and confirm the demo payment to move this order into escrow.
           </p>
 
           <button
@@ -177,7 +177,9 @@ export default function Payment() {
             disabled={processing}
             className="w-full rounded-lg bg-orange-600 py-3 text-white hover:bg-orange-700 disabled:opacity-50"
           >
-            {processing ? "Processing..." : `Pay ${formatPrice(orderAmounts.total)}`}
+            {processing
+              ? "Confirming demo payment..."
+              : `Confirm Demo Payment ${formatNaira(orderAmounts.total)}`}
           </button>
         </div>
       </main>

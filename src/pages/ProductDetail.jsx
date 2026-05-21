@@ -495,6 +495,7 @@ export default function ProductDetail() {
   }, [loadProduct]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setActiveImage(0);
   }, [id]);
 

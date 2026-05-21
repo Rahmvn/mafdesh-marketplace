@@ -26,6 +26,7 @@ import {
   PRODUCT_CORE_FIELDS,
   PRODUCT_EDIT_REQUEST_STATUS,
 } from '../services/productEditService';
+import { productService } from '../services/productService';
 import { performLogout } from '../utils/logout';
 
 const PRODUCT_FIELD_LABELS = {
@@ -79,7 +80,7 @@ function getSellerDisplay(product) {
 function getProductLifecycle(product) {
   if (product.deleted_at) {
     return {
-      label: 'ARCHIVED',
+      label: 'ARCHIVED / HIDDEN',
       className: 'bg-gray-200 text-gray-700',
       Icon: Trash2,
     };
@@ -357,7 +358,7 @@ export default function AdminProducts() {
     });
   };
 
-  const openDeleteModal = async (product) => {
+  const openArchiveModal = async (product) => {
     let activeOrderCount = 0;
 
     try {
@@ -370,15 +371,19 @@ export default function AdminProducts() {
     setPendingAction({
       kind: 'archive',
       product,
-      title: 'Archive Product',
-      description: `This will remove "${product.name}" from storefronts while preserving the record for audit and recovery.`,
-      actionLabel: 'Archive Product',
+      title: 'Archive Listing',
+      description: `This hides "${product.name}" from storefronts without deleting the product record, order history, or audit trail.`,
+      actionLabel: 'Archive Listing',
       confirmTone: 'danger',
       confirmationKeyword: 'ARCHIVE',
+      confirmationLabel: 'Type ARCHIVE to hide this listing',
+      confirmationPlaceholder: 'Enter ARCHIVE',
+      reasonLabel: 'Archive reason',
+      reasonPlaceholder: 'Explain why this listing should be hidden from the marketplace...',
       riskNotice:
         activeOrderCount > 0
-          ? `${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'} will be frozen for admin review. The listing is hidden immediately.`
-          : 'Product removal is now a soft-delete action. The listing is hidden from buyers and sellers, but the record stays recoverable for accountability.',
+          ? `${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'} will be placed on admin hold for review. The listing is hidden immediately from new buyers.`
+          : 'This is a soft archive only. The listing is hidden from buyers and sellers, but the product record stays recoverable for accountability.',
     });
   };
 
@@ -386,10 +391,12 @@ export default function AdminProducts() {
     setPendingAction({
       kind: 'restore',
       product,
-      title: 'Restore Product',
-      description: `This will restore "${product.name}" and make the record active again.`,
-      actionLabel: 'Restore Product',
+      title: 'Restore Listing',
+      description: `This restores "${product.name}" so the product record is active again. If it remains approved, buyers can see it on the storefront.`,
+      actionLabel: 'Restore Listing',
       confirmTone: 'success',
+      reasonLabel: 'Restore reason',
+      reasonPlaceholder: 'Explain why this listing can be restored...',
     });
   };
 
@@ -446,14 +453,20 @@ export default function AdminProducts() {
           targetId: product.id,
           reason,
         });
-        showSuccess('Product Archived', 'Product archived successfully.');
+        showSuccess(
+          'Listing Archived',
+          'The listing is now hidden from storefronts and the product record was retained.'
+        );
       } else if (pendingAction.kind === 'restore') {
         await executeGuardedAdminAction({
           actionType: ADMIN_ACTION_TYPES.RESTORE_PRODUCT,
           targetId: product.id,
           reason,
         });
-        showSuccess('Product Restored', 'Product restored successfully.');
+        showSuccess(
+          'Listing Restored',
+          'The listing record is active again and can return to the storefront when approved.'
+        );
       } else if (pendingAction.kind === 'review') {
         await executeGuardedAdminAction({
           actionType:
@@ -499,7 +512,7 @@ export default function AdminProducts() {
               Product Management
             </h1>
             <p className="mt-1 text-sm text-gray-600">
-              Review live listings, fresh approvals, and pending trust-sensitive change requests.
+              Review live listings, approve seller changes, and archive listings without deleting their records.
             </p>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-gray-600">
@@ -522,7 +535,7 @@ export default function AdminProducts() {
               <option value="approved">Approved Only</option>
               <option value="pending">Pending Approval</option>
               <option value="pending_changes">Pending Changes</option>
-              <option value="archived">Archived</option>
+              <option value="archived">Archived / Hidden</option>
             </select>
           </div>
 
@@ -552,7 +565,10 @@ export default function AdminProducts() {
             No products found for the current filter.
           </div>
         ) : (
-          <div className="overflow-x-auto bg-white rounded-lg shadow border border-blue-200">
+          <div className="overflow-x-auto rounded-lg border border-blue-200 bg-white shadow">
+            <div className="border-b border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              Archive hides a listing from the marketplace without deleting its product record, orders, or audit history.
+            </div>
             <table className="w-full min-w-[1120px]">
               <thead className="bg-blue-100 text-blue-900 text-sm uppercase">
                 <tr>
@@ -724,12 +740,13 @@ export default function AdminProducts() {
 
                               <button
                                 type="button"
-                                onClick={() => openDeleteModal(product)}
+                                onClick={() => openArchiveModal(product)}
                                 disabled={updating}
-                                className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                                title="Archive Product"
+                                className="inline-flex items-center gap-1 rounded bg-red-100 px-3 py-1 text-xs text-red-700 hover:bg-red-200"
+                                title="Hide this listing without deleting its record"
                               >
                                 <Trash2 size={14} />
+                                Archive
                               </button>
                             </>
                           )}
@@ -760,6 +777,9 @@ export default function AdminProducts() {
         confirmTone={pendingAction?.confirmTone}
         riskNotice={pendingAction?.riskNotice}
         confirmationKeyword={pendingAction?.confirmationKeyword}
+        confirmationLabel={pendingAction?.confirmationLabel}
+        confirmationPlaceholder={pendingAction?.confirmationPlaceholder}
+        reasonLabel={pendingAction?.reasonLabel}
         reasonPlaceholder={pendingAction?.reasonPlaceholder}
         loading={updating}
         onClose={closeModal}
