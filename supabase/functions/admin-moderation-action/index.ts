@@ -101,6 +101,17 @@ function previousValuesFor(
   }, {});
 }
 
+function clearFlashSaleState(updates: Record<string, unknown>) {
+  updates.is_flash_sale = false;
+  updates.sale_price = null;
+  updates.sale_start = null;
+  updates.sale_end = null;
+  updates.sale_quantity_limit = null;
+  updates.sale_quantity_sold = 0;
+  updates.original_price_locked = false;
+  updates.admin_approved_discount = false;
+}
+
 async function createNotification(
   supabaseAdmin: ReturnType<typeof createClient>,
   payload: {
@@ -459,7 +470,7 @@ serve(async (req) => {
         const { data: product, error: productError } = await supabaseAdmin
           .from("products")
           .select(
-            "id, seller_id, name, price, is_approved, reapproval_reason, deleted_at, deleted_by_admin_id, deletion_reason"
+            "id, seller_id, name, price, is_approved, reapproval_reason, deleted_at, deleted_by_admin_id, deletion_reason, is_flash_sale, sale_price, sale_start, sale_end, sale_quantity_limit, sale_quantity_sold, original_price_locked, admin_approved_discount"
           )
           .eq("id", targetId)
           .single();
@@ -478,6 +489,14 @@ serve(async (req) => {
           deleted_at: product.deleted_at,
           deleted_by_admin_id: product.deleted_by_admin_id,
           deletion_reason: product.deletion_reason,
+          is_flash_sale: product.is_flash_sale,
+          sale_price: product.sale_price,
+          sale_start: product.sale_start,
+          sale_end: product.sale_end,
+          sale_quantity_limit: product.sale_quantity_limit,
+          sale_quantity_sold: product.sale_quantity_sold,
+          original_price_locked: product.original_price_locked,
+          admin_approved_discount: product.admin_approved_discount,
         };
 
         const updates: Record<string, unknown> = {};
@@ -491,6 +510,7 @@ serve(async (req) => {
         if (actionType === ADMIN_ACTION_TYPES.UNAPPROVE_PRODUCT) {
           updates.is_approved = false;
           updates.reapproval_reason = reason;
+          clearFlashSaleState(updates);
         }
 
         if (actionType === ADMIN_ACTION_TYPES.ARCHIVE_PRODUCT) {
@@ -498,6 +518,7 @@ serve(async (req) => {
           updates.deleted_at = new Date().toISOString();
           updates.deleted_by_admin_id = actingAdmin.id;
           updates.deletion_reason = reason;
+          clearFlashSaleState(updates);
         }
 
         if (actionType === ADMIN_ACTION_TYPES.RESTORE_PRODUCT) {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { getSellerThemeClasses } from './SellerShell';
 import { getVisibleAttributesForCategory } from '../../utils/productAttributes';
+import { PRODUCT_DESCRIPTION_MAX_LENGTH } from '../../utils/accountValidation';
 
 function FieldError({ message }) {
   if (!message) {
@@ -44,6 +45,13 @@ export default function ProductAttributeForm({
               : []
             : values[attribute.key] ?? '';
         const isDescription = attribute.key === 'description';
+        const characterCount = String(value || '').length;
+        const maxLength = isDescription ? PRODUCT_DESCRIPTION_MAX_LENGTH : undefined;
+        const helperText = isDescription
+          ? [attribute.hint, `Max ${PRODUCT_DESCRIPTION_MAX_LENGTH.toLocaleString()} characters.`]
+              .filter(Boolean)
+              .join(' ')
+          : attribute.hint;
 
         return (
           <div key={attribute.key}>
@@ -83,7 +91,8 @@ export default function ProductAttributeForm({
                 onChange={(event) => onChange(attribute.key, event.target.value)}
                 placeholder={attribute.placeholder}
                 rows={isDescription ? 8 : 4}
-                className={`w-full rounded-xl px-4 py-3 text-sm ${theme.input} ${
+                maxLength={maxLength}
+                className={`w-full resize-y rounded-xl px-4 py-3 text-sm break-words [overflow-wrap:anywhere] ${theme.input} ${
                   errors[attribute.key] ? 'border-orange-500 focus:border-orange-500' : ''
                 }`}
               />
@@ -138,13 +147,15 @@ export default function ProductAttributeForm({
 
             {attribute.type === 'textarea' ? (
               <div className="mt-2 flex items-center justify-between gap-3">
-                {attribute.hint ? (
-                  <p className={`text-xs ${theme.softText}`}>{attribute.hint}</p>
+                {helperText ? (
+                  <p className={`text-xs ${theme.softText}`}>{helperText}</p>
                 ) : null}
-                <p className={`text-xs ${theme.softText}`}>{String(value || '').length} characters</p>
+                <p className={`shrink-0 text-xs ${theme.softText}`}>
+                  {maxLength ? `${characterCount}/${maxLength}` : `${characterCount} characters`}
+                </p>
               </div>
-            ) : attribute.hint ? (
-              <p className={`mt-2 text-xs ${theme.softText}`}>{attribute.hint}</p>
+            ) : helperText ? (
+              <p className={`mt-2 text-xs ${theme.softText}`}>{helperText}</p>
             ) : null}
 
             <FieldError message={errors[attribute.key]} />

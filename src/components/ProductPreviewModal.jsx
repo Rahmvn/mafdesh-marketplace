@@ -60,7 +60,7 @@ export default function ProductPreviewModal({ previewData, onClose, onConfirm, i
               <div className="mt-6 border-t pt-4 space-y-4 text-sm text-blue-800">
                 <div>
                   <h4 className="font-semibold text-blue-900 mb-1">Overview</h4>
-                  <p>{previewData.overview}</p>
+                  <p className="break-words [overflow-wrap:anywhere]">{previewData.overview}</p>
                 </div>
 
                 <div>
@@ -77,7 +77,7 @@ export default function ProductPreviewModal({ previewData, onClose, onConfirm, i
                 {previewData.specs && (
                   <div>
                     <h4 className="font-semibold text-blue-900 mb-1">Specifications</h4>
-                    <p className="whitespace-pre-line">{previewData.specs}</p>
+                    <p className="whitespace-pre-line break-words [overflow-wrap:anywhere]">{previewData.specs}</p>
                   </div>
                 )}
               </div>

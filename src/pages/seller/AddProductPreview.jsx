@@ -403,7 +403,7 @@ export default function AddProductPreview() {
                             ))}
                           </div>
                         ) : isDescription ? (
-                          <p className={`mt-3 whitespace-pre-line text-sm leading-7 ${theme.mutedText}`}>
+                          <p className={`mt-3 whitespace-pre-line break-words text-sm leading-7 [overflow-wrap:anywhere] ${theme.mutedText}`}>
                             {displayValue}
                           </p>
                         ) : (

@@ -733,7 +733,7 @@ export default function ProductDetail() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                       {detailSections.descriptionTitle}
                     </p>
-                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600 sm:text-[15px]">
+                    <p className="mt-3 whitespace-pre-line break-words text-sm leading-7 text-slate-600 [overflow-wrap:anywhere] sm:text-[15px]">
                       {detailSections.descriptionText}
                     </p>
                   </section>
@@ -809,7 +809,7 @@ export default function ProductDetail() {
                           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                             {entry.label}
                           </p>
-                          <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
+                          <p className="mt-3 whitespace-pre-line break-words text-sm leading-7 text-slate-600 [overflow-wrap:anywhere]">
                             {entry.value}
                           </p>
                         </div>
@@ -830,7 +830,7 @@ export default function ProductDetail() {
                         </p>
                         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-slate-600">
                           {section.values.map((value, index) => (
-                            <li key={`${section.title}-${index}`}>{value}</li>
+                            <li key={`${section.title}-${index}`} className="break-words [overflow-wrap:anywhere]">{value}</li>
                           ))}
                         </ul>
                       </div>
