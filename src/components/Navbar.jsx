@@ -84,6 +84,8 @@ export default function Navbar({
   const isSeller = userRole === 'seller';
   const isGuest = !userRole;
   const isBuyerLike = isBuyer || isGuest;
+  const isMarketplaceBuyerView = isBuyer && location.pathname === '/marketplace';
+  const isCompactBuyerNav = isMarketplaceBuyerView;
 
   const navShellClass = isDarkTheme
     ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
@@ -103,6 +105,12 @@ export default function Navbar({
   const mobileSearchFieldClass = isDarkTheme
     ? 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30'
     : 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30';
+  const compactMobileSearchShellClass = isDarkTheme
+    ? 'rounded-[1.1rem] border border-slate-800 bg-slate-900/90 shadow-[0_10px_24px_rgba(2,6,23,0.28)]'
+    : 'rounded-[1.1rem] border border-orange-100 bg-orange-50/70 shadow-[0_10px_24px_rgba(15,23,42,0.06)]';
+  const compactMobileSearchFieldClass = isDarkTheme
+    ? 'h-11 w-full rounded-[1.1rem] bg-transparent pl-11 pr-4 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/25'
+    : 'h-11 w-full rounded-[1.1rem] bg-transparent pl-11 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/25';
   const iconBadgeClass = isDarkTheme
     ? 'bg-slate-800 text-orange-300'
     : 'bg-orange-100 text-orange-600';
@@ -393,7 +401,9 @@ export default function Navbar({
   const highlightedNavBase = `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${highlightedNavLinkClass}`;
   const mobileNavBase = `flex items-center rounded-md px-3 py-2 ${navLinkClass}`;
   const mobileHighlightedBase = `flex items-center rounded-md px-3 py-2 ${highlightedNavLinkClass}`;
-  const buyerIconButtonClass = `relative inline-flex h-12 w-12 items-center justify-center rounded-full transition-colors lg:h-11 lg:w-11 ${navLinkClass}`;
+  const buyerIconButtonClass = `relative inline-flex items-center justify-center rounded-full transition-colors ${
+    isCompactBuyerNav ? 'h-10 w-10 lg:h-10 lg:w-10' : 'h-12 w-12 lg:h-11 lg:w-11'
+  } ${navLinkClass}`;
   const buyerActiveIconButtonClass = isDarkTheme
     ? 'border border-orange-400/60 bg-slate-900 text-orange-300'
     : 'border border-orange-200 bg-orange-50 text-orange-600';
@@ -416,8 +426,10 @@ export default function Navbar({
     <>
       <nav className={navShellClass}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className={isBuyerLike ? 'py-3 lg:py-0' : ''}>
-            <div className={`flex items-center justify-between gap-3 ${isBuyerLike ? 'min-h-[3.75rem] lg:h-16' : 'h-16'}`}>
+          <div className={isBuyerLike ? (isCompactBuyerNav ? 'py-2 lg:py-0' : 'py-3 lg:py-0') : ''}>
+            <div className={`flex items-center justify-between ${
+              isCompactBuyerNav ? 'gap-2.5' : 'gap-3'
+            } ${isBuyerLike ? (isCompactBuyerNav ? 'min-h-[3.25rem] lg:h-14' : 'min-h-[3.75rem] lg:h-16') : 'h-16'}`}>
               <Link
                 to={homePath}
                 className="flex flex-shrink-0 items-center"
@@ -428,7 +440,9 @@ export default function Navbar({
                   alt="Mafdesh"
                   className={
                     isBuyerLike
-                      ? 'h-8 w-auto max-w-[8.5rem] object-contain sm:h-9'
+                      ? isCompactBuyerNav
+                        ? 'h-7 w-auto max-w-[7rem] object-contain sm:h-8'
+                        : 'h-8 w-auto max-w-[8.5rem] object-contain sm:h-9'
                       : 'h-8 w-auto object-contain'
                   }
                 />
@@ -472,16 +486,22 @@ export default function Navbar({
             )}
 
             {isBuyerLike && (
-              <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 lg:flex">
-                <form onSubmit={handleSearchSubmit} className="relative w-full max-w-2xl">
+              <div className={`hidden min-w-0 items-center justify-center lg:flex ${
+                isCompactBuyerNav ? 'flex-[1.15] px-3' : 'flex-[1.35] px-4'
+              }`}>
+                <form onSubmit={handleSearchSubmit} className={`relative w-full ${isCompactBuyerNav ? 'max-w-xl' : 'max-w-2xl'}`}>
                   <input
                     type="text"
                     placeholder="Search products..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    className={`w-full rounded-full px-4 py-2 pl-10 text-sm ${searchInputClass}`}
+                    className={`w-full rounded-full pl-10 ${
+                      isCompactBuyerNav ? 'px-3.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'
+                    } ${searchInputClass}`}
                   />
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 ${
+                    isCompactBuyerNav ? 'h-3.5 w-3.5' : 'h-4 w-4'
+                  }`} />
                 </form>
               </div>
             )}
@@ -489,7 +509,7 @@ export default function Navbar({
             <div
               className={
                 isBuyerLike
-                  ? "hidden shrink-0 items-center gap-3 lg:flex"
+                  ? `hidden shrink-0 items-center ${isCompactBuyerNav ? 'gap-2' : 'gap-3'} lg:flex`
                   : isSeller
                     ? "hidden"
                     : "hidden shrink-0 items-center gap-3 xl:flex"
@@ -524,9 +544,11 @@ export default function Navbar({
 
               {isBuyerLike && (
                 <>
-                  <Link to={homePath} className={buyerIconButtonClass} aria-label="Home">
-                    <Home className="h-5 w-5" />
-                  </Link>
+                  {!isCompactBuyerNav ? (
+                    <Link to={homePath} className={buyerIconButtonClass} aria-label="Home">
+                      <Home className="h-5 w-5" />
+                    </Link>
+                  ) : null}
                   {marketplaceLocationAction ? (
                     <button
                       type="button"
@@ -567,7 +589,7 @@ export default function Navbar({
                       <Wallet className="h-5 w-5" />
                     </button>
                   )}
-                  {isBuyer ? <NotificationBell user={storedUser} theme={theme} /> : null}
+                  {isBuyer ? <NotificationBell user={storedUser} theme={theme} compact={isCompactBuyerNav} /> : null}
                   <Link to="/cart" className={buyerIconButtonClass} aria-label="Cart">
                     <ShoppingCart className="h-5 w-5" />
                     {cartCount > 0 && (
@@ -753,7 +775,7 @@ export default function Navbar({
               )}
             </div>
 
-              <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
+              <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center ${isCompactBuyerNav ? 'gap-1.5' : 'gap-2'}`}>
                 {isBuyerLike ? (
                   <>
                     {marketplaceLocationAction ? (
@@ -773,7 +795,7 @@ export default function Navbar({
                         <MapPin className="h-5 w-5" />
                       </button>
                     ) : null}
-                    {isBuyer ? <NotificationBell user={notificationUser} theme={theme} /> : null}
+                    {isBuyer ? <NotificationBell user={notificationUser} theme={theme} compact={isCompactBuyerNav} /> : null}
                     <Link
                       to="/cart"
                       className={buyerIconButtonClass}
@@ -848,11 +870,15 @@ export default function Navbar({
               </div>
             </div>
             {isBuyerLike && (
-              <div className="pt-3 lg:hidden">
+              <div className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}>
                 <form onSubmit={handleSearchSubmit}>
-                  <div className={`relative overflow-hidden ${mobileSearchShellClass}`}>
+                  <div className={`relative overflow-hidden ${
+                    isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
+                  }`}>
                     <Search
-                      className={`pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${
+                      className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
+                        isCompactBuyerNav ? 'left-3.5 h-4 w-4' : 'left-4 h-5 w-5'
+                      } ${
                         isDarkTheme ? 'text-orange-300' : 'text-orange-500'
                       }`}
                     />
@@ -861,7 +887,7 @@ export default function Navbar({
                       placeholder="Search products..."
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
-                      className={mobileSearchFieldClass}
+                      className={isCompactBuyerNav ? compactMobileSearchFieldClass : mobileSearchFieldClass}
                     />
                   </div>
                 </form>

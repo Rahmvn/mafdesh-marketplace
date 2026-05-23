@@ -35,7 +35,7 @@ function getTone(theme) {
   };
 }
 
-export default function NotificationBell({ user, theme = 'light' }) {
+export default function NotificationBell({ user, theme = 'light', compact = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const panelRef = useRef(null);
@@ -221,9 +221,11 @@ export default function NotificationBell({ user, theme = 'light' }) {
         onClick={handleToggle}
         aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
         aria-expanded={isOpen}
-        className={`relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors ${tone.trigger}`}
+        className={`relative inline-flex items-center justify-center rounded-full transition-colors ${
+          compact ? 'h-10 w-10' : 'h-11 w-11'
+        } ${tone.trigger}`}
       >
-        <Bell className="h-5 w-5" />
+        <Bell className={compact ? 'h-[18px] w-[18px]' : 'h-5 w-5'} />
         {unreadCount > 0 ? (
           <span className="absolute right-0 top-0 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}
