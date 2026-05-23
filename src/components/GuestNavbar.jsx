@@ -89,7 +89,7 @@ export default function GuestNavbar() {
                 <img
                   src={landscapeLogo}
                   alt="Mafdesh"
-                  className="h-6 w-6 object-contain sm:h-8 sm:w-auto"
+                  className="h-8 w-auto max-w-[8.5rem] object-contain sm:h-9"
                 />
               </Link>
 
