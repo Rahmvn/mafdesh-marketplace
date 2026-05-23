@@ -97,6 +97,12 @@ export default function Navbar({
   const searchInputClass = isDarkTheme
     ? 'border border-slate-700 bg-slate-900 text-slate-100 placeholder:text-slate-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/10'
     : 'border border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500';
+  const mobileSearchShellClass = isDarkTheme
+    ? 'rounded-[1.25rem] border border-slate-800 bg-slate-900/90 shadow-[0_16px_36px_rgba(2,6,23,0.35)]'
+    : 'rounded-[1.25rem] border border-orange-100 bg-orange-50/80 shadow-[0_14px_34px_rgba(15,23,42,0.08)]';
+  const mobileSearchFieldClass = isDarkTheme
+    ? 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30'
+    : 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30';
   const iconBadgeClass = isDarkTheme
     ? 'bg-slate-800 text-orange-300'
     : 'bg-orange-100 text-orange-600';
@@ -387,11 +393,11 @@ export default function Navbar({
   const highlightedNavBase = `flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${highlightedNavLinkClass}`;
   const mobileNavBase = `flex items-center rounded-md px-3 py-2 ${navLinkClass}`;
   const mobileHighlightedBase = `flex items-center rounded-md px-3 py-2 ${highlightedNavLinkClass}`;
-  const buyerIconButtonClass = `relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors ${navLinkClass}`;
+  const buyerIconButtonClass = `relative inline-flex h-12 w-12 items-center justify-center rounded-full transition-colors lg:h-11 lg:w-11 ${navLinkClass}`;
   const buyerActiveIconButtonClass = isDarkTheme
     ? 'border border-orange-400/60 bg-slate-900 text-orange-300'
     : 'border border-orange-200 bg-orange-50 text-orange-600';
-  const buyerBottomTabClass = `flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-medium transition-colors ${navLinkClass}`;
+  const buyerBottomTabClass = `flex flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2.5 text-[11px] font-semibold transition-colors ${navLinkClass}`;
   const adminTriggerClass = `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
     isDarkTheme
       ? 'border-slate-700 bg-slate-900 text-slate-100 hover:border-orange-400 hover:text-orange-300'
@@ -410,43 +416,23 @@ export default function Navbar({
     <>
       <nav className={navShellClass}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-3">
-            <Link
-              to={homePath}
-              className={
-                isBuyerLike
-                  ? 'hidden lg:flex flex-shrink-0 items-center'
-                  : 'flex flex-shrink-0 items-center'
-              }
-              onClick={closeMenus}
-            >
-              <img
-                src={landscapeLogo}
-                alt="Mafdesh"
-                className={
-                  isBuyerLike
-                    ? 'h-6 w-6 object-contain sm:h-8 sm:w-auto'
-                    : 'h-8 w-auto object-contain'
-                }
-              />
-            </Link>
-
-            {isBuyerLike && (
-              <div className="min-w-0 flex-1 lg:hidden">
-                <form onSubmit={handleSearchSubmit} className="min-w-0 flex-1">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search products..."
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      className={`w-full rounded-full px-4 py-1.5 pl-10 text-sm ${searchInputClass}`}
-                    />
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
-                </form>
-              </div>
-            )}
+          <div className={isBuyerLike ? 'py-3 lg:py-0' : ''}>
+            <div className={`flex items-center justify-between gap-3 ${isBuyerLike ? 'min-h-[3.75rem] lg:h-16' : 'h-16'}`}>
+              <Link
+                to={homePath}
+                className="flex flex-shrink-0 items-center"
+                onClick={closeMenus}
+              >
+                <img
+                  src={landscapeLogo}
+                  alt="Mafdesh"
+                  className={
+                    isBuyerLike
+                      ? 'h-6 w-6 object-contain sm:h-8 sm:w-auto'
+                      : 'h-8 w-auto object-contain'
+                  }
+                />
+              </Link>
 
             {isSeller && (
               <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2">
@@ -767,101 +753,122 @@ export default function Navbar({
               )}
             </div>
 
-          <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
-            {isBuyerLike ? (
-              <>
-                {marketplaceLocationAction ? (
-                  <button
-                    type="button"
-                    onClick={marketplaceLocationAction.onClick}
-                    disabled={marketplaceLocationAction.disabled}
-                    aria-label={marketplaceLocationAction.label}
-                    aria-pressed={marketplaceLocationAction.active || undefined}
-                    className={`${buyerIconButtonClass} ${
-                      marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
-                    } ${
-                      marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
-                    }`}
-                    title={marketplaceLocationAction.label}
-                  >
-                    <MapPin className="h-5 w-5" />
-                  </button>
-                ) : null}
-                {isBuyer ? <NotificationBell user={notificationUser} theme={theme} /> : null}
-                <Link
-                  to="/cart"
-                  className={buyerIconButtonClass}
-                  aria-label="Cart"
-                >
-                  <ShoppingCart className="h-5 w-5" />
-                  {cartCount > 0 && (
-                    <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                      {cartCount}
-                    </span>
-                  )}
-                </Link>
-              </>
-            ) : isSeller ? (
-              <>
-                <NotificationBell user={notificationUser} theme={theme} />
-                <button
-                  type="button"
-                  onClick={() => setMobileMenu((current) => !current)}
-                  className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
-                  aria-expanded={mobileMenu}
-                  aria-controls="mobile-nav-menu"
-                  aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
-                >
-                  {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-                </button>
-              </>
-            ) : (
-              <>
-                {themeToggle && (
-                  <div>
-                    <ThemeToggleButton
-                      darkMode={themeToggle.darkMode}
-                      onToggle={themeToggle.onToggle}
-                      compact
-                      isDarkTheme={isDarkTheme}
+              <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center gap-2`}>
+                {isBuyerLike ? (
+                  <>
+                    {marketplaceLocationAction ? (
+                      <button
+                        type="button"
+                        onClick={marketplaceLocationAction.onClick}
+                        disabled={marketplaceLocationAction.disabled}
+                        aria-label={marketplaceLocationAction.label}
+                        aria-pressed={marketplaceLocationAction.active || undefined}
+                        className={`${buyerIconButtonClass} ${
+                          marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
+                        } ${
+                          marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
+                        }`}
+                        title={marketplaceLocationAction.label}
+                      >
+                        <MapPin className="h-5 w-5" />
+                      </button>
+                    ) : null}
+                    {isBuyer ? <NotificationBell user={notificationUser} theme={theme} /> : null}
+                    <Link
+                      to="/cart"
+                      className={buyerIconButtonClass}
+                      aria-label="Cart"
+                    >
+                      <ShoppingCart className="h-5 w-5" />
+                      {cartCount > 0 && (
+                        <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                          {cartCount}
+                        </span>
+                      )}
+                    </Link>
+                  </>
+                ) : isSeller ? (
+                  <>
+                    <NotificationBell user={notificationUser} theme={theme} />
+                    <button
+                      type="button"
+                      onClick={() => setMobileMenu((current) => !current)}
+                      className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                      aria-expanded={mobileMenu}
+                      aria-controls="mobile-nav-menu"
+                      aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
+                    >
+                      {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {themeToggle && (
+                      <div>
+                        <ThemeToggleButton
+                          darkMode={themeToggle.darkMode}
+                          onToggle={themeToggle.onToggle}
+                          compact
+                          isDarkTheme={isDarkTheme}
+                        />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isAdmin) {
+                          setAdminNavOpen((current) => !current);
+                          setShowUserMenu(false);
+                          return;
+                        }
+
+                        setMobileMenu((current) => !current);
+                      }}
+                      className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                      aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
+                      aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
+                      aria-label={isAdmin
+                        ? adminNavOpen
+                          ? 'Close admin navigation'
+                          : 'Open admin navigation'
+                        : mobileMenu
+                          ? 'Close navigation menu'
+                          : 'Open navigation menu'}
+                    >
+                      {isAdmin
+                        ? adminNavOpen
+                          ? <X className="h-6 w-6" />
+                          : <Menu className="h-6 w-6" />
+                        : mobileMenu
+                          ? <X className="h-6 w-6" />
+                          : <Menu className="h-6 w-6" />}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {isBuyerLike && (
+              <div className="pt-3 lg:hidden">
+                <form onSubmit={handleSearchSubmit}>
+                  <div className={`relative overflow-hidden ${mobileSearchShellClass}`}>
+                    <Search
+                      className={`pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${
+                        isDarkTheme ? 'text-orange-300' : 'text-orange-500'
+                      }`}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search products..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      className={mobileSearchFieldClass}
                     />
                   </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isAdmin) {
-                      setAdminNavOpen((current) => !current);
-                      setShowUserMenu(false);
-                      return;
-                    }
-
-                    setMobileMenu((current) => !current);
-                  }}
-                  className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
-                  aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
-                  aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
-                  aria-label={isAdmin
-                    ? adminNavOpen
-                      ? 'Close admin navigation'
-                      : 'Open admin navigation'
-                    : mobileMenu
-                      ? 'Close navigation menu'
-                      : 'Open navigation menu'}
-                >
-                  {isAdmin
-                    ? adminNavOpen
-                      ? <X className="h-6 w-6" />
-                      : <Menu className="h-6 w-6" />
-                    : mobileMenu
-                      ? <X className="h-6 w-6" />
-                      : <Menu className="h-6 w-6" />}
-                </button>
-              </>
+                </form>
+              </div>
             )}
           </div>
         </div>
-      </div>
       </nav>
 
       {mobileMenu && !isAdmin && !isBuyer && (

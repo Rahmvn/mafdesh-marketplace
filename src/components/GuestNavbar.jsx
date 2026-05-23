@@ -77,35 +77,21 @@ export default function GuestNavbar() {
   const topIconClass =
     'relative inline-flex h-11 w-11 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-orange-50 hover:text-orange-600';
   const bottomTabClass =
-    'flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-medium text-gray-700 transition-colors hover:bg-orange-50 hover:text-orange-600';
+    'flex flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2.5 text-[11px] font-semibold text-gray-700 transition-colors hover:bg-orange-50 hover:text-orange-600';
 
   return (
     <>
       <nav className="sticky top-0 z-50 border-b border-gray-200 bg-white text-slate-900 shadow-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-3">
-            <Link to={browsePath} className="hidden flex-shrink-0 items-center xl:flex">
-              <img
-                src={landscapeLogo}
-                alt="Mafdesh"
-                className="h-6 w-6 object-contain sm:h-8 sm:w-auto"
-              />
-            </Link>
-
-            <div className="min-w-0 flex-1 xl:hidden">
-              <form onSubmit={handleSearchSubmit} className="min-w-0 flex-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search products..."
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    className="w-full rounded-full border border-gray-300 bg-white px-4 py-1.5 pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </div>
-              </form>
-            </div>
+          <div className="py-3 xl:py-0">
+            <div className="flex min-h-[3.75rem] items-center justify-between gap-3 xl:h-16">
+              <Link to={browsePath} className="flex flex-shrink-0 items-center">
+                <img
+                  src={landscapeLogo}
+                  alt="Mafdesh"
+                  className="h-6 w-6 object-contain sm:h-8 sm:w-auto"
+                />
+              </Link>
 
             <div className="hidden min-w-0 flex-[1.35] items-center justify-center px-4 xl:flex">
               <form onSubmit={handleSearchSubmit} className="relative w-full max-w-2xl">
@@ -179,10 +165,25 @@ export default function GuestNavbar() {
               <button
                 type="button"
                 onClick={() => navigate('/login')}
-                className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-600"
+                className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600"
               >
                 Log In
               </button>
+            </div>
+            </div>
+            <div className="pt-3 xl:hidden">
+              <form onSubmit={handleSearchSubmit}>
+                <div className="relative overflow-hidden rounded-[1.25rem] border border-orange-100 bg-orange-50/80 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-orange-500" />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                  />
+                </div>
+              </form>
             </div>
           </div>
         </div>
