@@ -104,8 +104,8 @@ export default function Navbar({
   const isGuest = !userRole;
   const isBuyerLike = isBuyer || isGuest;
   const isSearchPage = location.pathname === '/search';
-  const isMarketplaceBuyerView = isBuyer && location.pathname === '/marketplace';
-  const isCompactBuyerNav = isMarketplaceBuyerView;
+  const isMarketplaceRoute = location.pathname === '/marketplace';
+  const isCompactBuyerNav = isMarketplaceRoute;
   const searchResultsPath = '/search';
   const shouldUseCollapsibleMobileHeader = isCompactBuyerNav && isMobileViewport;
   const mobileTopRowExpandedHeight = isCompactBuyerNav ? 60 : 72;
