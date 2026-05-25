@@ -566,7 +566,7 @@ export default function Navbar({
     <>
       <nav className={navShellClass}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className={isBuyerLike ? (isCompactBuyerNav ? 'py-2 lg:py-0' : 'py-3 lg:py-0') : ''}>
+          <div className={isBuyerLike ? (isCompactBuyerNav ? 'py-1.5 lg:py-0' : 'py-2 lg:py-0') : ''}>
             <div
               data-testid={isBuyerLike ? 'mobile-header-top-row' : undefined}
               aria-hidden={shouldUseCollapsibleMobileHeader && isMobileTopRowCollapsed ? 'true' : undefined}
@@ -574,7 +574,7 @@ export default function Navbar({
             >
               <div className={`flex items-center justify-between ${
                 isCompactBuyerNav ? 'gap-2.5' : 'gap-3'
-              } ${isBuyerLike ? (isCompactBuyerNav ? 'min-h-[3.25rem] lg:h-14' : 'min-h-[3.75rem] lg:h-16') : 'h-16'}`}>
+              } ${isBuyerLike ? (isCompactBuyerNav ? 'min-h-[3rem] lg:h-14' : 'min-h-[3.5rem] lg:h-16') : 'h-16'}`}>
                 <Link
                   to={homePath}
                   className="flex flex-shrink-0 items-center"

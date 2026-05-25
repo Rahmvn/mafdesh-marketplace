@@ -83,8 +83,8 @@ export default function GuestNavbar() {
     <>
       <nav className="sticky top-0 z-50 border-b border-gray-200 bg-white text-slate-900 shadow-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="py-3 xl:py-0">
-            <div className="flex min-h-[3.75rem] items-center justify-between gap-3 xl:h-16">
+          <div className="py-2 xl:py-0">
+            <div className="flex min-h-[3.5rem] items-center justify-between gap-3 xl:h-16">
               <Link to={browsePath} className="flex flex-shrink-0 items-center">
                 <img
                   src={landscapeLogo}
