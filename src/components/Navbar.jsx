@@ -83,9 +83,20 @@ export default function Navbar({
   const [adminCounts, setAdminCounts] = useState({ refunds: 0, verifications: 0 });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showDesktopSearchPanel, setShowDesktopSearchPanel] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+
+    return window.matchMedia('(max-width: 1023px)').matches;
+  });
+  const [isMobileTopRowCollapsed, setIsMobileTopRowCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const desktopSearchRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
+  const scrollFrameRef = useRef(null);
+  const scrollTickingRef = useRef(false);
   const userRole = storedUser?.role || null;
   const isDarkTheme = theme === 'dark';
   const isBuyer = userRole === 'buyer';
@@ -96,6 +107,8 @@ export default function Navbar({
   const isMarketplaceBuyerView = isBuyer && location.pathname === '/marketplace';
   const isCompactBuyerNav = isMarketplaceBuyerView;
   const searchResultsPath = '/search';
+  const shouldUseCollapsibleMobileHeader = isBuyerLike && isMobileViewport;
+  const mobileTopRowExpandedHeight = isCompactBuyerNav ? 60 : 72;
 
   const navShellClass = isDarkTheme
     ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
@@ -339,6 +352,31 @@ export default function Navbar({
   }, [location.search]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 1023px)');
+    const handleMediaChange = (event) => {
+      setIsMobileViewport(event.matches);
+    };
+
+    setIsMobileViewport(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleMediaChange);
+      return () => {
+        mediaQuery.removeEventListener('change', handleMediaChange);
+      };
+    }
+
+    mediaQuery.addListener(handleMediaChange);
+    return () => {
+      mediaQuery.removeListener(handleMediaChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const handlePointerDown = (event) => {
       if (
         desktopSearchRef.current
@@ -353,6 +391,62 @@ export default function Navbar({
       document.removeEventListener('mousedown', handlePointerDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!shouldUseCollapsibleMobileHeader || typeof document === 'undefined') {
+      setIsMobileTopRowCollapsed(false);
+      return undefined;
+    }
+
+    const scrollContainer = document.querySelector('[data-main-scroll-container="primary"]');
+    const isElementScrollContainer = scrollContainer instanceof HTMLElement;
+    const listenerTarget = isElementScrollContainer ? scrollContainer : window;
+    const readScrollTop = () => (
+      isElementScrollContainer
+        ? scrollContainer.scrollTop
+        : window.scrollY
+          || document.documentElement.scrollTop
+          || document.body.scrollTop
+          || 0
+    );
+
+    const updateCollapsedState = () => {
+      const nextScrollTop = Math.max(0, readScrollTop());
+      const delta = nextScrollTop - lastScrollTopRef.current;
+
+      if (nextScrollTop <= 20 || delta < -4) {
+        setIsMobileTopRowCollapsed(false);
+      } else if (delta > 4) {
+        setIsMobileTopRowCollapsed(true);
+      }
+
+      lastScrollTopRef.current = nextScrollTop;
+      scrollTickingRef.current = false;
+      scrollFrameRef.current = null;
+    };
+
+    const handleScroll = () => {
+      if (scrollTickingRef.current) {
+        return;
+      }
+
+      scrollTickingRef.current = true;
+      scrollFrameRef.current = window.requestAnimationFrame(updateCollapsedState);
+    };
+
+    lastScrollTopRef.current = Math.max(0, readScrollTop());
+    listenerTarget.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      listenerTarget.removeEventListener('scroll', handleScroll);
+      scrollTickingRef.current = false;
+
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, [location.pathname, shouldUseCollapsibleMobileHeader]);
 
   const updateRecentSearches = useCallback((value) => {
     const nextRecentSearches = saveRecentSearch(value);
@@ -385,6 +479,7 @@ export default function Navbar({
     setAdminNavOpen(false);
     setShowUserMenu(false);
     setShowDesktopSearchPanel(false);
+    setIsMobileTopRowCollapsed(false);
   }, [location.pathname]);
 
   const handleSearchSubmit = (event) => {
@@ -456,176 +551,192 @@ export default function Navbar({
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
+  const mobileTopRowStyle = shouldUseCollapsibleMobileHeader
+    ? {
+      maxHeight: isMobileTopRowCollapsed ? '0px' : `${mobileTopRowExpandedHeight}px`,
+      opacity: isMobileTopRowCollapsed ? 0 : 1,
+      overflow: 'hidden',
+      willChange: 'max-height, opacity',
+      transition: 'max-height 250ms ease, opacity 250ms ease',
+      WebkitTransform: 'translateZ(0)',
+    }
+    : undefined;
+
   return (
     <>
       <nav className={navShellClass}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className={isBuyerLike ? (isCompactBuyerNav ? 'py-2 lg:py-0' : 'py-3 lg:py-0') : ''}>
-            <div className={`flex items-center justify-between ${
-              isCompactBuyerNav ? 'gap-2.5' : 'gap-3'
-            } ${isBuyerLike ? (isCompactBuyerNav ? 'min-h-[3.25rem] lg:h-14' : 'min-h-[3.75rem] lg:h-16') : 'h-16'}`}>
-              <Link
-                to={homePath}
-                className="flex flex-shrink-0 items-center"
-                onClick={closeMenus}
-              >
-                <img
-                  src={landscapeLogo}
-                  alt="Mafdesh"
-                  className={
-                    isBuyerLike
-                      ? isCompactBuyerNav
-                        ? 'h-7 w-auto max-w-[7rem] object-contain sm:h-8'
-                        : 'h-8 w-auto max-w-[8.5rem] object-contain sm:h-9'
-                      : 'h-8 w-auto object-contain'
-                  }
-                />
-              </Link>
-
-            {isSeller && (
-              <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2">
-                <>
-                  <Link to="/seller/dashboard" className={navBase}>
-                    <LayoutDashboard className="mr-1.5 h-4 w-4" />
-                    Dashboard
-                  </Link>
-                  <Link to="/seller/products" className={navBase}>
-                    <Package className="mr-1.5 h-4 w-4" />
-                    Products
-                  </Link>
-                  <Link to="/seller/orders" className={`${navBase} relative`}>
-                    <ShoppingCart className="mr-1.5 h-4 w-4" />
-                    Orders
-                    {actionRequiredCount > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                        {actionRequiredCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link to="/seller/payments" className={navBase}>
-                    <Wallet className="mr-1.5 h-4 w-4" />
-                    Payments
-                  </Link>
-                  <Link to="/seller/delivery" className={navBase}>
-                    <MapPin className="mr-1.5 h-4 w-4" />
-                    Delivery
-                  </Link>
-                </>
-
-                <Link to="/support" className={userRole === 'seller' ? highlightedNavBase : navBase}>
-                  <HelpCircle className="mr-1.5 h-4 w-4" />
-                  Help
-                </Link>
-              </div>
-            )}
-
-            {isBuyerLike && (
-              <div className={`hidden min-w-0 items-center justify-center lg:flex ${
-                isCompactBuyerNav ? 'flex-[1.15] px-3' : 'flex-[1.35] px-4'
-              }`}>
-                <form
-                  onSubmit={handleSearchSubmit}
-                  ref={desktopSearchRef}
-                  className={`relative w-full ${isCompactBuyerNav ? 'max-w-xl' : 'max-w-2xl'}`}
+            <div
+              data-testid={isBuyerLike ? 'mobile-header-top-row' : undefined}
+              aria-hidden={shouldUseCollapsibleMobileHeader && isMobileTopRowCollapsed ? 'true' : undefined}
+              style={mobileTopRowStyle}
+            >
+              <div className={`flex items-center justify-between ${
+                isCompactBuyerNav ? 'gap-2.5' : 'gap-3'
+              } ${isBuyerLike ? (isCompactBuyerNav ? 'min-h-[3.25rem] lg:h-14' : 'min-h-[3.75rem] lg:h-16') : 'h-16'}`}>
+                <Link
+                  to={homePath}
+                  className="flex flex-shrink-0 items-center"
+                  onClick={closeMenus}
                 >
-                  <input
-                    type="text"
-                    placeholder="Search products..."
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    onFocus={() => setShowDesktopSearchPanel(true)}
-                    className={`w-full rounded-full pl-10 ${
-                      isCompactBuyerNav ? 'px-3.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'
-                    } ${searchInputClass}`}
+                  <img
+                    src={landscapeLogo}
+                    alt="Mafdesh"
+                    className={
+                      isBuyerLike
+                        ? isCompactBuyerNav
+                          ? 'h-7 w-auto max-w-[7rem] object-contain sm:h-8'
+                          : 'h-8 w-auto max-w-[8.5rem] object-contain sm:h-9'
+                        : 'h-8 w-auto object-contain'
+                    }
                   />
-                  <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 ${
-                    isCompactBuyerNav ? 'h-3.5 w-3.5' : 'h-4 w-4'
-                  }`} />
-                  {showDesktopSearchPanel ? (
-                    <div
-                      className={`absolute left-0 right-0 top-[calc(100%+0.6rem)] z-50 overflow-hidden rounded-3xl border shadow-2xl ${
-                        isDarkTheme
-                          ? 'border-slate-800 bg-slate-950'
-                          : 'border-orange-100 bg-white'
-                      }`}
-                    >
-                      <div className={`flex items-center justify-between px-4 py-3 ${
-                        isDarkTheme ? 'border-b border-slate-800' : 'border-b border-orange-100'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <Clock3 className={`h-4 w-4 ${isDarkTheme ? 'text-orange-300' : 'text-orange-500'}`} />
-                          <p className={`text-sm font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>
-                            Recent searches
-                          </p>
-                        </div>
-                        <span className={`text-xs ${isDarkTheme ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Up to 5
-                        </span>
-                      </div>
+                </Link>
 
-                      <div className="p-2">
-                        {recentSearches.length > 0 ? (
-                          recentSearches.map((recentSearch) => (
-                            <div
-                              key={recentSearch}
-                              className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
-                                isDarkTheme
-                                  ? 'text-slate-100 hover:bg-slate-900'
-                                  : 'text-slate-800 hover:bg-orange-50'
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleRecentSearchSelect(recentSearch)}
-                                className="min-w-0 flex-1 text-left"
-                              >
-                                <span className="block truncate text-sm">{recentSearch}</span>
-                              </button>
-                              <span className="flex items-center gap-2">
-                                <span className={`text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  Recent
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(event) => handleRecentSearchRemove(event, recentSearch)}
-                                  className={`rounded-full p-1 ${
-                                    isDarkTheme
-                                      ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-200'
-                                      : 'text-slate-400 hover:bg-white hover:text-slate-700'
-                                  }`}
-                                  aria-label={`Remove recent search ${recentSearch}`}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </span>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="px-3 py-6 text-center">
-                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-slate-200' : 'text-slate-700'}`}>
-                              Your recent searches will show up here.
-                            </p>
-                            <p className={`mt-1 text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
-                              Search once and we will keep the latest five.
+              {isSeller && (
+                <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2">
+                  <>
+                    <Link to="/seller/dashboard" className={navBase}>
+                      <LayoutDashboard className="mr-1.5 h-4 w-4" />
+                      Dashboard
+                    </Link>
+                    <Link to="/seller/products" className={navBase}>
+                      <Package className="mr-1.5 h-4 w-4" />
+                      Products
+                    </Link>
+                    <Link to="/seller/orders" className={`${navBase} relative`}>
+                      <ShoppingCart className="mr-1.5 h-4 w-4" />
+                      Orders
+                      {actionRequiredCount > 0 && (
+                        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                          {actionRequiredCount}
+                        </span>
+                      )}
+                    </Link>
+                    <Link to="/seller/payments" className={navBase}>
+                      <Wallet className="mr-1.5 h-4 w-4" />
+                      Payments
+                    </Link>
+                    <Link to="/seller/delivery" className={navBase}>
+                      <MapPin className="mr-1.5 h-4 w-4" />
+                      Delivery
+                    </Link>
+                  </>
+
+                  <Link to="/support" className={userRole === 'seller' ? highlightedNavBase : navBase}>
+                    <HelpCircle className="mr-1.5 h-4 w-4" />
+                    Help
+                  </Link>
+                </div>
+              )}
+
+              {isBuyerLike && (
+                <div className={`hidden min-w-0 items-center justify-center lg:flex ${
+                  isCompactBuyerNav ? 'flex-[1.15] px-3' : 'flex-[1.35] px-4'
+                }`}>
+                  <form
+                    onSubmit={handleSearchSubmit}
+                    ref={desktopSearchRef}
+                    className={`relative w-full ${isCompactBuyerNav ? 'max-w-xl' : 'max-w-2xl'}`}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Search products..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onFocus={() => setShowDesktopSearchPanel(true)}
+                      className={`w-full rounded-full pl-10 ${
+                        isCompactBuyerNav ? 'px-3.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'
+                      } ${searchInputClass}`}
+                    />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 ${
+                      isCompactBuyerNav ? 'h-3.5 w-3.5' : 'h-4 w-4'
+                    }`} />
+                    {showDesktopSearchPanel ? (
+                      <div
+                        className={`absolute left-0 right-0 top-[calc(100%+0.6rem)] z-50 overflow-hidden rounded-3xl border shadow-2xl ${
+                          isDarkTheme
+                            ? 'border-slate-800 bg-slate-950'
+                            : 'border-orange-100 bg-white'
+                        }`}
+                      >
+                        <div className={`flex items-center justify-between px-4 py-3 ${
+                          isDarkTheme ? 'border-b border-slate-800' : 'border-b border-orange-100'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <Clock3 className={`h-4 w-4 ${isDarkTheme ? 'text-orange-300' : 'text-orange-500'}`} />
+                            <p className={`text-sm font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>
+                              Recent searches
                             </p>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </form>
-              </div>
-            )}
+                          <span className={`text-xs ${isDarkTheme ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Up to 5
+                          </span>
+                        </div>
 
-            <div
-              className={
-                isBuyerLike
-                  ? `hidden shrink-0 items-center ${isCompactBuyerNav ? 'gap-2' : 'gap-3'} lg:flex`
-                  : isSeller
-                    ? "hidden"
-                    : "hidden shrink-0 items-center gap-3 xl:flex"
-              }
-            >
+                        <div className="p-2">
+                          {recentSearches.length > 0 ? (
+                            recentSearches.map((recentSearch) => (
+                              <div
+                                key={recentSearch}
+                                className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
+                                  isDarkTheme
+                                    ? 'text-slate-100 hover:bg-slate-900'
+                                    : 'text-slate-800 hover:bg-orange-50'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleRecentSearchSelect(recentSearch)}
+                                  className="min-w-0 flex-1 text-left"
+                                >
+                                  <span className="block truncate text-sm">{recentSearch}</span>
+                                </button>
+                                <span className="flex items-center gap-2">
+                                  <span className={`text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    Recent
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => handleRecentSearchRemove(event, recentSearch)}
+                                    className={`rounded-full p-1 ${
+                                      isDarkTheme
+                                        ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-200'
+                                        : 'text-slate-400 hover:bg-white hover:text-slate-700'
+                                    }`}
+                                    aria-label={`Remove recent search ${recentSearch}`}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="px-3 py-6 text-center">
+                              <p className={`text-sm font-medium ${isDarkTheme ? 'text-slate-200' : 'text-slate-700'}`}>
+                                Your recent searches will show up here.
+                              </p>
+                              <p className={`mt-1 text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
+                                Search once and we will keep the latest five.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </form>
+                </div>
+              )}
+
+              <div
+                className={
+                  isBuyerLike
+                    ? `hidden shrink-0 items-center ${isCompactBuyerNav ? 'gap-2' : 'gap-3'} lg:flex`
+                    : isSeller
+                      ? "hidden"
+                      : "hidden shrink-0 items-center gap-3 xl:flex"
+                }
+              >
               {themeToggle && !isBuyerLike && (
                 <ThemeToggleButton
                   darkMode={themeToggle.darkMode}
@@ -884,104 +995,108 @@ export default function Navbar({
                   )}
                 </div>
               )}
-            </div>
+              </div>
 
-              <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center ${isCompactBuyerNav ? 'gap-1.5' : 'gap-2'}`}>
-                {isBuyerLike ? (
-                  <>
-                    {marketplaceLocationAction ? (
+                <div className={`${isBuyerLike ? "flex lg:hidden" : isSeller ? "flex" : "flex xl:hidden"} shrink-0 items-center ${isCompactBuyerNav ? 'gap-1.5' : 'gap-2'}`}>
+                  {isBuyerLike ? (
+                    <>
+                      {marketplaceLocationAction ? (
+                        <button
+                          type="button"
+                          onClick={marketplaceLocationAction.onClick}
+                          disabled={marketplaceLocationAction.disabled}
+                          aria-label={marketplaceLocationAction.label}
+                          aria-pressed={marketplaceLocationAction.active || undefined}
+                          className={`${buyerIconButtonClass} ${
+                            marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
+                          } ${
+                            marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
+                          }`}
+                          title={marketplaceLocationAction.label}
+                        >
+                          <MapPin className="h-5 w-5" />
+                        </button>
+                      ) : null}
+                      {isBuyer ? <NotificationBell user={notificationUser} theme={theme} compact={isCompactBuyerNav} /> : null}
+                      <Link
+                        to="/cart"
+                        className={buyerIconButtonClass}
+                        aria-label="Cart"
+                      >
+                        <ShoppingCart className="h-5 w-5" />
+                        {cartCount > 0 && (
+                          <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
+                            {cartCount}
+                          </span>
+                        )}
+                      </Link>
+                    </>
+                  ) : isSeller ? (
+                    <>
+                      <NotificationBell user={notificationUser} theme={theme} />
                       <button
                         type="button"
-                        onClick={marketplaceLocationAction.onClick}
-                        disabled={marketplaceLocationAction.disabled}
-                        aria-label={marketplaceLocationAction.label}
-                        aria-pressed={marketplaceLocationAction.active || undefined}
-                        className={`${buyerIconButtonClass} ${
-                          marketplaceLocationAction.active ? buyerActiveIconButtonClass : ''
-                        } ${
-                          marketplaceLocationAction.disabled ? 'cursor-not-allowed opacity-50' : ''
-                        }`}
-                        title={marketplaceLocationAction.label}
+                        onClick={() => setMobileMenu((current) => !current)}
+                        className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                        aria-expanded={mobileMenu}
+                        aria-controls="mobile-nav-menu"
+                        aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
                       >
-                        <MapPin className="h-5 w-5" />
+                        {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
                       </button>
-                    ) : null}
-                    {isBuyer ? <NotificationBell user={notificationUser} theme={theme} compact={isCompactBuyerNav} /> : null}
-                    <Link
-                      to="/cart"
-                      className={buyerIconButtonClass}
-                      aria-label="Cart"
-                    >
-                      <ShoppingCart className="h-5 w-5" />
-                      {cartCount > 0 && (
-                        <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-                          {cartCount}
-                        </span>
+                    </>
+                  ) : (
+                    <>
+                      {themeToggle && (
+                        <div>
+                          <ThemeToggleButton
+                            darkMode={themeToggle.darkMode}
+                            onToggle={themeToggle.onToggle}
+                            compact
+                            isDarkTheme={isDarkTheme}
+                          />
+                        </div>
                       )}
-                    </Link>
-                  </>
-                ) : isSeller ? (
-                  <>
-                    <NotificationBell user={notificationUser} theme={theme} />
-                    <button
-                      type="button"
-                      onClick={() => setMobileMenu((current) => !current)}
-                      className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
-                      aria-expanded={mobileMenu}
-                      aria-controls="mobile-nav-menu"
-                      aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}
-                    >
-                      {mobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {themeToggle && (
-                      <div>
-                        <ThemeToggleButton
-                          darkMode={themeToggle.darkMode}
-                          onToggle={themeToggle.onToggle}
-                          compact
-                          isDarkTheme={isDarkTheme}
-                        />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isAdmin) {
-                          setAdminNavOpen((current) => !current);
-                          setShowUserMenu(false);
-                          return;
-                        }
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isAdmin) {
+                            setAdminNavOpen((current) => !current);
+                            setShowUserMenu(false);
+                            return;
+                          }
 
-                        setMobileMenu((current) => !current);
-                      }}
-                      className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
-                      aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
-                      aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
-                      aria-label={isAdmin
-                        ? adminNavOpen
-                          ? 'Close admin navigation'
-                          : 'Open admin navigation'
-                        : mobileMenu
-                          ? 'Close navigation menu'
-                          : 'Open navigation menu'}
-                    >
-                      {isAdmin
-                        ? adminNavOpen
-                          ? <X className="h-6 w-6" />
-                          : <Menu className="h-6 w-6" />
-                        : mobileMenu
-                          ? <X className="h-6 w-6" />
-                          : <Menu className="h-6 w-6" />}
-                    </button>
-                  </>
-                )}
+                          setMobileMenu((current) => !current);
+                        }}
+                        className={`rounded-md p-2 transition-colors ${mobileMenuButtonClass}`}
+                        aria-expanded={isAdmin ? adminNavOpen : mobileMenu}
+                        aria-controls={isAdmin ? 'admin-side-nav' : 'mobile-nav-menu'}
+                        aria-label={isAdmin
+                          ? adminNavOpen
+                            ? 'Close admin navigation'
+                            : 'Open admin navigation'
+                          : mobileMenu
+                            ? 'Close navigation menu'
+                            : 'Open navigation menu'}
+                      >
+                        {isAdmin
+                          ? adminNavOpen
+                            ? <X className="h-6 w-6" />
+                            : <Menu className="h-6 w-6" />
+                          : mobileMenu
+                            ? <X className="h-6 w-6" />
+                            : <Menu className="h-6 w-6" />}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             {isBuyerLike && (
-              <div className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}>
+              <div
+                data-testid="mobile-header-search-row"
+                className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}
+              >
                 {isSearchPage ? (
                   <form onSubmit={handleSearchSubmit}>
                     <div className={`relative overflow-hidden ${

@@ -623,7 +623,7 @@ export default function Marketplace() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-br from-blue-50 via-white to-orange-50">
+    <div className="flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-white to-orange-50">
       <AuthNavbarWrapper
         marketplaceLocationAction={{
           active: hasActiveCampusFilter,
@@ -635,7 +635,11 @@ export default function Marketplace() {
         }}
       />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-2 py-5">
+      <div
+        data-main-scroll-container="primary"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+      >
+        <main className="mx-auto w-full max-w-7xl px-2 pb-24 pt-5 lg:pb-5">
         <div className="sticky top-0 z-10 mb-5 space-y-2">
           <div className="rounded-lg border border-blue-100 bg-white px-2 py-2.5 shadow-sm">
             <div className="scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
@@ -976,7 +980,8 @@ export default function Marketplace() {
         )}
       </main>
 
-      <Footer />
+        <Footer />
+      </div>
     </div>
   );
 }

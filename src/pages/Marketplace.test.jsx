@@ -171,6 +171,9 @@ describe('Marketplace seller-derived campus filters', () => {
 
     await screen.findByText('UNILAG Hoodie');
 
+    expect(screen.getByTestId('footer').parentElement).toHaveAttribute('data-main-scroll-container', 'primary');
+    expect(screen.getByTestId('footer').parentElement).toHaveClass('overflow-y-auto');
+    expect(screen.getByTestId('footer').parentElement).toHaveClass('[-webkit-overflow-scrolling:touch]');
     expect(screen.getByRole('button', { name: /campus filter/i })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /nearby campuses/i })).not.toBeInTheDocument();
     expect(screen.getByText('LASU Notebook')).toBeInTheDocument();

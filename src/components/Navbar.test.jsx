@@ -50,6 +50,7 @@ function renderNavbar() {
   render(
     <MemoryRouter initialEntries={['/']}>
       <Navbar />
+      <div data-main-scroll-container="primary" data-testid="main-scroll-container" />
       <LocationDisplay />
     </MemoryRouter>
   );
@@ -70,6 +71,7 @@ describe('Navbar cart badge', () => {
   let cartsResponse;
   let cartItemsResponse;
   let ordersResponse;
+  let matchMediaMatches;
 
   beforeEach(() => {
     localStorage.clear();
@@ -77,6 +79,7 @@ describe('Navbar cart badge', () => {
     cartsResponse = { data: [], error: null };
     cartItemsResponse = { data: [], error: null };
     ordersResponse = { count: 0, error: null };
+    matchMediaMatches = false;
 
     mockFetchPendingRefundRequestCount.mockReset();
     mockFrom.mockReset();
@@ -87,6 +90,15 @@ describe('Navbar cart badge', () => {
     mockGetActiveAuthUser.mockResolvedValue(null);
     mockSubscribeToAuthStateChanges.mockReturnValue(vi.fn());
     mockFetchPendingRefundRequestCount.mockResolvedValue(0);
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: matchMediaMatches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
 
     mockFrom.mockImplementation((table) => {
       if (table === 'carts') {
@@ -187,6 +199,41 @@ describe('Navbar cart badge', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location-display')).toHaveTextContent('/search?search=Campus+bag');
+    });
+  });
+
+  it('collapses the mobile top row on downward scroll while keeping the search row mounted', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
+    matchMediaMatches = true;
+
+    renderNavbar();
+
+    const scrollContainer = screen.getByTestId('main-scroll-container');
+    const topRow = screen.getByTestId('mobile-header-top-row');
+    const searchRow = screen.getByTestId('mobile-header-search-row');
+
+    expect(searchRow).toBeInTheDocument();
+    expect(topRow.style.maxHeight).toBe('72px');
+    expect(topRow.style.opacity).toBe('1');
+
+    Object.defineProperty(scrollContainer, 'scrollTop', {
+      configurable: true,
+      value: 64,
+      writable: true,
+    });
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(topRow.style.maxHeight).toBe('0px');
+      expect(topRow.style.opacity).toBe('0');
+    });
+
+    scrollContainer.scrollTop = 8;
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(topRow.style.maxHeight).toBe('72px');
+      expect(topRow.style.opacity).toBe('1');
     });
   });
 });
