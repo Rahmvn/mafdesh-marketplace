@@ -46,14 +46,23 @@ vi.mock('../../mafdesh-img/landscape-logo-removebg-preview.png', () => ({
   default: 'mock-logo.png',
 }));
 
-function renderNavbar(initialEntry = '/') {
+function renderNavbar(initialEntry = '/', navbarProps = {}) {
   render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <Navbar />
+      <Navbar {...navbarProps} />
       <div data-main-scroll-container="primary" data-testid="main-scroll-container" />
       <LocationDisplay />
     </MemoryRouter>
   );
+}
+
+function buildMarketplaceLocationAction() {
+  return {
+    active: false,
+    disabled: false,
+    label: 'Campus filter',
+    onClick: vi.fn(),
+  };
 }
 
 function LocationDisplay() {
@@ -202,39 +211,36 @@ describe('Navbar cart badge', () => {
     });
   });
 
+  it('returns buyers to the marketplace when they submit an empty search from the search page', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
+
+    renderNavbar('/search?search=Headphones');
+
+    const searchInput = screen.getByPlaceholderText('Search products...');
+    fireEvent.change(searchInput, { target: { value: '' } });
+    fireEvent.submit(searchInput.closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/marketplace');
+    });
+  });
+
   it('collapses the mobile top row on downward scroll while keeping the search row mounted', async () => {
     localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
     matchMediaMatches = true;
 
-    renderNavbar('/marketplace');
+    renderNavbar('/marketplace', {
+      marketplaceLocationAction: buildMarketplaceLocationAction(),
+    });
 
-    const scrollContainer = screen.getByTestId('main-scroll-container');
     const topRow = screen.getByTestId('mobile-header-top-row');
-    const searchRow = screen.getByTestId('mobile-header-search-row');
+    const nav = screen.getByRole('navigation');
 
-    expect(searchRow).toBeInTheDocument();
-    expect(topRow.style.maxHeight).toBe('60px');
-    expect(topRow.style.opacity).toBe('1');
-
-    Object.defineProperty(scrollContainer, 'scrollTop', {
-      configurable: true,
-      value: 64,
-      writable: true,
-    });
-    fireEvent.scroll(scrollContainer);
-
-    await waitFor(() => {
-      expect(topRow.style.maxHeight).toBe('0px');
-      expect(topRow.style.opacity).toBe('0');
-    });
-
-    scrollContainer.scrollTop = 8;
-    fireEvent.scroll(scrollContainer);
-
-    await waitFor(() => {
-      expect(topRow.style.maxHeight).toBe('60px');
-      expect(topRow.style.opacity).toBe('1');
-    });
+    expect(screen.queryByTestId('mobile-header-search-row')).not.toBeInTheDocument();
+    expect(topRow.style.maxHeight).toBe('');
+    expect(topRow.style.opacity).toBe('');
+    expect(nav.className).toContain('lg:sticky');
+    expect(nav.className).not.toContain('sticky top-0 z-50');
   });
 
   it('keeps the mobile top row stable on non-marketplace pages', async () => {
@@ -261,5 +267,50 @@ describe('Navbar cart badge', () => {
       expect(topRow.style.maxHeight).toBe('');
       expect(topRow.style.opacity).toBe('');
     });
+  });
+
+  it('keeps the marketplace search route navbar free of the mobile search row', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
+    matchMediaMatches = true;
+
+    renderNavbar('/search?search=iphone', {
+      marketplaceLocationAction: buildMarketplaceLocationAction(),
+    });
+
+    expect(screen.queryByTestId('mobile-header-search-row')).not.toBeInTheDocument();
+  });
+
+  it('keeps the products marketplace route navbar free of the mobile search row', async () => {
+    matchMediaMatches = true;
+
+    renderNavbar('/products?search=laptop', {
+      marketplaceLocationAction: buildMarketplaceLocationAction(),
+    });
+
+    expect(screen.queryByTestId('mobile-header-search-row')).not.toBeInTheDocument();
+  });
+
+  it('shows the compact dark mode toggle for verified sellers on mobile', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'seller-1', role: 'seller' }));
+    matchMediaMatches = true;
+
+    const onToggle = vi.fn();
+
+    renderNavbar('/seller/dashboard', {
+      theme: 'dark',
+      themeToggle: {
+        darkMode: true,
+        onToggle,
+      },
+    });
+
+    const toggleButton = screen
+      .getAllByRole('button', { name: /switch to light mode/i })
+      .find((button) => button.className.includes('h-10 w-10'));
+
+    expect(toggleButton).toBeInTheDocument();
+
+    fireEvent.click(toggleButton);
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });

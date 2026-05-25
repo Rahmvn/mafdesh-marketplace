@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Marketplace from './Marketplace';
 
@@ -75,7 +75,19 @@ function renderMarketplace(initialEntry = '/marketplace') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Marketplace />
+      <LocationDisplay />
     </MemoryRouter>
+  );
+}
+
+function LocationDisplay() {
+  const location = useLocation();
+
+  return (
+    <div data-testid="location-display">
+      {location.pathname}
+      {location.search}
+    </div>
   );
 }
 
@@ -132,6 +144,7 @@ function findCampusButtons(dialog, pattern) {
 
 describe('Marketplace seller-derived campus filters', () => {
   beforeEach(() => {
+    window.innerWidth = 1280;
     seedProducts([
       buildProduct({
         id: 'product-unilag',
@@ -436,6 +449,63 @@ describe('Marketplace seller-derived campus filters', () => {
     expect(screen.getByText('Only 3 left')).toBeInTheDocument();
   });
 
+  it('renders the tappable mobile search launcher inside the sticky marketplace rail', async () => {
+    window.innerWidth = 390;
+    renderMarketplace('/marketplace');
+
+    expect(await screen.findByRole('button', { name: /open search page/i })).toBeInTheDocument();
+    expect(screen.getByText('Search products...')).toBeInTheDocument();
+  });
+
+  it('opens the search page when the mobile search launcher is tapped', async () => {
+    window.innerWidth = 390;
+
+    renderMarketplace('/marketplace');
+
+    fireEvent.click(await screen.findByRole('button', { name: /open search page/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/search');
+    });
+  });
+
+  it('returns buyers to the marketplace when the mobile search is cleared', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
+    window.innerWidth = 390;
+
+    renderMarketplace('/search?search=iphone');
+
+    const mobileSearchInput = await screen.findByDisplayValue('iphone');
+    fireEvent.change(mobileSearchInput, { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/marketplace');
+    });
+  });
+
+  it('replaces the mobile search summary with recent searches', async () => {
+    localStorage.setItem('mafdesh_recent_searches', JSON.stringify(['iPhone', 'AirPods']));
+    window.innerWidth = 390;
+
+    renderMarketplace('/search?search=iphone');
+
+    expect(await screen.findByText('Recent searches')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'iPhone' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AirPods' })).toBeInTheDocument();
+    expect(screen.queryByText('2 products matched your search.')).not.toBeInTheDocument();
+  });
+
+  it('shows products immediately on mobile search when there are no recent searches', async () => {
+    window.innerWidth = 390;
+
+    renderMarketplace('/search');
+
+    expect(await screen.findByRole('heading', { name: 'Popular right now' })).toBeInTheDocument();
+    expect(screen.queryByText('Recent searches')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your recent searches will show up here.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Search for a product.')).not.toBeInTheDocument();
+  });
+
   it('keeps search-page copy simple', async () => {
     seedProducts([
       buildProduct({
@@ -459,6 +529,7 @@ describe('Marketplace seller-derived campus filters', () => {
     renderMarketplace('/search?search=iphone');
 
     expect(await screen.findByRole('heading', { name: 'Results for "iphone"' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('iphone')).toBeInTheDocument();
     expect(screen.getByText('2 products matched your search.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Results' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'More products' })).toBeInTheDocument();

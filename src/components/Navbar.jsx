@@ -105,14 +105,25 @@ export default function Navbar({
   const isBuyerLike = isBuyer || isGuest;
   const isSearchPage = location.pathname === '/search';
   const isMarketplaceRoute = location.pathname === '/marketplace';
+  const isMarketplaceSurface = Boolean(marketplaceLocationAction);
+  const shouldUseStaticMobileMarketplaceNav = isBuyerLike && isMobileViewport && (isMarketplaceSurface || isSearchPage);
   const isCompactBuyerNav = isMarketplaceRoute;
+  const emptySearchPath = isBuyer ? '/marketplace' : '/products';
   const searchResultsPath = '/search';
-  const shouldUseCollapsibleMobileHeader = isCompactBuyerNav && isMobileViewport;
+  const shouldUseCollapsibleMobileHeader = isCompactBuyerNav && isMobileViewport && !shouldUseStaticMobileMarketplaceNav;
   const mobileTopRowExpandedHeight = isCompactBuyerNav ? 60 : 72;
 
-  const navShellClass = isDarkTheme
-    ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
-    : 'sticky top-0 z-50 border-b border-gray-200 bg-white text-slate-900 shadow-sm';
+  const navShellClass = shouldUseStaticMobileMarketplaceNav
+    ? (
+      isDarkTheme
+        ? 'border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] lg:sticky lg:top-0 lg:z-50 lg:backdrop-blur'
+        : 'border-b border-gray-200 bg-white text-slate-900 shadow-sm lg:sticky lg:top-0 lg:z-50'
+    )
+    : (
+      isDarkTheme
+        ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
+        : 'sticky top-0 z-50 border-b border-gray-200 bg-white text-slate-900 shadow-sm'
+    );
   const navLinkClass = isDarkTheme
     ? 'text-slate-200 hover:text-orange-300 hover:bg-slate-900'
     : 'text-gray-700 hover:text-orange-600 hover:bg-orange-50';
@@ -122,18 +133,6 @@ export default function Navbar({
   const searchInputClass = isDarkTheme
     ? 'border border-slate-700 bg-slate-900 text-slate-100 placeholder:text-slate-500 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/10'
     : 'border border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500';
-  const mobileSearchShellClass = isDarkTheme
-    ? 'rounded-[1.25rem] border border-slate-800 bg-slate-900/90 shadow-[0_16px_36px_rgba(2,6,23,0.35)]'
-    : 'rounded-[1.25rem] border border-orange-100 bg-orange-50/80 shadow-[0_14px_34px_rgba(15,23,42,0.08)]';
-  const mobileSearchFieldClass = isDarkTheme
-    ? 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30'
-    : 'h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30';
-  const compactMobileSearchShellClass = isDarkTheme
-    ? 'rounded-[1.1rem] border border-slate-800 bg-slate-900/90 shadow-[0_10px_24px_rgba(2,6,23,0.28)]'
-    : 'rounded-[1.1rem] border border-orange-100 bg-orange-50/70 shadow-[0_10px_24px_rgba(15,23,42,0.06)]';
-  const compactMobileSearchFieldClass = isDarkTheme
-    ? 'h-11 w-full rounded-[1.1rem] bg-transparent pl-11 pr-4 text-sm font-medium text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/25'
-    : 'h-11 w-full rounded-[1.1rem] bg-transparent pl-11 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/25';
   const iconBadgeClass = isDarkTheme
     ? 'bg-slate-800 text-orange-300'
     : 'bg-orange-100 text-orange-600';
@@ -484,7 +483,7 @@ export default function Navbar({
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    applySearchNavigation(searchQuery, searchResultsPath);
+    applySearchNavigation(searchQuery, searchQuery.trim() ? searchResultsPath : emptySearchPath);
     setShowDesktopSearchPanel(false);
     setMobileMenu(false);
   };
@@ -499,10 +498,6 @@ export default function Navbar({
     event.preventDefault();
     event.stopPropagation();
     setRecentSearches(removeRecentSearch(value));
-  };
-
-  const handleMobileSearchOpen = () => {
-    applySearchNavigation(searchQuery, '/search');
   };
 
   const closeMenus = () => {
@@ -586,7 +581,7 @@ export default function Navbar({
                     className={
                       isBuyerLike
                         ? isCompactBuyerNav
-                          ? 'h-7 w-auto max-w-[7rem] object-contain sm:h-8'
+                          ? 'h-8 w-auto max-w-[8rem] object-contain sm:h-8'
                           : 'h-8 w-auto max-w-[8.5rem] object-contain sm:h-9'
                         : 'h-8 w-auto object-contain'
                     }
@@ -1033,6 +1028,16 @@ export default function Navbar({
                     </>
                   ) : isSeller ? (
                     <>
+                      {themeToggle ? (
+                        <div>
+                          <ThemeToggleButton
+                            darkMode={themeToggle.darkMode}
+                            onToggle={themeToggle.onToggle}
+                            compact
+                            isDarkTheme={isDarkTheme}
+                          />
+                        </div>
+                      ) : null}
                       <NotificationBell user={notificationUser} theme={theme} />
                       <button
                         type="button"
@@ -1092,68 +1097,6 @@ export default function Navbar({
                 </div>
               </div>
             </div>
-            {isCompactBuyerNav && (
-              <div
-                data-testid="mobile-header-search-row"
-                className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}
-              >
-                {isSearchPage ? (
-                  <form onSubmit={handleSearchSubmit}>
-                    <div className={`relative overflow-hidden ${
-                      isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
-                    }`}>
-                      <Search
-                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
-                          isCompactBuyerNav ? 'left-3.5 h-4 w-4' : 'left-4 h-5 w-5'
-                        } ${
-                          isDarkTheme ? 'text-orange-300' : 'text-orange-500'
-                        }`}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Search products..."
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        autoFocus
-                        className={isCompactBuyerNav ? compactMobileSearchFieldClass : mobileSearchFieldClass}
-                      />
-                    </div>
-                  </form>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleMobileSearchOpen}
-                    aria-label="Open search page"
-                    className={`relative block w-full overflow-hidden text-left ${
-                      isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
-                    }`}
-                  >
-                    <Search
-                      className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
-                        isCompactBuyerNav ? 'left-3.5 h-4 w-4' : 'left-4 h-5 w-5'
-                      } ${
-                        isDarkTheme ? 'text-orange-300' : 'text-orange-500'
-                      }`}
-                    />
-                    <span
-                      className={`flex items-center ${
-                        isCompactBuyerNav ? 'h-11 pl-11 pr-4 text-sm' : 'h-12 pl-12 pr-4 text-base'
-                      } font-medium ${
-                        searchQuery
-                          ? isDarkTheme
-                            ? 'text-slate-100'
-                            : 'text-slate-900'
-                          : isDarkTheme
-                            ? 'text-slate-500'
-                            : 'text-slate-500'
-                      }`}
-                    >
-                      {searchQuery || 'Search products...'}
-                    </span>
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </nav>

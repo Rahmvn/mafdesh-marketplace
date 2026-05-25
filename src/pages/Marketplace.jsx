@@ -9,6 +9,12 @@ import FlashSaleStrip from '../components/FlashSaleStrip';
 import ProductCardGrid from '../components/ProductCardGrid';
 import { PRODUCT_CATEGORIES } from '../utils/categories';
 import { getCanonicalStateName } from '../utils/nigeriaStates';
+import {
+  readRecentSearches,
+  removeRecentSearch,
+  saveRecentSearch,
+} from '../utils/recentSearches';
+import { getStoredUser } from '../utils/storage';
 import { supabase } from '../supabaseClient';
 import {
   enrichProductsWithPublicSellerData,
@@ -315,9 +321,11 @@ export default function Marketplace() {
   const location = useLocation();
   const searchQuery = new URLSearchParams(location.search).get('search') || '';
   const isSearchPage = location.pathname === '/search';
-  const hasSearchQuery = Boolean(searchQuery.trim());
+  const marketplaceBrowsePath = getStoredUser()?.role === 'buyer' ? '/marketplace' : '/products';
 
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [mobileSearchDraft, setMobileSearchDraft] = useState(searchQuery);
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
   const [products, setProducts] = useState(() => readCachedProducts());
   const [selectedCampusGroupId, setSelectedCampusGroupId] = useState('');
   const [isCampusPickerOpen, setIsCampusPickerOpen] = useState(false);
@@ -328,6 +336,9 @@ export default function Marketplace() {
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === 'undefined' ? 1280 : window.innerWidth
   );
+  const isMobileViewport = viewportWidth < 1024;
+  const activeSearchQuery = isMobileViewport && isSearchPage ? mobileSearchDraft : searchQuery;
+  const hasSearchQuery = Boolean(activeSearchQuery.trim());
 
   const availableCategories = ['All', ...PRODUCT_CATEGORIES];
 
@@ -385,6 +396,14 @@ export default function Marketplace() {
     };
   }, []);
 
+  useEffect(() => {
+    setMobileSearchDraft(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setRecentSearches(readRecentSearches());
+  }, [searchQuery]);
+
   const flashSaleProducts = useMemo(() => getActiveFlashSaleProducts(products, now), [now, products]);
   const marketplaceProducts = useMemo(() => excludeActiveFlashSaleProducts(products, now), [now, products]);
   const campusGroups = useMemo(() => buildCampusGroups(marketplaceProducts), [marketplaceProducts]);
@@ -414,9 +433,9 @@ export default function Marketplace() {
   );
 
   const fuzzyFilteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return marketplaceProducts;
-    return fuse.search(searchQuery).map((result) => result.item);
-  }, [fuse, marketplaceProducts, searchQuery]);
+    if (!activeSearchQuery.trim()) return marketplaceProducts;
+    return fuse.search(activeSearchQuery).map((result) => result.item);
+  }, [activeSearchQuery, fuse, marketplaceProducts]);
 
   const campusFilteredProducts = useMemo(() => {
     return fuzzyFilteredProducts.filter((product) => {
@@ -445,15 +464,20 @@ export default function Marketplace() {
     const resultCategories = new Set(
       visibleProducts.map((product) => String(product.category || '').trim()).filter(Boolean)
     );
-    const queryTokens = normalizeText(searchQuery).split(' ').filter((token) => token.length >= 3);
+    const queryTokens = normalizeText(activeSearchQuery).split(' ').filter((token) => token.length >= 3);
+
+    if (!hasSearchQuery) {
+      const featuredProductsFirst = marketplaceProducts.filter((product) => product.is_featured);
+      const fallbackProducts = marketplaceProducts.filter(
+        (product) => !featuredProductsFirst.some((candidate) => String(candidate.id) === String(product.id))
+      );
+
+      return [...featuredProductsFirst, ...fallbackProducts].slice(0, 8);
+    }
 
     const rankedProducts = marketplaceProducts.filter((product) => {
       if (visibleProductIds.has(String(product.id))) {
         return false;
-      }
-
-      if (!hasSearchQuery) {
-        return Boolean(product.is_featured);
       }
 
       const haystack = normalizeText(
@@ -477,9 +501,9 @@ export default function Marketplace() {
         array.findIndex((candidate) => String(candidate.id) === String(product.id)) === index
       ))
       .slice(0, 8);
-  }, [hasSearchQuery, marketplaceProducts, searchQuery, visibleProducts]);
+  }, [activeSearchQuery, hasSearchQuery, marketplaceProducts, visibleProducts]);
 
-  const isDefaultCategoryView = selectedCategory === 'All' && !searchQuery.trim();
+  const isDefaultCategoryView = selectedCategory === 'All' && !activeSearchQuery.trim();
   const categoryPreviewLimit = useMemo(
     () => getCategoryPreviewLimit(viewportWidth),
     [viewportWidth]
@@ -546,8 +570,8 @@ export default function Marketplace() {
       messageParts.push(`in ${selectedCategory}`);
     }
 
-    if (searchQuery.trim()) {
-      messageParts.push(`matching "${searchQuery}"`);
+    if (activeSearchQuery.trim()) {
+      messageParts.push(`matching "${activeSearchQuery}"`);
     }
 
     if (messageParts.length === 0) {
@@ -555,7 +579,7 @@ export default function Marketplace() {
     }
 
     return `No products found ${messageParts.join(' ')}.`;
-  }, [searchQuery, selectedCampusGroup, selectedCategory]);
+  }, [activeSearchQuery, selectedCampusGroup, selectedCategory]);
 
   const closeCampusPicker = useCallback(() => {
     setIsCampusPickerOpen(false);
@@ -622,25 +646,123 @@ export default function Marketplace() {
     [navigate]
   );
 
+  const handleMobileSearchSubmit = useCallback((event) => {
+    event.preventDefault();
+
+    const nextSearch = String(mobileSearchDraft || '').trim();
+    const params = new URLSearchParams(location.search);
+
+    if (nextSearch) {
+      params.set('search', nextSearch);
+      setRecentSearches(saveRecentSearch(nextSearch));
+    } else {
+      params.delete('search');
+    }
+
+    navigate({
+      pathname: nextSearch ? '/search' : marketplaceBrowsePath,
+      search: params.toString() ? `?${params.toString()}` : '',
+    });
+  }, [location.search, marketplaceBrowsePath, mobileSearchDraft, navigate]);
+
+  const openMobileSearchPage = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    const nextSearch = String(searchQuery || '').trim();
+
+    if (nextSearch) {
+      params.set('search', nextSearch);
+    } else {
+      params.delete('search');
+    }
+
+    navigate({
+      pathname: '/search',
+      search: params.toString() ? `?${params.toString()}` : '',
+    });
+  }, [location.search, navigate, searchQuery]);
+
+  const navigateToRecentSearch = useCallback((value) => {
+    const nextSearch = String(value || '').trim();
+    if (!nextSearch) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    params.set('search', nextSearch);
+    setRecentSearches(saveRecentSearch(nextSearch));
+    setMobileSearchDraft(nextSearch);
+    navigate({
+      pathname: '/search',
+      search: params.toString() ? `?${params.toString()}` : '',
+    });
+  }, [location.search, navigate]);
+
+  const handleRecentSearchRemove = useCallback((value) => {
+    setRecentSearches(removeRecentSearch(value));
+  }, []);
+
+  const handleMobileSearchChange = useCallback((event) => {
+    const nextValue = event.target.value;
+    setMobileSearchDraft(nextValue);
+
+    if (isSearchPage && !String(nextValue || '').trim()) {
+      const params = new URLSearchParams(location.search);
+      params.delete('search');
+      navigate({
+        pathname: marketplaceBrowsePath,
+        search: params.toString() ? `?${params.toString()}` : '',
+      });
+    }
+  }, [isSearchPage, location.search, marketplaceBrowsePath, navigate]);
+
   return (
     <div className="flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-gradient-to-br from-blue-50 via-white to-orange-50">
-      <AuthNavbarWrapper
-        marketplaceLocationAction={{
-          active: hasActiveCampusFilter,
-          disabled: campusGroups.length === 0,
-          label: selectedCampusGroup
-            ? `Campus filter: ${selectedCampusGroup.displayName}`
-            : 'Campus filter',
-          onClick: openCampusPicker,
-        }}
-      />
-
       <div
         data-main-scroll-container="primary"
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
       >
+        <AuthNavbarWrapper
+          marketplaceLocationAction={{
+            active: hasActiveCampusFilter,
+            disabled: campusGroups.length === 0,
+            label: selectedCampusGroup
+              ? `Campus filter: ${selectedCampusGroup.displayName}`
+              : 'Campus filter',
+            onClick: openCampusPicker,
+          }}
+        />
+
         <main className="mx-auto w-full max-w-7xl px-2 pb-24 pt-5 lg:pb-5">
-        <div className="sticky top-0 z-10 mb-5 space-y-2">
+        <div className="sticky top-0 z-20 mb-5 space-y-2 bg-gradient-to-b from-[#f8fbff] via-[#f8fbff] to-[rgba(248,251,255,0)] pb-2">
+          {isSearchPage ? (
+            <form onSubmit={handleMobileSearchSubmit} className="lg:hidden">
+              <div className="relative overflow-hidden rounded-[1.25rem] border border-orange-100 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-orange-500" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={mobileSearchDraft}
+                  onChange={handleMobileSearchChange}
+                  autoFocus
+                  className="h-12 w-full rounded-[1.25rem] bg-transparent pl-12 pr-4 text-base font-medium text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                />
+              </div>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={openMobileSearchPage}
+              aria-label="Open search page"
+              className="relative block w-full overflow-hidden rounded-[1.25rem] border border-orange-100 bg-white text-left shadow-[0_14px_34px_rgba(15,23,42,0.08)] lg:hidden"
+            >
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-orange-500" />
+              <span className={`flex h-12 items-center pl-12 pr-4 text-base font-medium ${
+                searchQuery ? 'text-slate-900' : 'text-slate-500'
+              }`}>
+                {searchQuery || 'Search products...'}
+              </span>
+            </button>
+          )}
           <div className="rounded-lg border border-blue-100 bg-white px-2 py-2.5 shadow-sm">
             <div className="scrollbar-hide flex w-full items-center gap-2 overflow-x-auto">
               {availableCategories.map((category) => (
@@ -793,16 +915,61 @@ export default function Marketplace() {
           </div>
         ) : null}
 
-        {isSearchPage ? (
+        {isSearchPage && !isMobileViewport ? (
           <section className="mb-6 rounded-[2rem] border border-orange-100 bg-white/95 px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
             <h1 className="mt-2 text-2xl font-black text-slate-900">
-              {hasSearchQuery ? `Results for "${searchQuery}"` : 'Search'}
+              {hasSearchQuery ? `Results for "${activeSearchQuery}"` : 'Search'}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
               {hasSearchQuery
                 ? `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'} matched your search${selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}.`
                 : 'Search for a product to see results.'}
             </p>
+            {selectedCampusGroup ? (
+              <p className="mt-3 text-sm text-slate-500">
+                Campus filter active for <span className="font-semibold text-slate-700">{selectedCampusGroup.displayName}</span>
+                {selectedCampusGroup.state ? `, ${selectedCampusGroup.state}` : ''}.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {isSearchPage && isMobileViewport && (recentSearches.length > 0 || selectedCampusGroup) ? (
+          <section className="mb-6 rounded-[1.75rem] border border-orange-100 bg-white/95 px-4 py-4 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="text-sm font-bold uppercase tracking-[0.14em] text-slate-900">Recent searches</h1>
+              {recentSearches.length > 0 ? (
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  {recentSearches.length} saved
+                </span>
+              ) : null}
+            </div>
+            {recentSearches.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {recentSearches.map((recentSearch) => (
+                  <div
+                    key={recentSearch}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 pl-3 pr-1 py-1 text-sm text-slate-700"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigateToRecentSearch(recentSearch)}
+                      className="font-medium"
+                    >
+                      {recentSearch}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRecentSearchRemove(recentSearch)}
+                      aria-label={`Remove recent search ${recentSearch}`}
+                      className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {selectedCampusGroup ? (
               <p className="mt-3 text-sm text-slate-500">
                 Campus filter active for <span className="font-semibold text-slate-700">{selectedCampusGroup.displayName}</span>
@@ -879,7 +1046,7 @@ export default function Marketplace() {
                   ) : null}
                 </div>
               )
-            ) : (
+            ) : isMobileViewport ? null : (
               <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
                 <p className="text-lg font-semibold text-slate-900">Search for a product.</p>
               </div>
