@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   BadgeCheck,
   BookOpen,
   ChevronDown,
+  Clock3,
   CreditCard,
   HelpCircle,
   Home,
@@ -34,6 +35,11 @@ import {
   subscribeToAuthStateChanges,
 } from '../services/authSessionService';
 import { fetchPendingRefundRequestCount } from '../services/refundRequestService';
+import {
+  readRecentSearches,
+  removeRecentSearch,
+  saveRecentSearch,
+} from '../utils/recentSearches';
 import { showGlobalLoginRequired } from '../hooks/modalService';
 import { getStoredUser } from '../utils/storage';
 import NotificationBell from './NotificationBell';
@@ -71,21 +77,25 @@ export default function Navbar({
   const [searchQuery, setSearchQuery] = useState(
     () => new URLSearchParams(window.location.search).get('search') || ''
   );
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
   const [cartCount, setCartCount] = useState(() => readCachedCartCount());
   const [actionRequiredCount, setActionRequiredCount] = useState(0);
   const [adminCounts, setAdminCounts] = useState({ refunds: 0, verifications: 0 });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showDesktopSearchPanel, setShowDesktopSearchPanel] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const debounceTimer = useRef(null);
+  const desktopSearchRef = useRef(null);
   const userRole = storedUser?.role || null;
   const isDarkTheme = theme === 'dark';
   const isBuyer = userRole === 'buyer';
   const isSeller = userRole === 'seller';
   const isGuest = !userRole;
   const isBuyerLike = isBuyer || isGuest;
+  const isSearchPage = location.pathname === '/search';
   const isMarketplaceBuyerView = isBuyer && location.pathname === '/marketplace';
   const isCompactBuyerNav = isMarketplaceBuyerView;
+  const searchResultsPath = '/search';
 
   const navShellClass = isDarkTheme
     ? 'sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 text-slate-100 shadow-[0_14px_40px_rgba(2,6,23,0.45)] backdrop-blur'
@@ -325,55 +335,79 @@ export default function Navbar({
   const homePath = getHomePath();
 
   useEffect(() => {
-    if (
-      !isBuyerLike ||
-      !['/', '/marketplace'].includes(location.pathname)
-    ) {
-      return;
-    }
+    setSearchQuery(new URLSearchParams(location.search).get('search') || '');
+  }, [location.search]);
 
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    debounceTimer.current = setTimeout(() => {
-      const params = new URLSearchParams(location.search);
-      if (searchQuery.trim()) {
-        params.set('search', searchQuery.trim());
-      } else {
-        params.delete('search');
-      }
-      navigate({ pathname: homePath, search: params.toString() }, { replace: true });
-    }, 300);
-
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (
+        desktopSearchRef.current
+        && !desktopSearchRef.current.contains(event.target)
+      ) {
+        setShowDesktopSearchPanel(false);
       }
     };
-  }, [homePath, isBuyerLike, location.pathname, location.search, navigate, searchQuery]);
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, []);
+
+  const updateRecentSearches = useCallback((value) => {
+    const nextRecentSearches = saveRecentSearch(value);
+    setRecentSearches(nextRecentSearches);
+    return nextRecentSearches;
+  }, []);
+
+  const applySearchNavigation = useCallback((value, pathname, options = {}) => {
+    const normalizedValue = String(value || '').trim();
+    const params = new URLSearchParams(location.search);
+
+    if (normalizedValue) {
+      params.set('search', normalizedValue);
+      updateRecentSearches(normalizedValue);
+    } else {
+      params.delete('search');
+    }
+
+    navigate(
+      {
+        pathname,
+        search: params.toString() ? `?${params.toString()}` : '',
+      },
+      options
+    );
+  }, [location.search, navigate, updateRecentSearches]);
 
   useEffect(() => {
     setMobileMenu(false);
     setAdminNavOpen(false);
     setShowUserMenu(false);
+    setShowDesktopSearchPanel(false);
   }, [location.pathname]);
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    const params = new URLSearchParams(location.search);
-    if (searchQuery.trim()) {
-      params.set('search', searchQuery.trim());
-    } else {
-      params.delete('search');
-    }
-
-    navigate({ pathname: homePath, search: params.toString() });
+    applySearchNavigation(searchQuery, searchResultsPath);
+    setShowDesktopSearchPanel(false);
     setMobileMenu(false);
+  };
+
+  const handleRecentSearchSelect = (value) => {
+    setSearchQuery(value);
+    applySearchNavigation(value, searchResultsPath);
+    setShowDesktopSearchPanel(false);
+  };
+
+  const handleRecentSearchRemove = (event, value) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setRecentSearches(removeRecentSearch(value));
+  };
+
+  const handleMobileSearchOpen = () => {
+    applySearchNavigation(searchQuery, '/search');
   };
 
   const closeMenus = () => {
@@ -489,12 +523,17 @@ export default function Navbar({
               <div className={`hidden min-w-0 items-center justify-center lg:flex ${
                 isCompactBuyerNav ? 'flex-[1.15] px-3' : 'flex-[1.35] px-4'
               }`}>
-                <form onSubmit={handleSearchSubmit} className={`relative w-full ${isCompactBuyerNav ? 'max-w-xl' : 'max-w-2xl'}`}>
+                <form
+                  onSubmit={handleSearchSubmit}
+                  ref={desktopSearchRef}
+                  className={`relative w-full ${isCompactBuyerNav ? 'max-w-xl' : 'max-w-2xl'}`}
+                >
                   <input
                     type="text"
                     placeholder="Search products..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
+                    onFocus={() => setShowDesktopSearchPanel(true)}
                     className={`w-full rounded-full pl-10 ${
                       isCompactBuyerNav ? 'px-3.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm'
                     } ${searchInputClass}`}
@@ -502,6 +541,78 @@ export default function Navbar({
                   <Search className={`absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 ${
                     isCompactBuyerNav ? 'h-3.5 w-3.5' : 'h-4 w-4'
                   }`} />
+                  {showDesktopSearchPanel ? (
+                    <div
+                      className={`absolute left-0 right-0 top-[calc(100%+0.6rem)] z-50 overflow-hidden rounded-3xl border shadow-2xl ${
+                        isDarkTheme
+                          ? 'border-slate-800 bg-slate-950'
+                          : 'border-orange-100 bg-white'
+                      }`}
+                    >
+                      <div className={`flex items-center justify-between px-4 py-3 ${
+                        isDarkTheme ? 'border-b border-slate-800' : 'border-b border-orange-100'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <Clock3 className={`h-4 w-4 ${isDarkTheme ? 'text-orange-300' : 'text-orange-500'}`} />
+                          <p className={`text-sm font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>
+                            Recent searches
+                          </p>
+                        </div>
+                        <span className={`text-xs ${isDarkTheme ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Up to 5
+                        </span>
+                      </div>
+
+                      <div className="p-2">
+                        {recentSearches.length > 0 ? (
+                          recentSearches.map((recentSearch) => (
+                            <div
+                              key={recentSearch}
+                              className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
+                                isDarkTheme
+                                  ? 'text-slate-100 hover:bg-slate-900'
+                                  : 'text-slate-800 hover:bg-orange-50'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleRecentSearchSelect(recentSearch)}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <span className="block truncate text-sm">{recentSearch}</span>
+                              </button>
+                              <span className="flex items-center gap-2">
+                                <span className={`text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  Recent
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(event) => handleRecentSearchRemove(event, recentSearch)}
+                                  className={`rounded-full p-1 ${
+                                    isDarkTheme
+                                      ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-200'
+                                      : 'text-slate-400 hover:bg-white hover:text-slate-700'
+                                  }`}
+                                  aria-label={`Remove recent search ${recentSearch}`}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-3 py-6 text-center">
+                            <p className={`text-sm font-medium ${isDarkTheme ? 'text-slate-200' : 'text-slate-700'}`}>
+                              Your recent searches will show up here.
+                            </p>
+                            <p className={`mt-1 text-xs ${isDarkTheme ? 'text-slate-500' : 'text-slate-400'}`}>
+                              Search once and we will keep the latest five.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </form>
               </div>
             )}
@@ -871,10 +982,37 @@ export default function Navbar({
             </div>
             {isBuyerLike && (
               <div className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}>
-                <form onSubmit={handleSearchSubmit}>
-                  <div className={`relative overflow-hidden ${
-                    isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
-                  }`}>
+                {isSearchPage ? (
+                  <form onSubmit={handleSearchSubmit}>
+                    <div className={`relative overflow-hidden ${
+                      isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
+                    }`}>
+                      <Search
+                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
+                          isCompactBuyerNav ? 'left-3.5 h-4 w-4' : 'left-4 h-5 w-5'
+                        } ${
+                          isDarkTheme ? 'text-orange-300' : 'text-orange-500'
+                        }`}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        autoFocus
+                        className={isCompactBuyerNav ? compactMobileSearchFieldClass : mobileSearchFieldClass}
+                      />
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleMobileSearchOpen}
+                    aria-label="Open search page"
+                    className={`relative block w-full overflow-hidden text-left ${
+                      isCompactBuyerNav ? compactMobileSearchShellClass : mobileSearchShellClass
+                    }`}
+                  >
                     <Search
                       className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${
                         isCompactBuyerNav ? 'left-3.5 h-4 w-4' : 'left-4 h-5 w-5'
@@ -882,15 +1020,23 @@ export default function Navbar({
                         isDarkTheme ? 'text-orange-300' : 'text-orange-500'
                       }`}
                     />
-                    <input
-                      type="text"
-                      placeholder="Search products..."
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      className={isCompactBuyerNav ? compactMobileSearchFieldClass : mobileSearchFieldClass}
-                    />
-                  </div>
-                </form>
+                    <span
+                      className={`flex items-center ${
+                        isCompactBuyerNav ? 'h-11 pl-11 pr-4 text-sm' : 'h-12 pl-12 pr-4 text-base'
+                      } font-medium ${
+                        searchQuery
+                          ? isDarkTheme
+                            ? 'text-slate-100'
+                            : 'text-slate-900'
+                          : isDarkTheme
+                            ? 'text-slate-500'
+                            : 'text-slate-500'
+                      }`}
+                    >
+                      {searchQuery || 'Search products...'}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>

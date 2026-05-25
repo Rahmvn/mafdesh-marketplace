@@ -1087,9 +1087,7 @@ export default function ProductDetail() {
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <div>
               <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">More products you may like</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Similar items are boosted by category fit, university verification, campus match, rating, and freshness without hiding normal sellers.
-              </p>
+         
             </div>
             <div className="h-px min-w-16 flex-1 bg-gradient-to-r from-orange-300 to-transparent" />
           </div>

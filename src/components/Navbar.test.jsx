@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Navbar from './Navbar';
 
@@ -50,7 +50,19 @@ function renderNavbar() {
   render(
     <MemoryRouter initialEntries={['/']}>
       <Navbar />
+      <LocationDisplay />
     </MemoryRouter>
+  );
+}
+
+function LocationDisplay() {
+  const location = useLocation();
+
+  return (
+    <div data-testid="location-display">
+      {location.pathname}
+      {location.search}
+    </div>
   );
 }
 
@@ -141,6 +153,40 @@ describe('Navbar cart badge', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('5').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('opens recent searches on desktop focus and routes submitted searches to the search page', async () => {
+    localStorage.setItem('mafdesh_recent_searches', JSON.stringify(['Laptop', 'Desk']));
+
+    renderNavbar();
+
+    const searchInput = screen.getByPlaceholderText('Search products...');
+    fireEvent.focus(searchInput);
+
+    expect(screen.getByText('Recent searches')).toBeInTheDocument();
+    expect(screen.getByText('Laptop')).toBeInTheDocument();
+    expect(screen.getByText('Desk')).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'Headphones' } });
+    fireEvent.submit(searchInput.closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/search?search=Headphones');
+    });
+  });
+
+  it('navigates to the search page when a recent search is selected', async () => {
+    localStorage.setItem('mafdesh_recent_searches', JSON.stringify(['Campus bag']));
+
+    renderNavbar();
+
+    const searchInput = screen.getByPlaceholderText('Search products...');
+    fireEvent.focus(searchInput);
+    fireEvent.click(screen.getByRole('button', { name: 'Campus bag' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-display')).toHaveTextContent('/search?search=Campus+bag');
     });
   });
 });

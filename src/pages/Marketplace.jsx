@@ -314,6 +314,8 @@ export default function Marketplace() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchQuery = new URLSearchParams(location.search).get('search') || '';
+  const isSearchPage = location.pathname === '/search';
+  const hasSearchQuery = Boolean(searchQuery.trim());
 
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [products, setProducts] = useState(() => readCachedProducts());
@@ -438,6 +440,44 @@ export default function Marketplace() {
     () => campusFilteredProducts.filter((product) => product.is_featured),
     [campusFilteredProducts]
   );
+  const relatedProducts = useMemo(() => {
+    const visibleProductIds = new Set(visibleProducts.map((product) => String(product.id)));
+    const resultCategories = new Set(
+      visibleProducts.map((product) => String(product.category || '').trim()).filter(Boolean)
+    );
+    const queryTokens = normalizeText(searchQuery).split(' ').filter((token) => token.length >= 3);
+
+    const rankedProducts = marketplaceProducts.filter((product) => {
+      if (visibleProductIds.has(String(product.id))) {
+        return false;
+      }
+
+      if (!hasSearchQuery) {
+        return Boolean(product.is_featured);
+      }
+
+      const haystack = normalizeText(
+        `${product?.name || ''} ${product?.description || ''} ${product?.category || ''}`
+      );
+
+      return resultCategories.has(String(product.category || '').trim())
+        || queryTokens.some((token) => haystack.includes(token));
+    });
+
+    if (rankedProducts.length >= 8) {
+      return rankedProducts.slice(0, 8);
+    }
+
+    const fallbackProducts = marketplaceProducts.filter(
+      (product) => !visibleProductIds.has(String(product.id))
+    );
+
+    return [...rankedProducts, ...fallbackProducts]
+      .filter((product, index, array) => (
+        array.findIndex((candidate) => String(candidate.id) === String(product.id)) === index
+      ))
+      .slice(0, 8);
+  }, [hasSearchQuery, marketplaceProducts, searchQuery, visibleProducts]);
 
   const isDefaultCategoryView = selectedCategory === 'All' && !searchQuery.trim();
   const categoryPreviewLimit = useMemo(
@@ -749,7 +789,29 @@ export default function Marketplace() {
           </div>
         ) : null}
 
-        {flashSaleProducts.length > 0 && (
+        {isSearchPage ? (
+          <section className="mb-6 rounded-[2rem] border border-orange-100 bg-white/95 px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-500">
+              Search marketplace
+            </p>
+            <h1 className="mt-2 text-2xl font-black text-slate-900">
+              {hasSearchQuery ? `Results for "${searchQuery}"` : 'Find what you need fast'}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              {hasSearchQuery
+                ? `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'} matched your search${selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}.`
+                : 'Use the search bar above to look for products, then browse related picks below.'}
+            </p>
+            {selectedCampusGroup ? (
+              <p className="mt-3 text-sm text-slate-500">
+                Campus filter active for <span className="font-semibold text-slate-700">{selectedCampusGroup.displayName}</span>
+                {selectedCampusGroup.state ? `, ${selectedCampusGroup.state}` : ''}.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {!isSearchPage && flashSaleProducts.length > 0 && (
           <FlashSaleStrip
             products={flashSaleProducts}
             onOpen={handleProductOpen}
@@ -757,7 +819,7 @@ export default function Marketplace() {
           />
         )}
 
-        {featuredProducts.length > 0 && (
+        {!isSearchPage && featuredProducts.length > 0 && (
           <section className="mb-8">
             <div className="mb-3 flex items-center gap-2">
               <h2 className="text-base font-bold text-blue-900">Featured Products</h2>
@@ -778,6 +840,75 @@ export default function Marketplace() {
 
         {isLoading && products.length === 0 ? (
           <LoadingGrid />
+        ) : isSearchPage ? (
+          <div className="space-y-8">
+            {hasSearchQuery ? (
+              visibleProducts.length > 0 ? (
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="text-base font-bold text-slate-900">Matching products</h2>
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      {visibleProducts.length} result{visibleProducts.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <ProductCardGrid>
+                    {visibleProducts.map((product) => (
+                      <BuyerProductCard
+                        key={product.id}
+                        product={product}
+                        onOpen={() => handleProductOpen(product)}
+                      />
+                    ))}
+                  </ProductCardGrid>
+                </section>
+              ) : (
+                <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
+                  <p className="text-lg font-semibold text-slate-900">{emptyStateMessage}</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Try a shorter keyword, another category, or clear your campus filter.
+                  </p>
+                  {hasActiveCampusFilter ? (
+                    <button
+                      type="button"
+                      onClick={handleClearCampusFilters}
+                      className="mt-4 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                    >
+                      Clear campus filters
+                    </button>
+                  ) : null}
+                </div>
+              )
+            ) : (
+              <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
+                <p className="text-lg font-semibold text-slate-900">Start with a product name, category, or keyword.</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  We will show matching products first, then keep related products underneath.
+                </p>
+              </div>
+            )}
+
+            {relatedProducts.length > 0 ? (
+              <section>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-base font-bold text-slate-900">
+                    {hasSearchQuery ? 'Related products' : 'Popular right now'}
+                  </h2>
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-500">
+                    {hasSearchQuery ? 'Keep browsing' : 'Explore'}
+                  </span>
+                </div>
+                <ProductCardGrid>
+                  {relatedProducts.map((product) => (
+                    <BuyerProductCard
+                      key={product.id}
+                      product={product}
+                      onOpen={() => handleProductOpen(product)}
+                    />
+                  ))}
+                </ProductCardGrid>
+              </section>
+            ) : null}
+          </div>
         ) : visibleProducts.length === 0 ? (
           <div className="py-14 text-center">
             <p className="text-lg font-medium text-blue-800">
