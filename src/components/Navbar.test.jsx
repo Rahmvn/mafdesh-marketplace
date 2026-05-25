@@ -246,6 +246,7 @@ describe('Navbar cart badge', () => {
     const scrollContainer = screen.getByTestId('main-scroll-container');
     const topRow = screen.getByTestId('mobile-header-top-row');
 
+    expect(screen.queryByTestId('mobile-header-search-row')).not.toBeInTheDocument();
     expect(topRow.style.maxHeight).toBe('');
     expect(topRow.style.opacity).toBe('');
 

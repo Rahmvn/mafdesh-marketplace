@@ -795,16 +795,13 @@ export default function Marketplace() {
 
         {isSearchPage ? (
           <section className="mb-6 rounded-[2rem] border border-orange-100 bg-white/95 px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-500">
-              Search marketplace
-            </p>
             <h1 className="mt-2 text-2xl font-black text-slate-900">
-              {hasSearchQuery ? `Results for "${searchQuery}"` : 'Find what you need fast'}
+              {hasSearchQuery ? `Results for "${searchQuery}"` : 'Search'}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
               {hasSearchQuery
                 ? `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'} matched your search${selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}.`
-                : 'Use the search bar above to look for products, then browse related picks below.'}
+                : 'Search for a product to see results.'}
             </p>
             {selectedCampusGroup ? (
               <p className="mt-3 text-sm text-slate-500">
@@ -850,7 +847,7 @@ export default function Marketplace() {
               visibleProducts.length > 0 ? (
                 <section>
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <h2 className="text-base font-bold text-slate-900">Matching products</h2>
+                    <h2 className="text-base font-bold text-slate-900">Results</h2>
                     <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                       {visibleProducts.length} result{visibleProducts.length === 1 ? '' : 's'}
                     </span>
@@ -884,10 +881,7 @@ export default function Marketplace() {
               )
             ) : (
               <div className="rounded-[1.75rem] border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
-                <p className="text-lg font-semibold text-slate-900">Start with a product name, category, or keyword.</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  We will show matching products first, then keep related products underneath.
-                </p>
+                <p className="text-lg font-semibold text-slate-900">Search for a product.</p>
               </div>
             )}
 
@@ -895,7 +889,7 @@ export default function Marketplace() {
               <section>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-base font-bold text-slate-900">
-                    {hasSearchQuery ? 'Related products' : 'Popular right now'}
+                    {hasSearchQuery ? 'More products' : 'Popular right now'}
                   </h2>
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-500">
                     {hasSearchQuery ? 'Keep browsing' : 'Explore'}

@@ -71,9 +71,9 @@ vi.mock('../utils/flashSale', () => ({
   })),
 }));
 
-function renderMarketplace() {
+function renderMarketplace(initialEntry = '/marketplace') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Marketplace />
     </MemoryRouter>
   );
@@ -434,5 +434,35 @@ describe('Marketplace seller-derived campus filters', () => {
     expect(await screen.findByText('Rated Backpack')).toBeInTheDocument();
     expect(screen.getByLabelText('Seller rating 4.3 out of 5')).toBeInTheDocument();
     expect(screen.getByText('Only 3 left')).toBeInTheDocument();
+  });
+
+  it('keeps search-page copy simple', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-iphone-1',
+        name: 'iPhone 13',
+        description: 'Clean used iPhone 13',
+      }),
+      buildProduct({
+        id: 'product-iphone-2',
+        name: 'iPhone Case',
+        description: 'Protective case for iPhone',
+        category: 'Accessories',
+      }),
+      buildProduct({
+        id: 'product-other',
+        name: 'Gaming Chair',
+        description: 'Comfortable study chair',
+      }),
+    ]);
+
+    renderMarketplace('/search?search=iphone');
+
+    expect(await screen.findByRole('heading', { name: 'Results for "iphone"' })).toBeInTheDocument();
+    expect(screen.getByText('2 products matched your search.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Results' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'More products' })).toBeInTheDocument();
+    expect(screen.queryByText('Search marketplace')).not.toBeInTheDocument();
+    expect(screen.queryByText('Matching products')).not.toBeInTheDocument();
   });
 });

@@ -1092,7 +1092,7 @@ export default function Navbar({
                 </div>
               </div>
             </div>
-            {isBuyerLike && (
+            {isCompactBuyerNav && (
               <div
                 data-testid="mobile-header-search-row"
                 className={`${isCompactBuyerNav ? 'pt-2' : 'pt-3'} lg:hidden`}
