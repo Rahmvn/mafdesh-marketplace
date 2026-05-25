@@ -6,13 +6,13 @@ import {
   runAuthOperationWithRetry,
   runReadOperationWithRetry,
 } from "../utils/authResilience";
-import { performLogout } from "../utils/logout";
 import { clearStoredUser, setStoredUser } from "../utils/storage";
 import { normalizeSelfServiceRole } from "./accountBootstrapService";
 
 export const AUTH_CALLBACK_PATH = "/auth/callback";
 const INTENTIONAL_LOGOUT_KEY = "mafdesh_intentional_logout";
 let intentionalLogoutInMemory = false;
+let logoutRedirectPromise = null;
 
 function getSupabaseProjectRef() {
   try {
@@ -254,6 +254,14 @@ export function consumeIntentionalLogoutRedirect() {
   return shouldRedirect;
 }
 
+export function redirectToLogin() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.location.replace("/login");
+}
+
 export async function signOutAndClearAuthState(options = {}) {
   const { localOnly = false, intentional = true } = options;
   writeIntentionalLogoutFlag(intentional);
@@ -283,6 +291,27 @@ export async function signOutAndClearAuthState(options = {}) {
   if (globalSignOutError && localOnly === false) {
     console.warn("[auth-context] global sign-out failed after local cleanup", globalSignOutError);
   }
+}
+
+export async function logoutAndRedirect(options = {}) {
+  if (logoutRedirectPromise) {
+    return logoutRedirectPromise;
+  }
+
+  logoutRedirectPromise = (async () => {
+    try {
+      await signOutAndClearAuthState(options);
+    } catch (error) {
+      console.error("Logout error:", error);
+      clearPersistedSupabaseSession();
+      clearStoredUser();
+    } finally {
+      redirectToLogin();
+      logoutRedirectPromise = null;
+    }
+  })();
+
+  return logoutRedirectPromise;
 }
 
 export async function beginPasswordReset(email) {
@@ -354,7 +383,7 @@ export async function ensureCurrentUserContext({
         error?.context?.status === 401;
 
       if (isAuthError) {
-        await performLogout();
+        await logoutAndRedirect();
         return null;
       }
 

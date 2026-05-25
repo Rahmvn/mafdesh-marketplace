@@ -46,9 +46,9 @@ vi.mock('../../mafdesh-img/landscape-logo-removebg-preview.png', () => ({
   default: 'mock-logo.png',
 }));
 
-function renderNavbar() {
+function renderNavbar(initialEntry = '/') {
   render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Navbar />
       <div data-main-scroll-container="primary" data-testid="main-scroll-container" />
       <LocationDisplay />
@@ -206,14 +206,14 @@ describe('Navbar cart badge', () => {
     localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
     matchMediaMatches = true;
 
-    renderNavbar();
+    renderNavbar('/marketplace');
 
     const scrollContainer = screen.getByTestId('main-scroll-container');
     const topRow = screen.getByTestId('mobile-header-top-row');
     const searchRow = screen.getByTestId('mobile-header-search-row');
 
     expect(searchRow).toBeInTheDocument();
-    expect(topRow.style.maxHeight).toBe('72px');
+    expect(topRow.style.maxHeight).toBe('60px');
     expect(topRow.style.opacity).toBe('1');
 
     Object.defineProperty(scrollContainer, 'scrollTop', {
@@ -232,8 +232,33 @@ describe('Navbar cart badge', () => {
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(topRow.style.maxHeight).toBe('72px');
+      expect(topRow.style.maxHeight).toBe('60px');
       expect(topRow.style.opacity).toBe('1');
+    });
+  });
+
+  it('keeps the mobile top row stable on non-marketplace pages', async () => {
+    localStorage.setItem('mafdesh_user', JSON.stringify({ id: 'buyer-1', role: 'buyer' }));
+    matchMediaMatches = true;
+
+    renderNavbar('/orders');
+
+    const scrollContainer = screen.getByTestId('main-scroll-container');
+    const topRow = screen.getByTestId('mobile-header-top-row');
+
+    expect(topRow.style.maxHeight).toBe('');
+    expect(topRow.style.opacity).toBe('');
+
+    Object.defineProperty(scrollContainer, 'scrollTop', {
+      configurable: true,
+      value: 64,
+      writable: true,
+    });
+    fireEvent.scroll(scrollContainer);
+
+    await waitFor(() => {
+      expect(topRow.style.maxHeight).toBe('');
+      expect(topRow.style.opacity).toBe('');
     });
   });
 });

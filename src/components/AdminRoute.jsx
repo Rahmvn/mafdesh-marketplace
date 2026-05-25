@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from "react-router-dom";
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
-import { performLogout } from '../utils/logout';
 import { clearStoredUser, getStoredUser } from '../utils/storage';
 import {
   loadAuthenticatedUserContext,
@@ -15,6 +14,13 @@ export default function AdminRoute({ children }) {
 
   useEffect(() => {
     let isMounted = true;
+    const markUnauthenticated = () => {
+      clearStoredUser();
+      if (isMounted) {
+        setRole(null);
+        setStatus('unauthenticated');
+      }
+    };
 
     const checkAdminAccess = async () => {
       try {
@@ -55,24 +61,21 @@ export default function AdminRoute({ children }) {
 
     const unsubscribe = subscribeToAuthStateChanges(async ({ event, session }) => {
       if (event === 'SIGNED_OUT' || (event !== 'INITIAL_SESSION' && !session)) {
-        await performLogout();
+        markUnauthenticated();
         return;
       }
 
       if (event === 'TOKEN_REFRESHED' && session?.user) {
         const storedUser = getStoredUser();
         if (storedUser && storedUser.id !== session.user.id) {
-          await performLogout();
+          await signOutAndClearAuthState({ localOnly: true, intentional: false });
+          markUnauthenticated();
           return;
         }
       }
 
       if (!session) {
-        clearStoredUser();
-        if (isMounted) {
-          setRole(null);
-          setStatus('unauthenticated');
-        }
+        markUnauthenticated();
       }
     });
 

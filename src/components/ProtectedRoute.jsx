@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MarketplaceRouteLoader } from './MarketplaceLoading';
 import { showGlobalLoginRequired } from '../hooks/modalService';
-import { performLogout } from '../utils/logout';
 import { clearStoredUser, getStoredUser } from '../utils/storage';
 import {
   consumeIntentionalLogoutRedirect,
@@ -49,6 +48,13 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
   useEffect(() => {
     let isMounted = true;
+    const markUnauthenticated = () => {
+      clearStoredUser();
+      if (isMounted) {
+        setRole(null);
+        setStatus('unauthenticated');
+      }
+    };
 
     const checkAuth = async () => {
       try {
@@ -96,24 +102,21 @@ export default function ProtectedRoute({ children, allowedRoles = [], loginPromp
 
     const unsubscribe = subscribeToAuthStateChanges(async ({ event, session }) => {
       if (event === 'SIGNED_OUT' || (event !== 'INITIAL_SESSION' && !session)) {
-        await performLogout();
+        markUnauthenticated();
         return;
       }
 
       if (event === 'TOKEN_REFRESHED' && session?.user) {
         const storedUser = getStoredUser();
         if (storedUser && storedUser.id !== session.user.id) {
-          await performLogout();
+          await signOutAndClearAuthState({ localOnly: true, intentional: false });
+          markUnauthenticated();
           return;
         }
       }
 
       if (!session) {
-        clearStoredUser();
-        if (isMounted) {
-          setRole(null);
-          setStatus('unauthenticated');
-        }
+        markUnauthenticated();
       }
     });
 

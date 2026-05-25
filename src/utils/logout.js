@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { logoutAndRedirect } from '../services/authSessionService';
 
 const APP_STORAGE_KEYS = [
   'mafdesh_user',
@@ -9,35 +9,19 @@ const APP_STORAGE_KEYS = [
   'mafdesh_notifications',
 ];
 
-export async function performLogout() {
+function removeStorageKey(storage, key) {
   try {
-    APP_STORAGE_KEYS.forEach((key) => {
-      try {
-        localStorage.removeItem(key);
-      } catch {
-        // ignore
-      }
-    });
-
-    try {
-      sessionStorage.clear();
-    } catch {
-      // ignore
-    }
-
-    await supabase.auth.signOut({ scope: 'local' });
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  } catch (error) {
-    console.error('Logout error:', error);
-
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch {
-      // ignore
-    }
-  } finally {
-    window.location.href = '/login';
+    storage.removeItem(key);
+  } catch {
+    // ignore
   }
+}
+
+export async function performLogout(options = {}) {
+  APP_STORAGE_KEYS.forEach((key) => {
+    removeStorageKey(localStorage, key);
+    removeStorageKey(sessionStorage, key);
+  });
+
+  await logoutAndRedirect(options);
 }

@@ -107,7 +107,7 @@ export default function Navbar({
   const isMarketplaceBuyerView = isBuyer && location.pathname === '/marketplace';
   const isCompactBuyerNav = isMarketplaceBuyerView;
   const searchResultsPath = '/search';
-  const shouldUseCollapsibleMobileHeader = isBuyerLike && isMobileViewport;
+  const shouldUseCollapsibleMobileHeader = isCompactBuyerNav && isMobileViewport;
   const mobileTopRowExpandedHeight = isCompactBuyerNav ? 60 : 72;
 
   const navShellClass = isDarkTheme

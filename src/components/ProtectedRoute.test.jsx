@@ -1,8 +1,10 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import ProtectedRoute from './ProtectedRoute';
+
+let authStateChangeListener = null;
 
 const {
   mockConsumeIntentionalLogoutRedirect,
@@ -56,7 +58,11 @@ function renderRoute(initialEntry = '/marketplace') {
 describe('ProtectedRoute', () => {
   beforeEach(() => {
     mockConsumeIntentionalLogoutRedirect.mockReturnValue(false);
-    mockSubscribeToAuthStateChanges.mockReturnValue(vi.fn());
+    authStateChangeListener = null;
+    mockSubscribeToAuthStateChanges.mockImplementation((listener) => {
+      authStateChangeListener = listener;
+      return vi.fn();
+    });
     mockSignOutAndClearAuthState.mockResolvedValue(undefined);
   });
 
@@ -140,5 +146,31 @@ describe('ProtectedRoute', () => {
     await waitFor(() => {
       expect(mockSignOutAndClearAuthState).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('handles signed-out auth events without re-running logout cleanup', async () => {
+    mockLoadAuthenticatedUserContext.mockResolvedValue({
+      session: { user: { id: 'user-1' } },
+      user: {
+        id: 'user-1',
+        role: 'buyer',
+        account_status: 'active',
+      },
+    });
+    mockConsumeIntentionalLogoutRedirect.mockReturnValue(true);
+
+    renderRoute();
+
+    expect(await screen.findByText('Buyer dashboard')).toBeInTheDocument();
+
+    await act(async () => {
+      await authStateChangeListener?.({
+        event: 'SIGNED_OUT',
+        session: null,
+      });
+    });
+
+    expect(await screen.findByText('Login page')).toBeInTheDocument();
+    expect(mockSignOutAndClearAuthState).not.toHaveBeenCalled();
   });
 });
