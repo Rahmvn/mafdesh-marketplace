@@ -1,3 +1,6 @@
+create temporary table tmp_higher_institution_seed
+on commit drop
+as
 with seed(name, state, zone) as (
   values
     ('University of Lagos', 'Lagos', 'South West'),
@@ -168,19 +171,42 @@ normalized_seed as (
   ) prepared
   order by slug, name
 )
-insert into public.universities (name, state, zone, slug)
 select
   name,
   state,
   zone,
   slug
-from normalized_seed
-on conflict (slug) do update
+from normalized_seed;
+
+update public.universities as existing
 set
-  name = excluded.name,
-  state = excluded.state,
-  zone = excluded.zone,
-  is_active = true;
+  name = seeded.name,
+  state = seeded.state,
+  zone = seeded.zone,
+  slug = seeded.slug,
+  is_active = true
+from tmp_higher_institution_seed as seeded
+where lower(btrim(existing.name)) = lower(btrim(seeded.name))
+  and lower(btrim(existing.state)) = lower(btrim(seeded.state));
+
+insert into public.universities (name, state, zone, slug)
+select
+  seeded.name,
+  seeded.state,
+  seeded.zone,
+  seeded.slug
+from tmp_higher_institution_seed as seeded
+where not exists (
+  select 1
+  from public.universities as existing
+  where lower(btrim(existing.name)) = lower(btrim(seeded.name))
+    and lower(btrim(existing.state)) = lower(btrim(seeded.state))
+)
+and not exists (
+  select 1
+  from public.universities as existing
+  where existing.slug = seeded.slug
+);
 
 create or replace function public.validate_self_service_signup_inputs(
   p_role text,
