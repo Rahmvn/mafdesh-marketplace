@@ -241,7 +241,7 @@ export default function AdminDashboard() {
                 <p className="text-sm text-gray-500">Pending Verifications</p>
                 <p className="text-2xl font-bold text-orange-600">{stats.pendingVerifications}</p>
                 <p className="mt-2 text-sm text-gray-600">
-                  Review seller university verification submissions.
+                  Review seller institution verification submissions.
                 </p>
               </div>
               <BadgeCheck className="shrink-0 text-orange-500" />

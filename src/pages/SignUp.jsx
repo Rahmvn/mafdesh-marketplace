@@ -47,7 +47,7 @@ const SIGNUP_STEPS = [
   {
     id: 3,
     label: 'Details',
-    description: 'University and account details.',
+    description: 'Institution and account details.',
   },
   {
     id: 4,
@@ -605,24 +605,24 @@ export default function SignUp() {
 
     if (isSeller && (!normalizedFormData.university_name || !normalizedFormData.university_state)) {
       showWarning(
-        'University Required',
-        'Choose your university and its state before creating a seller account.'
+        'Institution Required',
+        'Choose your institution and its state before creating a seller account.'
       );
       return false;
     }
 
     if (!isSeller && !normalizedFormData.university_name) {
       showWarning(
-        'University Required',
-        'Please enter your university. Mafdesh is a university marketplace — all members must be affiliated with a university.'
+        'Institution Required',
+        'Please enter your institution. Mafdesh is a higher-institution marketplace, so all members must be affiliated with a recognized institution.'
       );
       return false;
     }
 
     if (isSeller && !normalizedFormData.university_zone) {
       showWarning(
-        'University State Required',
-        'Select the correct university state so Mafdesh can place your store in the right campus zone.'
+        'Institution State Required',
+        'Select the correct institution state so Mafdesh can place your store in the right campus zone.'
       );
       return false;
     }
@@ -998,10 +998,10 @@ export default function SignUp() {
 
                     <SearchablePickerField
                       id="signup-university-search"
-                      label="SEARCH UNIVERSITY"
+                      label="SEARCH INSTITUTION"
                       value={universitySearchQuery}
                       onChange={handleUniversitySearchChange}
-                      placeholder="Search your university"
+                      placeholder="Search your institution"
                       maxLength={120}
                       loading={isLoadingUniversities}
                       options={universitySuggestions}
@@ -1017,7 +1017,7 @@ export default function SignUp() {
                     />
 
                     <div>
-                      <FieldLabel>Other university</FieldLabel>
+                      <FieldLabel>Other institution</FieldLabel>
                       <input
                         type="text"
                         placeholder="Type if not listed"
@@ -1039,12 +1039,12 @@ export default function SignUp() {
                         ) : (
                           <SelectField
                             id="signup-university-state"
-                            label="UNIVERSITY STATE"
+                            label="INSTITUTION STATE"
                             value={formData.university_state}
                             onChange={handleUniversityStateChange}
-                            ariaLabel="University state"
+                            ariaLabel="Institution state"
                             options={NIGERIAN_STATES}
-                            placeholder="Select university state"
+                            placeholder="Select institution state"
                             tone="orange"
                           />
                         )}

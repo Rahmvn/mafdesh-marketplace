@@ -406,7 +406,7 @@ const SELLER_PROFILE_TABS = [
   },
   {
     id: 'university',
-    label: 'University',
+    label: 'Institution',
     Icon: Calendar,
   },
   {
@@ -1033,7 +1033,7 @@ export default function Profile() {
     if (!payload.university_name || !payload.university_state) {
       setUniversityMessage({
         type: 'error',
-        text: 'University name and university state are required.',
+        text: 'Institution name and institution state are required.',
       });
       return;
     }
@@ -1041,7 +1041,7 @@ export default function Profile() {
     if (!payload.university_zone) {
       setUniversityMessage({
         type: 'error',
-        text: 'Select a valid university state to continue.',
+        text: 'Select a valid institution state to continue.',
       });
       return;
     }
@@ -1052,7 +1052,7 @@ export default function Profile() {
     if (!identityChanged) {
       setUniversityMessage({
         type: 'success',
-        text: 'No changes detected. Your university details stay the same.',
+        text: 'No changes detected. Your institution details stay the same.',
       });
       resetUniversityFormToProfile();
       setIsEditingUniversity(false);
@@ -1076,22 +1076,22 @@ export default function Profile() {
       const shouldResetVerification = identityChanged && editAccess.status === 'rejected';
 
       const successText = shouldResetVerification
-        ? 'University details saved. Seller verification has been reset and must be submitted again for the new campus identity.'
-        : 'University details saved successfully.';
+        ? 'Institution details saved. Seller verification has been reset and must be submitted again for the new campus identity.'
+        : 'Institution details saved successfully.';
 
       setUniversityMessage({
         type: 'success',
         text: successText,
       });
-      showSuccess('University Updated', successText);
+      showSuccess('Institution Updated', successText);
       setIsEditingUniversity(false);
     } catch (error) {
-      const message = error?.message || 'We could not update your university details.';
+      const message = error?.message || 'We could not update your institution details.';
       setUniversityMessage({
         type: 'error',
         text: message,
       });
-      showError('University Update Failed', message);
+      showError('Institution Update Failed', message);
     } finally {
       setIsSavingUniversity(false);
     }
@@ -1422,7 +1422,7 @@ export default function Profile() {
             <Calendar className="mt-0.5 text-orange-600" size={20} />
             <div className="flex-1">
               <div className="mb-1 text-xs font-semibold uppercase text-orange-600">
-                University Identity
+                Institution Identity
               </div>
               <div className="font-medium text-orange-900">{profile?.university_name || 'Not set'}</div>
               <div className="mt-1 text-sm text-orange-700">
@@ -1603,7 +1603,7 @@ export default function Profile() {
           <div className="rounded-2xl border border-blue-200 bg-white p-5">
             <div className="mb-3 flex items-center gap-2">
               <Calendar size={20} className="text-blue-600" />
-              <h2 className="text-lg font-bold text-gray-800">University Settings</h2>
+              <h2 className="text-lg font-bold text-gray-800">Institution Settings</h2>
             </div>
             <form
               onSubmit={submitUniversityIdentity}
@@ -1628,10 +1628,10 @@ export default function Profile() {
               <SearchablePickerField
                 id="profile-university-name"
                 inputRef={universityNameInputRef}
-                label="University name"
+                label="Institution name"
                 value={universityForm.university_name}
                 onChange={(nextValue) => handleUniversityFieldChange('university_name', nextValue)}
-                placeholder="Search or choose your university"
+                placeholder="Search or choose your institution"
                 helperText="Search list or use Other."
                 disabled={universityFieldsLocked}
                 loading={isSearchingUniversities}
@@ -1651,7 +1651,7 @@ export default function Profile() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <SelectField
                   id="profile-university-state"
-                  label="University state"
+                  label="Institution state"
                   value={universityForm.university_state}
                   onChange={(nextValue) => handleUniversityFieldChange('university_state', nextValue)}
                   options={NIGERIAN_STATES}
@@ -1662,7 +1662,7 @@ export default function Profile() {
 
                 <SelectField
                   id="profile-university-role"
-                  label="University role"
+                  label="Institution role"
                   value={universityForm.university_role}
                   onChange={(nextValue) => handleUniversityFieldChange('university_role', nextValue)}
                   options={[
@@ -1696,7 +1696,7 @@ export default function Profile() {
                     onClick={openUniversityEdit}
                     className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
                   >
-                    Edit University Details
+                    Edit Institution Details
                   </button>
                 ) : (
                   <>
@@ -1705,7 +1705,7 @@ export default function Profile() {
                       disabled={isSavingUniversity}
                       className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {isSavingUniversity ? 'Saving...' : 'Save University Details'}
+                      {isSavingUniversity ? 'Saving...' : 'Save Institution Details'}
                     </button>
                     {(profile?.university_name || isEditingUniversity) ? (
                       <button

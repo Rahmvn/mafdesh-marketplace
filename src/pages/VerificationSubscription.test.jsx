@@ -74,7 +74,7 @@ describe('VerificationSubscription', () => {
     vi.clearAllMocks();
   });
 
-  it('uses university verification copy without unsupported growth claims', async () => {
+  it('uses institution verification copy without unsupported growth claims', async () => {
     localStorage.setItem(
       'mafdesh_user',
       JSON.stringify({ id: 'seller-1', role: 'seller', email: 'seller@example.com' })
@@ -87,7 +87,7 @@ describe('VerificationSubscription', () => {
     );
 
     expect(
-      await screen.findByText(/submit your university details for verification/i)
+      await screen.findByText(/submit your institution details for verification/i)
     ).toBeInTheDocument();
     expect(screen.getAllByText(/early verification fee/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/73%/i)).not.toBeInTheDocument();

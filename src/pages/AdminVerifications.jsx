@@ -185,7 +185,7 @@ export default function AdminVerifications() {
               </div>
               <h1 className="mt-4 text-3xl font-bold text-blue-950">Seller Verifications</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Review pending university-based seller verification requests, inspect proof uploads,
+                Review pending institution-based seller verification requests, inspect proof uploads,
                 and approve or reject each submission.
               </p>
             </div>
@@ -278,10 +278,10 @@ export default function AdminVerifications() {
                         </div>
 
                         <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
-                          <h2 className="text-lg font-bold text-blue-950">University info</h2>
+                          <h2 className="text-lg font-bold text-blue-950">Institution info</h2>
                           <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
                             <p>
-                              <span className="font-semibold text-blue-950">University:</span> {request.university_name}
+                              <span className="font-semibold text-blue-950">Institution:</span> {request.university_name}
                             </p>
                             <p>
                               <span className="font-semibold text-blue-950">State:</span> {request.university_state || 'Not provided'}

@@ -256,6 +256,104 @@ describe('Marketplace seller-derived campus filters', () => {
     });
   });
 
+  it('merges polytechnic and poly variants into one campus option', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-aapoly-1',
+        name: 'AA Poly Bag',
+        description: 'Campus bag',
+        universityId: 'poly-1',
+        universityName: 'Abraham Adesanya Polytechnic',
+        universityState: 'Ogun',
+      }),
+      buildProduct({
+        id: 'product-aapoly-2',
+        name: 'AA Poly Tee',
+        description: 'Campus tee',
+        category: 'Books',
+        universityName: 'Abraham Adesanya Poly',
+        universityState: 'Ogun',
+      }),
+      buildProduct({
+        id: 'product-abu',
+        name: 'ABU Lab Coat',
+        description: 'Ahmadu Bello University lab coat',
+        universityId: 'uni-3',
+        universityName: 'Ahmadu Bello University',
+        universityState: 'Kaduna',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('AA Poly Bag');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'abraham' },
+    });
+
+    const polyButtons = findCampusButtons(dialog, /abraham adesanya/i);
+    expect(polyButtons).toHaveLength(1);
+
+    fireEvent.click(polyButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('AA Poly Bag')).toBeInTheDocument();
+      expect(screen.getByText('AA Poly Tee')).toBeInTheDocument();
+      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('merges college variants into one campus option', async () => {
+    seedProducts([
+      buildProduct({
+        id: 'product-college-1',
+        name: 'AOC Folder',
+        description: 'Campus folder',
+        universityId: 'college-1',
+        universityName: 'Adeniran Ogunsanya College',
+        universityState: 'Lagos',
+      }),
+      buildProduct({
+        id: 'product-college-2',
+        name: 'AOC Pen',
+        description: 'Campus pen',
+        category: 'Books',
+        universityName: 'Adeniran Ogunsanya College Lagos',
+        universityState: 'Lagos',
+      }),
+      buildProduct({
+        id: 'product-abu',
+        name: 'ABU Lab Coat',
+        description: 'Ahmadu Bello University lab coat',
+        universityId: 'uni-3',
+        universityName: 'Ahmadu Bello University',
+        universityState: 'Kaduna',
+      }),
+    ]);
+
+    renderMarketplace();
+
+    await screen.findByText('AOC Folder');
+    const dialog = await openCampusDialog();
+
+    fireEvent.change(within(dialog).getByLabelText('Search campuses'), {
+      target: { value: 'adeniran' },
+    });
+
+    const collegeButtons = findCampusButtons(dialog, /adeniran ogunsanya/i);
+    expect(collegeButtons).toHaveLength(1);
+
+    fireEvent.click(collegeButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('AOC Folder')).toBeInTheDocument();
+      expect(screen.getByText('AOC Pen')).toBeInTheDocument();
+      expect(screen.queryByText('ABU Lab Coat')).not.toBeInTheDocument();
+    });
+  });
+
   it('keeps same-name campuses in different states separate', async () => {
     seedProducts([
       buildProduct({

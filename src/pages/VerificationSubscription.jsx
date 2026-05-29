@@ -326,17 +326,17 @@ export default function SellerVerificationPage() {
 
   const validateSubmission = () => {
     if (!formState.universityName.trim()) {
-      showGlobalWarning('University Required', 'Enter your university name before submitting.');
+      showGlobalWarning('Institution Required', 'Enter your institution name before submitting.');
       return false;
     }
 
     if (!formState.universityState) {
-      showGlobalWarning('State Required', 'Select the university state before submitting.');
+      showGlobalWarning('State Required', 'Select the institution state before submitting.');
       return false;
     }
 
     if (!formState.universityZone) {
-      showGlobalWarning('Zone Required', 'Select the university geo-political zone.');
+      showGlobalWarning('Zone Required', 'Select the institution geo-political zone.');
       return false;
     }
 
@@ -346,7 +346,7 @@ export default function SellerVerificationPage() {
     }
 
     if (!proofFile) {
-      showGlobalWarning('Proof Required', 'Upload a university proof document before submitting.');
+      showGlobalWarning('Proof Required', 'Upload an institution proof document before submitting.');
       return false;
     }
 
@@ -434,7 +434,7 @@ export default function SellerVerificationPage() {
       themeState={themeState}
       showHeader
       title="Seller Verification"
-      subtitle="Submit your university details for verification."
+      subtitle="Submit your institution details for verification."
       actions={(
         <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${theme.badge}`}>
           <Shield className="h-4 w-4" />
@@ -561,7 +561,7 @@ export default function SellerVerificationPage() {
                 <div className={`rounded-xl p-4 ${theme.panelMuted}`}>
                   <p className="font-semibold">Latest submission</p>
                   <div className={`mt-3 grid gap-3 text-sm ${theme.mutedText} sm:grid-cols-2`}>
-                    <p>University: {latestSubmission.university_name}</p>
+                    <p>Institution: {latestSubmission.university_name}</p>
                     <p>State: {latestSubmission.university_state || 'Not provided'}</p>
                     <p>Zone: {latestSubmission.university_zone || 'Not provided'}</p>
                     <p>Role: {latestSubmission.university_role || 'Not provided'}</p>
@@ -587,7 +587,7 @@ export default function SellerVerificationPage() {
         <SellerSection
           theme={theme}
           eyebrow="Submit details"
-          title={verificationStatus === SELLER_VERIFICATION_STATUSES.REJECTED ? 'Update and resubmit' : 'University verification form'}
+          title={verificationStatus === SELLER_VERIFICATION_STATUSES.REJECTED ? 'Update and resubmit' : 'Institution verification form'}
           description="School details and proof."
         >
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -595,10 +595,10 @@ export default function SellerVerificationPage() {
               <div className="sm:col-span-2">
                 <SearchablePickerField
                   id="verification-university-name"
-                  label="University name"
+                  label="Institution name"
                   value={formState.universityName}
                   onChange={(nextValue) => handleFieldChange('universityName', nextValue)}
-                  placeholder="Search or choose your university"
+                  placeholder="Search or choose your institution"
                   disabled={!canSubmit}
                   helperText="Search list or use Other."
                   loading={isSearchingUniversities}
@@ -619,7 +619,7 @@ export default function SellerVerificationPage() {
               <div>
                 <SelectField
                   id="verification-university-state"
-                  label="University state"
+                  label="Institution state"
                   value={formState.universityState}
                   onChange={(nextValue) => handleFieldChange('universityState', nextValue)}
                   disabled={!canSubmit}
@@ -632,7 +632,7 @@ export default function SellerVerificationPage() {
               <div>
                 <SelectField
                   id="verification-university-zone"
-                  label="University zone"
+                  label="Institution zone"
                   value={formState.universityZone}
                   onChange={(nextValue) => handleFieldChange('universityZone', nextValue)}
                   disabled={!canSubmit}
@@ -645,7 +645,7 @@ export default function SellerVerificationPage() {
               <div>
                 <SelectField
                   id="verification-university-role"
-                  label="University role"
+                  label="Institution role"
                   value={formState.universityRole}
                   onChange={(nextValue) => handleFieldChange('universityRole', nextValue)}
                   disabled={!canSubmit}

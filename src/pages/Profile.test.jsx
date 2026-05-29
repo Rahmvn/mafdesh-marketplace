@@ -197,7 +197,7 @@ describe('Profile', () => {
     mockAuthUpdateUser.mockResolvedValue({ error: null });
   });
 
-  it('allows not-submitted sellers to edit and save university details', async () => {
+  it('allows not-submitted sellers to edit and save institution details', async () => {
     mockUsersSingle
       .mockResolvedValueOnce({
         data: createSellerProfile(),
@@ -217,12 +217,12 @@ describe('Profile', () => {
 
     expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Institution$/i }));
 
-    const universityInput = await screen.findByLabelText(/university name/i);
+    const universityInput = await screen.findByLabelText(/institution name/i);
     expect(universityInput).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /edit university details/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit institution details/i }));
 
     await waitFor(() => {
       expect(universityInput).not.toBeDisabled();
@@ -233,11 +233,11 @@ describe('Profile', () => {
       target: { value: 'Updated University' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save university details/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save institution details/i }));
 
     await waitFor(() => {
       expect(mockUpdateEq).toHaveBeenCalledWith('id', 'seller-1');
-      expect(screen.getByText('University details saved successfully.')).toBeInTheDocument();
+      expect(screen.getByText('Institution details saved successfully.')).toBeInTheDocument();
     });
   });
 
@@ -246,12 +246,12 @@ describe('Profile', () => {
 
     expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Institution$/i }));
 
-    const universityInput = await screen.findByLabelText(/university name/i);
+    const universityInput = await screen.findByLabelText(/institution name/i);
     expect(universityInput).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /edit university details/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit institution details/i }));
 
     await waitFor(() => {
       expect(universityInput).not.toBeDisabled();
@@ -283,11 +283,11 @@ describe('Profile', () => {
 
     expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Institution$/i }));
 
-    const universityInput = await screen.findByLabelText(/university name/i);
+    const universityInput = await screen.findByLabelText(/institution name/i);
     expect(universityInput).toBeDisabled();
-    expect(screen.queryByRole('button', { name: /edit university details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit institution details/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /contact support/i })).toBeInTheDocument();
 
     fireEvent.submit(universityInput.closest('form'));
@@ -312,15 +312,15 @@ describe('Profile', () => {
 
     expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Institution$/i }));
 
-    const universityInput = await screen.findByLabelText(/university name/i);
+    const universityInput = await screen.findByLabelText(/institution name/i);
     expect(universityInput).toBeDisabled();
-    expect(screen.queryByRole('button', { name: /edit university details/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit institution details/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /contact support/i })).toBeInTheDocument();
   });
 
-  it('allows rejected sellers to edit university details again', async () => {
+  it('allows rejected sellers to edit institution details again', async () => {
     mockUsersSingle.mockResolvedValueOnce({
       data: createSellerProfile({
         verification_status: 'rejected',
@@ -332,12 +332,12 @@ describe('Profile', () => {
 
     expect(await screen.findByText('Jane Seller')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^University$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Institution$/i }));
 
-    const universityInput = await screen.findByLabelText(/university name/i);
+    const universityInput = await screen.findByLabelText(/institution name/i);
     expect(universityInput).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /edit university details/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit institution details/i }));
 
     await waitFor(() => {
       expect(universityInput).not.toBeDisabled();

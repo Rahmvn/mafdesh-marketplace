@@ -162,7 +162,7 @@ function moveToSecurityStep({ agreeToTerms = true, asSeller = false } = {}) {
     fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
       target: { value: 'Mafdesh University' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
+    fireEvent.change(screen.getByRole('combobox', { name: /institution state/i }), {
       target: { value: 'Kaduna' },
     });
   } else {
@@ -233,7 +233,7 @@ describe('SignUp', () => {
     fireEvent.change(screen.getByPlaceholderText('Type if not listed'), {
       target: { value: 'Mafdesh University' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: /university state/i }), {
+    fireEvent.change(screen.getByRole('combobox', { name: /institution state/i }), {
       target: { value: 'Kaduna' },
     });
     fireEvent.click(screen.getByRole('checkbox'));
@@ -245,7 +245,7 @@ describe('SignUp', () => {
     expect(await screen.findByText(/step 3 of 4/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Your store name')).toHaveValue('Jane Store');
     expect(screen.getByPlaceholderText('Type if not listed')).toHaveValue('Mafdesh University');
-    expect(screen.getByRole('combobox', { name: /university state/i })).toHaveValue('Kaduna');
+    expect(screen.getByRole('combobox', { name: /institution state/i })).toHaveValue('Kaduna');
     expect(screen.getByRole('checkbox')).toBeChecked();
 
     fireEvent.click(screen.getByRole('button', { name: /back/i }));

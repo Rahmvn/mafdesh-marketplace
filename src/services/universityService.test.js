@@ -93,15 +93,15 @@ describe('universityService', () => {
     vi.clearAllMocks();
   });
 
-  it('searches active universities and normalizes their state and zone', async () => {
+  it('searches active institutions and normalizes their state and zone', async () => {
     mockLimit.mockResolvedValueOnce({
       data: [
         {
           id: 'uni-1',
-          name: 'University of Lagos',
+          name: 'Yaba College of Technology',
           state: 'lagos',
           zone: '',
-          slug: 'unilag',
+          slug: 'yaba-college-of-technology-lagos',
           is_active: true,
         },
       ],
@@ -114,23 +114,23 @@ describe('universityService', () => {
     expect(results).toEqual([
       {
         id: 'uni-1',
-        name: 'University of Lagos',
+        name: 'Yaba College of Technology',
         state: 'Lagos',
         zone: 'South West',
-        slug: 'unilag',
+        slug: 'yaba-college-of-technology-lagos',
         is_active: true,
       },
     ]);
   });
 
-  it('fetches a single university by id', async () => {
+  it('fetches a single institution by id', async () => {
     mockEqIdMaybeSingle.mockResolvedValueOnce({
       data: {
         id: 'uni-1',
-        name: 'Mafdesh University',
-        state: 'Kaduna',
-        zone: 'North West',
-        slug: 'mafdesh-university-kaduna',
+        name: 'Summit University',
+        state: 'Kwara',
+        zone: 'North Central',
+        slug: 'summit-university-kwara',
         is_active: true,
       },
       error: null,
@@ -140,21 +140,21 @@ describe('universityService', () => {
 
     expect(university).toMatchObject({
       id: 'uni-1',
-      name: 'Mafdesh University',
-      state: 'Kaduna',
-      zone: 'North West',
+      name: 'Summit University',
+      state: 'Kwara',
+      zone: 'North Central',
     });
   });
 
-  it('loads nearby universities from the same state', async () => {
+  it('loads nearby institutions from the same state', async () => {
     mockNeqOrder.mockResolvedValueOnce({
       data: [
         {
           id: 'uni-2',
-          name: 'Lagos State University',
+          name: 'Yaba College of Technology',
           state: 'Lagos',
           zone: 'South West',
-          slug: 'lasu',
+          slug: 'yaba-college-of-technology-lagos',
           is_active: true,
         },
       ],
@@ -165,7 +165,7 @@ describe('universityService', () => {
 
     expect(results[0]).toMatchObject({
       id: 'uni-2',
-      name: 'Lagos State University',
+      name: 'Yaba College of Technology',
       state: 'Lagos',
       zone: 'South West',
     });

@@ -155,7 +155,7 @@ export function validateDateOfBirth(value: string) {
 
 export function validateUniversityName(value: string) {
   if (!value || value.length < 2 || value.length > 120 || value.includes("<") || value.includes(">")) {
-    return "A valid university name is required for signup.";
+    return "A valid institution name is required for signup.";
   }
 
   return "";
@@ -196,8 +196,8 @@ export function validateSelfServiceSignupInput(
   if (role === "seller") {
     errors.push(
       validateBusinessName(businessName),
-      universityState ? "" : "University state is required for seller signup.",
-      universityZone ? "" : "University zone is required for seller signup."
+      universityState ? "" : "Institution state is required for seller signup.",
+      universityZone ? "" : "Institution zone is required for seller signup."
     );
   }
 

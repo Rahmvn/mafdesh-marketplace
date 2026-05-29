@@ -534,7 +534,7 @@ export default function SellerDeliverySettings() {
           <div className={`rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="text-sm font-semibold">Your ship-from location</p>
             <p className={`mt-1 text-sm ${theme.mutedText}`}>
-              We use your university state as the default ship-from state for delivery quotes.
+              We use your institution state as the default ship-from state for delivery quotes.
             </p>
             {sellerProductCount > 0 ? (
               <p className={`mt-2 text-xs ${theme.softText}`}>
@@ -544,11 +544,11 @@ export default function SellerDeliverySettings() {
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className={`rounded-lg px-4 py-3 text-sm ${theme.input}`}>
-                <p className="font-medium">{effectiveShipFromState || 'No university state yet'}</p>
+                <p className="font-medium">{effectiveShipFromState || 'No institution state yet'}</p>
                 <p className={`mt-1 text-xs ${theme.softText}`}>
                   {shipFromOverrideEnabled
                     ? 'Custom ship-from state active.'
-                    : 'Defaulting to your registered university state.'}
+                    : 'Defaulting to your registered institution state.'}
                 </p>
               </div>
               <input
@@ -588,12 +588,12 @@ export default function SellerDeliverySettings() {
                   }}
                   className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${theme.action}`}
                 >
-                  {shipFromOverrideEnabled ? 'Use university state instead' : 'Shipping from a different state?'}
+                  {shipFromOverrideEnabled ? 'Use institution state instead' : 'Shipping from a different state?'}
                 </button>
               ) : null}
               {!sellerUniversityState ? (
                 <p className={`text-xs ${theme.softText}`}>
-                  Add your university state in your profile to auto-fill this field.
+                  Add your institution state in your profile to auto-fill this field.
                 </p>
               ) : null}
             </div>
@@ -656,14 +656,14 @@ export default function SellerDeliverySettings() {
         title="Campus Meet-up Points"
       >
         <p className={`mb-4 text-sm ${theme.mutedText}`}>
-          Add a safe, public university hotspot where buyers can meet you on campus, such as a library entrance, department building, hostel lobby, student center, ICT building, or faculty gate.
+          Add a safe, public institution hotspot where buyers can meet you on campus, such as a library entrance, department building, hostel lobby, student center, ICT building, or faculty gate.
         </p>
         {sellerCampusLabel ? (
           <div className={`mb-4 rounded-lg p-4 ${theme.panelMuted}`}>
             <p className="text-sm font-semibold">This meet-up point will appear under</p>
             <p className={`mt-1 text-sm ${theme.mutedText}`}>{sellerCampusLabel}</p>
             <p className={`mt-2 text-xs ${theme.softText}`}>
-              Keep meet-up points within your registered university environment and use safe public hotspots only.
+              Keep meet-up points within your registered institution environment and use safe public hotspots only.
             </p>
             {sellerPickupEnabledProductCount > 0 ? (
               <p className={`mt-2 text-xs ${theme.softText}`}>

@@ -78,7 +78,7 @@ const FAQS = [
     category: 'Seller',
     question: 'How do I become a Verified Seller?',
     answer:
-      'Go to the seller verification page, submit your university details, upload your proof, and wait for review. Approved sellers get the Verified Seller badge and stronger trust visibility.',
+      'Go to the seller verification page, submit your institution details, upload your proof, and wait for review. Approved sellers get the Verified Seller badge and stronger trust visibility.',
   },
   {
     id: 'priority-support',

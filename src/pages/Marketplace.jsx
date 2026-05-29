@@ -88,11 +88,38 @@ function trimTrailingStateToken(value, state) {
 }
 
 function stripTrailingCampusWords(value) {
-  const campusWords = new Set(['university', 'uni']);
   const words = normalizeCampusText(value).split(' ').filter(Boolean);
+  const campusSuffixPhrases = [
+    ['university'],
+    ['uni'],
+    ['polytechnic'],
+    ['poly'],
+    ['college'],
+  ];
 
-  while (words.length > 1 && campusWords.has(words[words.length - 1])) {
-    words.pop();
+  let trimmed = true;
+
+  while (trimmed && words.length > 1) {
+    trimmed = false;
+
+    for (const phrase of campusSuffixPhrases) {
+      if (words.length <= phrase.length) {
+        continue;
+      }
+
+      const phraseStartIndex = words.length - phrase.length;
+      const matchesPhrase = phrase.every(
+        (phraseWord, index) => words[phraseStartIndex + index] === phraseWord
+      );
+
+      if (!matchesPhrase) {
+        continue;
+      }
+
+      words.splice(phraseStartIndex, phrase.length);
+      trimmed = true;
+      break;
+    }
   }
 
   return words.join(' ').trim();

@@ -435,7 +435,7 @@ export default function Checkout() {
               ) : null}
               {pickupEnabled && sellerUniversityName ? (
                 <p className="mt-3 text-sm text-blue-600">
-                  Campus meet-up points should stay within this seller&apos;s university environment: {sellerUniversityName}.
+                  Campus meet-up points should stay within this seller&apos;s institution environment: {sellerUniversityName}.
                 </p>
               ) : null}
 
