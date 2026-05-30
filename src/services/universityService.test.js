@@ -2,19 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockOrder,
-  mockLimit,
-  mockEqState,
-  mockIlike,
-  mockEqIdMaybeSingle,
-  mockNeqOrder,
+  mockStateEq,
+  mockMaybeSingle,
   mockFrom,
 } = vi.hoisted(() => {
   const mockOrder = vi.fn();
-  const mockLimit = vi.fn();
-  const mockEqState = vi.fn();
-  const mockIlike = vi.fn();
-  const mockEqIdMaybeSingle = vi.fn();
-  const mockNeqOrder = vi.fn();
+  const mockStateEq = vi.fn();
+  const mockMaybeSingle = vi.fn();
 
   const mockFrom = vi.fn((table) => {
     if (table !== 'universities') {
@@ -26,18 +20,14 @@ const {
         eq: vi.fn((column) => {
           if (column === 'is_active') {
             return {
+              eq: mockStateEq,
               order: mockOrder,
-              eq: mockEqState,
-              ilike: mockIlike,
-              neq: vi.fn(() => ({
-                order: mockNeqOrder,
-              })),
             };
           }
 
           if (column === 'id') {
             return {
-              maybeSingle: mockEqIdMaybeSingle,
+              maybeSingle: mockMaybeSingle,
             };
           }
 
@@ -47,31 +37,14 @@ const {
     };
   });
 
-  mockOrder.mockReturnValue({
-    limit: mockLimit,
-  });
-
-  mockEqState.mockReturnValue({
+  mockStateEq.mockReturnValue({
     order: mockOrder,
-    limit: mockLimit,
-    ilike: mockIlike,
-    neq: vi.fn(() => ({
-      order: mockNeqOrder,
-    })),
-  });
-
-  mockIlike.mockReturnValue({
-    order: mockOrder,
-    limit: mockLimit,
   });
 
   return {
     mockOrder,
-    mockLimit,
-    mockEqState,
-    mockIlike,
-    mockEqIdMaybeSingle,
-    mockNeqOrder,
+    mockStateEq,
+    mockMaybeSingle,
     mockFrom,
   };
 });
@@ -83,6 +56,7 @@ vi.mock('../supabaseClient', () => ({
 }));
 
 import {
+  __resetUniversityCatalogCacheForTests,
   fetchNearbyUniversitiesByState,
   fetchUniversityById,
   searchUniversities,
@@ -90,47 +64,93 @@ import {
 
 describe('universityService', () => {
   afterEach(() => {
+    __resetUniversityCatalogCacheForTests();
     vi.clearAllMocks();
   });
 
-  it('searches active institutions and normalizes their state and zone', async () => {
-    mockLimit.mockResolvedValueOnce({
+  it('finds institutions even when the search omits punctuation', async () => {
+    mockOrder.mockResolvedValueOnce({
       data: [
         {
           id: 'uni-1',
-          name: 'Yaba College of Technology',
-          state: 'lagos',
+          name: 'Al-Hikmah University',
+          state: 'kwara',
           zone: '',
-          slug: 'yaba-college-of-technology-lagos',
+          slug: 'al-hikmah-university-kwara',
+          abbreviation: 'ALHIKMAH',
+          is_active: true,
+        },
+        {
+          id: 'uni-2',
+          name: 'Summit University',
+          state: 'Kwara',
+          zone: 'North Central',
+          slug: 'summit-university-kwara',
+          abbreviation: 'SUMMIT',
           is_active: true,
         },
       ],
       error: null,
     });
 
-    const results = await searchUniversities({ query: 'lagos', state: 'Lagos', limit: 5 });
+    const results = await searchUniversities({ query: 'alhikma', state: 'Kwara', limit: 5 });
 
     expect(mockFrom).toHaveBeenCalledWith('universities');
-    expect(results).toEqual([
-      {
-        id: 'uni-1',
-        name: 'Yaba College of Technology',
-        state: 'Lagos',
-        zone: 'South West',
-        slug: 'yaba-college-of-technology-lagos',
-        is_active: true,
-      },
-    ]);
+    expect(mockStateEq).toHaveBeenCalledWith('state', 'Kwara');
+    expect(results[0]).toEqual({
+      id: 'uni-1',
+      name: 'Al-Hikmah University',
+      state: 'Kwara',
+      zone: 'North Central',
+      slug: 'al-hikmah-university-kwara',
+      abbreviation: 'ALHIKMAH',
+      is_active: true,
+    });
+  });
+
+  it('supports searching by school abbreviation or short form', async () => {
+    mockOrder.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'uni-3',
+          name: 'Federal Polytechnic, Offa',
+          state: 'Kwara',
+          zone: 'North Central',
+          slug: 'federal-polytechnic-offa-kwara',
+          abbreviation: 'OFFA POLY',
+          is_active: true,
+        },
+        {
+          id: 'uni-4',
+          name: 'Kwara State Polytechnic',
+          state: 'Kwara',
+          zone: 'North Central',
+          slug: 'kwara-state-polytechnic-kwara',
+          abbreviation: 'KWARA POLY',
+          is_active: true,
+        },
+      ],
+      error: null,
+    });
+
+    const results = await searchUniversities({ query: 'offa poly', state: 'Kwara', limit: 5 });
+
+    expect(results[0]).toMatchObject({
+      id: 'uni-3',
+      name: 'Federal Polytechnic, Offa',
+      abbreviation: 'OFFA POLY',
+    });
   });
 
   it('fetches a single institution by id', async () => {
-    mockEqIdMaybeSingle.mockResolvedValueOnce({
+    mockMaybeSingle.mockResolvedValueOnce({
       data: {
         id: 'uni-1',
         name: 'Summit University',
         state: 'Kwara',
         zone: 'North Central',
         slug: 'summit-university-kwara',
+        abbreviation: 'SUMMIT',
         is_active: true,
       },
       error: null,
@@ -143,31 +163,43 @@ describe('universityService', () => {
       name: 'Summit University',
       state: 'Kwara',
       zone: 'North Central',
+      abbreviation: 'SUMMIT',
     });
   });
 
-  it('loads nearby institutions from the same state', async () => {
-    mockNeqOrder.mockResolvedValueOnce({
+  it('loads nearby institutions from the same state and excludes the current one', async () => {
+    mockOrder.mockResolvedValueOnce({
       data: [
         {
+          id: 'uni-1',
+          name: 'University of Ilorin',
+          state: 'Kwara',
+          zone: 'North Central',
+          slug: 'university-of-ilorin-kwara',
+          abbreviation: 'UNILORIN',
+          is_active: true,
+        },
+        {
           id: 'uni-2',
-          name: 'Yaba College of Technology',
-          state: 'Lagos',
-          zone: 'South West',
-          slug: 'yaba-college-of-technology-lagos',
+          name: 'Kwara State Polytechnic',
+          state: 'Kwara',
+          zone: 'North Central',
+          slug: 'kwara-state-polytechnic-kwara',
+          abbreviation: 'KWARA POLY',
           is_active: true,
         },
       ],
       error: null,
     });
 
-    const results = await fetchNearbyUniversitiesByState('Lagos', { excludeId: 'uni-1' });
+    const results = await fetchNearbyUniversitiesByState('Kwara', { excludeId: 'uni-1' });
 
-    expect(results[0]).toMatchObject({
-      id: 'uni-2',
-      name: 'Yaba College of Technology',
-      state: 'Lagos',
-      zone: 'South West',
-    });
+    expect(results).toEqual([
+      expect.objectContaining({
+        id: 'uni-2',
+        name: 'Kwara State Polytechnic',
+        abbreviation: 'KWARA POLY',
+      }),
+    ]);
   });
 });

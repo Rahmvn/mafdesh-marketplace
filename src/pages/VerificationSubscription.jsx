@@ -606,7 +606,7 @@ export default function SellerVerificationPage() {
                   onSelectOption={handleUniversitySuggestionSelect}
                   getOptionKey={(university) => university.id}
                   getOptionPrimaryText={(university) => university.name}
-                  getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                  getOptionSecondaryText={(university) => [university.abbreviation, university.state, university.zone].filter(Boolean).join(' | ')}
                   allowCustomAction={Boolean(String(formState.universityName || '').trim())}
                   showCustomAction={Boolean(String(formState.universityName || '').trim())}
                   customActionLabel={`Use "${String(formState.universityName || '').trim()}" as Other`}

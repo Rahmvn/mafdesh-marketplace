@@ -1639,7 +1639,7 @@ export default function Profile() {
                 onSelectOption={handleUniversitySuggestionSelect}
                 getOptionKey={(university) => university.id}
                 getOptionPrimaryText={(university) => university.name}
-                getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' â€¢ ')}
+                getOptionSecondaryText={(university) => [university.abbreviation, university.state, university.zone].filter(Boolean).join(' | ')}
                 allowCustomAction={Boolean(String(universityForm.university_name || '').trim())}
                 showCustomAction={Boolean(String(universityForm.university_name || '').trim())}
                 customActionLabel={`Use "${String(universityForm.university_name || '').trim()}" as Other`}

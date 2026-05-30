@@ -1008,7 +1008,7 @@ export default function SignUp() {
                       onSelectOption={selectUniversity}
                       getOptionKey={(university) => university.id}
                       getOptionPrimaryText={(university) => university.name}
-                      getOptionSecondaryText={(university) => [university.state, university.zone].filter(Boolean).join(' • ')}
+                      getOptionSecondaryText={(university) => [university.abbreviation, university.state, university.zone].filter(Boolean).join(' | ')}
                       selectedBadgeText={formData.university_id ? 'Selected' : ''}
                       minQueryLength={2}
                       hidePanelUntilMinQueryLength
